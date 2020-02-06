@@ -34,7 +34,7 @@ void melty2_bulkgen(const melty2_key *key, uint64_t idx, uint64_t len, uint32_t 
  * The index `-sizeof(literal) > 33` below is a trick for compile-time checking.
  */
 #define melty2_initkey_fromliteral(key, literal, global_seed, global_ctr) \
-    melty2_initkey(key, &MULTFLY_NAME_LITERAL(literal), global_seed, global_ctr)
+    melty2_initkey(key, &melty2_name_fromliteral(literal), global_seed, global_ctr)
 
 #define melty2_name_fromliteral(literal) melty2_name_fromliteral_constr_({{                                           \
     (uint32_t)(literal "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0")[-(sizeof(literal) > 33)] | \
