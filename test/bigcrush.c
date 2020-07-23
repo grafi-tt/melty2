@@ -11,7 +11,7 @@ static uint32_t next() {
     static uint32_t buf[32];
     static int pos = 0;
     if (pos == 0) {
-        melty2_initkey(&key, NULL, 0, 0);
+        melty2_initkey_fromliteral(&key, "melty2", 0, 0);
         pos = 32;
     }
     if (pos == 32) {
