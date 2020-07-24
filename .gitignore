@@ -1,4 +1,1 @@
-*.o
-/melty2.so
-/test/bigcrush
-/test/bigcrush_bitrev
+build/
