@@ -57,10 +57,10 @@ void melty2_initkey(melty2_key *key, const melty2_name *name, uint64_t global_se
     }
 
     if (name) {
-        melty2_inject(v0, name->v[0], name->v[4]);
-        melty2_inject(v1, name->v[1], name->v[5]);
-        melty2_inject(v2, name->v[2], name->v[6]);
-        melty2_inject(v3, name->v[3], name->v[7]);
+        melty2_inject(v0, name->v_[0], name->v_[4]);
+        melty2_inject(v1, name->v_[1], name->v_[5]);
+        melty2_inject(v2, name->v_[2], name->v_[6]);
+        melty2_inject(v3, name->v_[3], name->v_[7]);
     }
 
     melty2_permute(v0);
