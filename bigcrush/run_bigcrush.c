@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #include <bbattery.h>
 #include <unif01.h>
@@ -24,7 +25,7 @@ static uint32_t next() {
     }
     uint32_t r = buf[pos++];
 
-    if (bitrev){
+    if (bitrev) {
         uint32_t t;
         t = r & UINT32_C(0x00FF00FF);
         r = (t << 16) | (t >> 16) | (t ^ r);
