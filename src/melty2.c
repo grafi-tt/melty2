@@ -11,7 +11,7 @@ static void melty2_inject(uint32_t *v, uint32_t a, uint32_t b) {
     v[3] ^= b;
 }
 
-static void melty2_permute(uint32_t *v) {
+static void melty2_round(uint32_t *v) {
     v[0] = melty2_rotl(v[0], 7);
     v[1] -= v[0];
     v[2] ^= v[1];
@@ -63,10 +63,10 @@ void melty2_initkey(melty2_key *key, const melty2_name *name, uint64_t global_se
         melty2_inject(v3, name->v_[3], name->v_[7]);
     }
 
-    melty2_permute(v0);
-    melty2_permute(v1);
-    melty2_permute(v2);
-    melty2_permute(v3);
+    melty2_round(v0);
+    melty2_round(v1);
+    melty2_round(v2);
+    melty2_round(v3);
 
     for (int i = 0; i < 6; ++i) {
         v0[i] ^= v2[i];
@@ -76,14 +76,14 @@ void melty2_initkey(melty2_key *key, const melty2_name *name, uint64_t global_se
     melty2_inject(v0, (uint32_t)(global_seed >> 32), (uint32_t)global_seed);
     melty2_inject(v1, (uint32_t)(global_ctr >> 32), (uint32_t)global_ctr);
 
-    melty2_permute(v0);
-    melty2_permute(v1);
+    melty2_round(v0);
+    melty2_round(v1);
 
     for (int i = 0; i < 6; ++i) {
         key->v_[i] = v0[i] ^ v1[i];
     }
 
-    melty2_permute(key->v_);
+    melty2_round(key->v_);
 }
 
 void melty2_splitkey(melty2_key *key, melty2_key *newkey) {
@@ -99,10 +99,10 @@ void melty2_splitkey(melty2_key *key, melty2_key *newkey) {
         v3[i] = key->v_[i] ^ UINT32_C(0xA54FF53A);
     }
 
-    melty2_permute(v0);
-    melty2_permute(v1);
-    melty2_permute(v2);
-    melty2_permute(v3);
+    melty2_round(v0);
+    melty2_round(v1);
+    melty2_round(v2);
+    melty2_round(v3);
 
     for (int i = 0; i < 6; ++i) {
         v0[i] ^= v2[i];
@@ -111,8 +111,8 @@ void melty2_splitkey(melty2_key *key, melty2_key *newkey) {
         newkey->v_[i] = v1[i];
     }
 
-    melty2_permute(v0);
-    melty2_permute(v1);
+    melty2_round(v0);
+    melty2_round(v1);
 
     for (int i = 0; i < 6; ++i) {
         key->v_[i] += v0[i];
@@ -133,7 +133,7 @@ void melty2_bulkgen(const melty2_key *key, uint64_t idx, uint64_t len, uint32_t 
     for (uint64_t end = idx + len; idx != end; ++idx) {
         uint32_t v[6] = {key_->v_[0], key_->v_[1], key_->v_[2], key_->v_[3], key_->v_[4], key_->v_[5]};
         melty2_inject(v, (uint32_t)idx, (uint32_t)(idx >> 32));
-        melty2_permute(v);
+        melty2_round(v);
         *out_++ = v[0] ^ v[3];
     }
 }
