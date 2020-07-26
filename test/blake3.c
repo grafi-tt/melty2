@@ -1,10 +1,9 @@
+#include "melty2.h"
+
 #include <inttypes.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-void melty2_hash(const char *input, uint64_t input_len, char output[32]);
 
 typedef struct {
     uint64_t input_len;
@@ -47,17 +46,26 @@ int test(const TestVector* vector) {
         expected[i] = (char)c;
     }
 
-    char result[32];
     char* input;
     if (!(input = malloc(vector->input_len))) {
         perror("malloc failed: ");
         return -1;
     }
-    for (uint64_t i = 0; i < vector->input_len; i++) {
+    for (uint64_t i = 0; i < vector->input_len; ++i) {
         input[i] = (char)(i % 251);
     }
-    melty2_hash(input, vector->input_len, result);
+
+    melty2_name name;
+    melty2_initname_withlen(&name, input, vector->input_len);
     free(input);
+
+    char result[32];
+    for (size_t i = 0; i < sizeof(name.v_) / sizeof(uint32_t); ++i) {
+        result[i * sizeof(uint32_t)] = (char)(unsigned char)(name.v_[i]);
+        result[i * sizeof(uint32_t) + 1] = (char)(unsigned char)(name.v_[i] >> 8);
+        result[i * sizeof(uint32_t) + 2] = (char)(unsigned char)(name.v_[i] >> 16);
+        result[i * sizeof(uint32_t) + 3] = (char)(unsigned char)(name.v_[i] >> 24);
+    }
 
     int err = !!memcmp(result, expected, sizeof(expected));
     if (err) {
@@ -68,7 +76,7 @@ int test(const TestVector* vector) {
 
 int main() {
     int n_err = 0;
-    for (size_t t = 0; t < sizeof(vectors) / sizeof(TestVector); t++) {
+    for (size_t t = 0; t < sizeof(vectors) / sizeof(TestVector); ++t) {
         int err = test(&vectors[t]);
         if (err < 0) return 63;
         n_err += err;

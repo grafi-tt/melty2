@@ -1,4 +1,5 @@
-#include <stdint.h>
+#include "melty2.h"
+
 #include <string.h>
 
 static const uint32_t MELTY2_BLAKE3_CHUNK_START = 1 << 0;
@@ -62,11 +63,11 @@ static void melty2_blake3_compress(uint32_t chaining_value[8], const uint32_t bl
         (uint32_t)chunk_counter, (uint32_t)(chunk_counter >> 32), block_len, flags
     };
 
-    for (int r = 0; r < 7; r++) {
+    for (int r = 0; r < 7; ++r) {
         melty2_blake3_round(state, block, MELTY2_BLAKE3_MSG_SCHEDULE[r]);
     }
 
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 8; ++i) {
         chaining_value[i] = state[i] ^ state[i + 8];
     }
 }
@@ -74,23 +75,23 @@ static void melty2_blake3_compress(uint32_t chaining_value[8], const uint32_t bl
 static void melty2_blake3_load_block(const char *input, uint32_t block_len, uint32_t block[16]) {
     uint32_t i = 0;
     while (i < block_len / sizeof(uint32_t)) {
-        uint32_t v = (uint32_t)(uint8_t)input[i * sizeof(uint32_t)] |
-                     (uint32_t)(uint8_t)input[i * sizeof(uint32_t) + 1] << 8 |
-                     (uint32_t)(uint8_t)input[i * sizeof(uint32_t) + 2] << 16 |
-                     (uint32_t)(uint8_t)input[i * sizeof(uint32_t) + 3] << 24;
+        uint32_t v = (uint32_t)(unsigned char)input[i * sizeof(uint32_t)] |
+                     (uint32_t)(unsigned char)input[i * sizeof(uint32_t) + 1] << 8 |
+                     (uint32_t)(unsigned char)input[i * sizeof(uint32_t) + 2] << 16 |
+                     (uint32_t)(unsigned char)input[i * sizeof(uint32_t) + 3] << 24;
         block[i++] = v;
     }
 
     uint32_t v = 0;
     switch (block_len % sizeof(uint32_t)) {
     case 3:
-        v = (uint32_t)(uint8_t)input[i * sizeof(uint32_t) + 2] << 16;
+        v = (uint32_t)(unsigned char)input[i * sizeof(uint32_t) + 2] << 16;
         /* FALLTHRU */
     case 2:
-        v |= (uint32_t)(uint8_t)input[i * sizeof(uint32_t) + 1] << 8;
+        v |= (uint32_t)(unsigned char)input[i * sizeof(uint32_t) + 1] << 8;
         /* FALLTHRU */
     case 1:
-        v |= (uint32_t)(uint8_t)input[i * sizeof(uint32_t)];
+        v |= (uint32_t)(unsigned char)input[i * sizeof(uint32_t)];
         block[i++] = v;
         break;
     default:
@@ -137,7 +138,7 @@ static void melty2_blake3_hash_parent(const uint32_t left_value[8], uint32_t cha
     melty2_blake3_compress(chaining_value, block, 0, sizeof(block), flags);
 }
 
-void melty2_hash(const char *input, uint64_t input_len, char output[32]) {
+static void melty2_blake3_hash(const char *input, uint64_t input_len, uint32_t output[32]) {
     const uint32_t CHUNK_SIZE = 1024;
 
     uint32_t chaining_value[8];
@@ -151,13 +152,12 @@ void melty2_hash(const char *input, uint64_t input_len, char output[32]) {
         }
         input_len -= chunk_len;
 
-        melty2_blake3_hash_chunk(input, chunk_counter, chunk_len, chaining_value,
-                                 !chunk_counter && !input_len);
+        melty2_blake3_hash_chunk(input, chunk_counter, chunk_len, chaining_value, !chunk_counter && !input_len);
         input += chunk_len;
         if (!input_len) break;
 
         unsigned int i;
-        for (i = 0; chunk_counter & (uint64_t)1 << i; i++) {
+        for (i = 0; chunk_counter & (uint64_t)1 << i; ++i) {
             melty2_blake3_hash_parent(stack[i], chaining_value, 0);
         }
         memcpy(stack[i], chaining_value, sizeof(chaining_value));
@@ -175,4 +175,12 @@ void melty2_hash(const char *input, uint64_t input_len, char output[32]) {
     }
 
     memcpy(output, chaining_value, sizeof(chaining_value));
+}
+
+void melty2_initname(melty2_name *name, const char *str) {
+    melty2_blake3_hash(str, strlen(str), name->v_);
+}
+
+void melty2_initname_withlen(melty2_name *name, const char *data, size_t len) {
+    melty2_blake3_hash(data, len, name->v_);
 }
