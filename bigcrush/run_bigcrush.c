@@ -6,7 +6,7 @@
 
 #include "melty2.h"
 
-#define BUFLEN 32
+#define BUFLEN 128
 
 static int bitrev;
 
@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    melty2_initname(&name, "melty2");
+    melty2_initname(&name, "run_bigcrush");
     melty2_initkey(&key, &name, 0, 0);
 
     unif01_Gen *gen = unif01_CreateExternGenBits("melty2", next);
