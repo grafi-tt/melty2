@@ -2,12 +2,12 @@
 
 #include <string.h>
 
-static const uint32_t MELTY2_BLAKE3_CHUNK_START = 1 << 0;
-static const uint32_t MELTY2_BLAKE3_CHUNK_END   = 1 << 1;
-static const uint32_t MELTY2_BLAKE3_PARENT      = 1 << 2;
-static const uint32_t MELTY2_BLAKE3_ROOT        = 1 << 3;
+static const uint32_t BLAKE3_CHUNK_START = 1 << 0;
+static const uint32_t BLAKE3_CHUNK_END   = 1 << 1;
+static const uint32_t BLAKE3_PARENT      = 1 << 2;
+static const uint32_t BLAKE3_ROOT        = 1 << 3;
 
-static const uint32_t MELTY2_BLAKE3_IV[8] = {
+static const uint32_t BLAKE3_IV[8] = {
     UINT32_C(0x6A09E667),  /* fractional parts of sqrt(2)  */
     UINT32_C(0xBB67AE85),  /* fractional parts of sqrt(3)  */
     UINT32_C(0x3C6EF372),  /* fractional parts of sqrt(5)  */
@@ -18,7 +18,7 @@ static const uint32_t MELTY2_BLAKE3_IV[8] = {
     UINT32_C(0x5BE0CD19),  /* fractional parts of sqrt(19) */
 };
 
-static const uint8_t MELTY2_BLAKE3_MSG_SCHEDULE[7][16] = {
+static const uint8_t BLAKE3_MSG_SCHEDULE[7][16] = {
     {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15},
     {2,  6,  3,  10, 7,  0,  4,  13, 1,  11, 12, 5,  9,  14, 15, 8},
     {3,  4,  10, 12, 13, 2,  7,  14, 6,  5,  9,  0,  11, 15, 8,  1},
@@ -28,43 +28,43 @@ static const uint8_t MELTY2_BLAKE3_MSG_SCHEDULE[7][16] = {
     {11, 15, 5,  0,  1,  9,  8,  6,  14, 10, 2,  12, 3,  4,  7,  13},
 };
 
-static uint32_t melty2_blake3_rotr(uint32_t v, int n) {
+static uint32_t blake3_rotr(uint32_t v, int n) {
     return (v >> n) | (v << (32 - n));
 }
 
-static void melty2_blake3_g(uint32_t x[16], int a, int b, int c, int d, uint32_t ma, uint32_t mb) {
+static void blake3_g(uint32_t x[16], int a, int b, int c, int d, uint32_t ma, uint32_t mb) {
     x[a] = x[a] + x[b] + ma;
-    x[d] = melty2_blake3_rotr(x[d] ^ x[a], 16);
+    x[d] = blake3_rotr(x[d] ^ x[a], 16);
     x[c] = x[c] + x[d];
-    x[b] = melty2_blake3_rotr(x[b] ^ x[c], 12);
+    x[b] = blake3_rotr(x[b] ^ x[c], 12);
     x[a] = x[a] + x[b] + mb;
-    x[d] = melty2_blake3_rotr(x[d] ^ x[a], 8);
+    x[d] = blake3_rotr(x[d] ^ x[a], 8);
     x[c] = x[c] + x[d];
-    x[b] = melty2_blake3_rotr(x[b] ^ x[c], 7);
+    x[b] = blake3_rotr(x[b] ^ x[c], 7);
 }
 
-static void melty2_blake3_round(uint32_t x[16], const uint32_t m[16], const uint8_t perm[16]) {
-    melty2_blake3_g(x, 0, 4, 8,  12, m[perm[0]],  m[perm[1]]);
-    melty2_blake3_g(x, 1, 5, 9,  13, m[perm[2]],  m[perm[3]]);
-    melty2_blake3_g(x, 2, 6, 10, 14, m[perm[4]],  m[perm[5]]);
-    melty2_blake3_g(x, 3, 7, 11, 15, m[perm[6]],  m[perm[7]]);
-    melty2_blake3_g(x, 0, 5, 10, 15, m[perm[8]],  m[perm[9]]);
-    melty2_blake3_g(x, 1, 6, 11, 12, m[perm[10]], m[perm[11]]);
-    melty2_blake3_g(x, 2, 7, 8,  13, m[perm[12]], m[perm[13]]);
-    melty2_blake3_g(x, 3, 4, 9,  14, m[perm[14]], m[perm[15]]);
+static void blake3_round(uint32_t x[16], const uint32_t m[16], const uint8_t perm[16]) {
+    blake3_g(x, 0, 4, 8,  12, m[perm[0]],  m[perm[1]]);
+    blake3_g(x, 1, 5, 9,  13, m[perm[2]],  m[perm[3]]);
+    blake3_g(x, 2, 6, 10, 14, m[perm[4]],  m[perm[5]]);
+    blake3_g(x, 3, 7, 11, 15, m[perm[6]],  m[perm[7]]);
+    blake3_g(x, 0, 5, 10, 15, m[perm[8]],  m[perm[9]]);
+    blake3_g(x, 1, 6, 11, 12, m[perm[10]], m[perm[11]]);
+    blake3_g(x, 2, 7, 8,  13, m[perm[12]], m[perm[13]]);
+    blake3_g(x, 3, 4, 9,  14, m[perm[14]], m[perm[15]]);
 }
 
-static void melty2_blake3_compress(uint32_t chaining_value[8], const uint32_t block[16],
-                                   uint64_t chunk_counter, uint32_t block_len, uint32_t flags) {
+static void blake3_compress(uint32_t chaining_value[8], const uint32_t block[16],
+                            uint64_t chunk_counter, uint32_t block_len, uint32_t flags) {
     uint32_t state[16] = {
         chaining_value[0], chaining_value[1], chaining_value[2], chaining_value[3],
         chaining_value[4], chaining_value[5], chaining_value[6], chaining_value[7],
-        MELTY2_BLAKE3_IV[0], MELTY2_BLAKE3_IV[1], MELTY2_BLAKE3_IV[2], MELTY2_BLAKE3_IV[3],
+        BLAKE3_IV[0], BLAKE3_IV[1], BLAKE3_IV[2], BLAKE3_IV[3],
         (uint32_t)chunk_counter, (uint32_t)(chunk_counter >> 32), block_len, flags
     };
 
     for (int r = 0; r < 7; ++r) {
-        melty2_blake3_round(state, block, MELTY2_BLAKE3_MSG_SCHEDULE[r]);
+        blake3_round(state, block, BLAKE3_MSG_SCHEDULE[r]);
     }
 
     for (int i = 0; i < 8; ++i) {
@@ -72,7 +72,7 @@ static void melty2_blake3_compress(uint32_t chaining_value[8], const uint32_t bl
     }
 }
 
-static void melty2_blake3_load_block(const char *input, uint32_t block_len, uint32_t block[16]) {
+static void blake3_load_block(const char *input, uint32_t block_len, uint32_t block[16]) {
     uint32_t i = 0;
     while (i < block_len / sizeof(uint32_t)) {
         uint32_t v = (uint32_t)(unsigned char)input[i * sizeof(uint32_t)] |
@@ -103,42 +103,42 @@ static void melty2_blake3_load_block(const char *input, uint32_t block_len, uint
     }
 }
 
-static void melty2_blake3_hash_chunk(const char *input, uint64_t chunk_counter, uint32_t chunk_len,
-                                     uint32_t chaining_value[8], int is_root) {
-    memcpy(chaining_value, MELTY2_BLAKE3_IV, sizeof(MELTY2_BLAKE3_IV));
+static void blake3_hash_chunk(const char *input, uint32_t chunk_len, uint32_t chaining_value[8],
+                              uint64_t chunk_counter, int is_root) {
+    memcpy(chaining_value, BLAKE3_IV, sizeof(BLAKE3_IV));
 
-    uint32_t flags = MELTY2_BLAKE3_CHUNK_START;
+    uint32_t flags = BLAKE3_CHUNK_START;
     do {
         uint32_t block[16];
         uint32_t block_len = sizeof(block);
         if (chunk_len <= block_len) {
             block_len = chunk_len;
-            flags |= MELTY2_BLAKE3_CHUNK_END;
-            if (is_root) flags |= MELTY2_BLAKE3_ROOT;
+            flags |= BLAKE3_CHUNK_END;
+            if (is_root) flags |= BLAKE3_ROOT;
         }
         chunk_len -= block_len;
 
-        melty2_blake3_load_block(input, block_len, block);
+        blake3_load_block(input, block_len, block);
         input += block_len;
 
-        melty2_blake3_compress(chaining_value, block, chunk_counter, block_len, flags);
-        flags &= ~MELTY2_BLAKE3_CHUNK_START;
+        blake3_compress(chaining_value, block, chunk_counter, block_len, flags);
+        flags &= ~BLAKE3_CHUNK_START;
     } while (chunk_len);
 }
 
-static void melty2_blake3_hash_parent(const uint32_t left_value[8], uint32_t chaining_value[8], int is_root) {
+static void blake3_hash_parent(const uint32_t left_value[8], uint32_t chaining_value[8], int is_root) {
     uint32_t block[16];
     memcpy(block, left_value, sizeof(block) / 2);
     memcpy(&block[8], chaining_value, sizeof(block) / 2);
 
-    uint32_t flags = MELTY2_BLAKE3_PARENT;
-    if (is_root) flags |= MELTY2_BLAKE3_ROOT;
+    uint32_t flags = BLAKE3_PARENT;
+    if (is_root) flags |= BLAKE3_ROOT;
 
-    memcpy(chaining_value, MELTY2_BLAKE3_IV, sizeof(MELTY2_BLAKE3_IV));
-    melty2_blake3_compress(chaining_value, block, 0, sizeof(block), flags);
+    memcpy(chaining_value, BLAKE3_IV, sizeof(BLAKE3_IV));
+    blake3_compress(chaining_value, block, 0, sizeof(block), flags);
 }
 
-static void melty2_blake3_hash(const char *input, uint64_t input_len, uint32_t output[32]) {
+static void blake3_hash(const char *input, uint64_t input_len, uint32_t output[32]) {
     const uint32_t CHUNK_SIZE = 1024;
 
     uint32_t chaining_value[8];
@@ -152,13 +152,13 @@ static void melty2_blake3_hash(const char *input, uint64_t input_len, uint32_t o
         }
         input_len -= chunk_len;
 
-        melty2_blake3_hash_chunk(input, chunk_counter, chunk_len, chaining_value, !chunk_counter && !input_len);
+        blake3_hash_chunk(input, chunk_len, chaining_value, chunk_counter, !chunk_counter && !input_len);
         input += chunk_len;
         if (!input_len) break;
 
         unsigned int i;
         for (i = 0; chunk_counter & (uint64_t)1 << i; ++i) {
-            melty2_blake3_hash_parent(stack[i], chaining_value, 0);
+            blake3_hash_parent(stack[i], chaining_value, 0);
         }
         memcpy(stack[i], chaining_value, sizeof(chaining_value));
         ++chunk_counter;
@@ -169,7 +169,7 @@ static void melty2_blake3_hash(const char *input, uint64_t input_len, uint32_t o
         int has_left_value = !!(chunk_counter & 1);
         chunk_counter >>= 1;
         if (has_left_value) {
-            melty2_blake3_hash_parent(stack[i], chaining_value, !chunk_counter);
+            blake3_hash_parent(stack[i], chaining_value, !chunk_counter);
         }
         i++;
     }
@@ -178,9 +178,9 @@ static void melty2_blake3_hash(const char *input, uint64_t input_len, uint32_t o
 }
 
 void melty2_initname(melty2_name *name, const char *str) {
-    melty2_blake3_hash(str, strlen(str), name->v_);
+    blake3_hash(str, strlen(str), name->v_);
 }
 
 void melty2_initname_withlen(melty2_name *name, const char *data, size_t len) {
-    melty2_blake3_hash(data, len, name->v_);
+    blake3_hash(data, len, name->v_);
 }
