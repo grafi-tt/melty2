@@ -121,19 +121,8 @@ void melty2_splitkey(melty2_key *key, melty2_key *newkey) {
 }
 
 uint32_t melty2_gen(const melty2_key *key, uint64_t idx) {
-    uint32_t out;
-    melty2_bulkgen(key, idx, 1, &out);
-    return out;
-}
-
-void melty2_bulkgen(const melty2_key *key, uint64_t idx, uint64_t len, uint32_t *out) {
-    const melty2_key * restrict key_ = key;
-    uint32_t * restrict out_ = out;
-
-    for (uint64_t end = idx + len; idx != end; ++idx) {
-        uint32_t v[6] = {key_->v_[0], key_->v_[1], key_->v_[2], key_->v_[3], key_->v_[4], key_->v_[5]};
-        melty2_inject(v, (uint32_t)idx, (uint32_t)(idx >> 32));
-        melty2_round(v);
-        *out_++ = v[0] ^ v[3];
-    }
+    uint32_t v[6] = {key->v_[0], key->v_[1], key->v_[2], key->v_[3], key->v_[4], key->v_[5]};
+    melty2_inject(v, (uint32_t)idx, (uint32_t)(idx >> 32));
+    melty2_round(v);
+    return v[0] ^ v[3];
 }
