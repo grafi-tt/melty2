@@ -40,7 +40,7 @@ int test(const TestVector* vector) {
     for (int i = 0; i < 32; i++) {
         unsigned int c;
         if (sscanf(&vector->hash_hex[i * 2], "%02x", &c) != 1) {
-            fputs("sscanf failed", stderr);
+            fputs("sscanf failed\n", stderr);
             return -1;
         }
         expected[i] = (char)c;
