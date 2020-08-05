@@ -17,11 +17,6 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
         target_compile_options(melty2_bulk_avx2_ PRIVATE -mavx2)
         target_compile_definitions(melty2_bulk_avx2_ PRIVATE MELTY2_BULK_SUFFIX=avx2)
         list(APPEND BULK_LIBS melty2_bulk_avx2_)
-
-        add_library(melty2_bulk_sse2_ STATIC melty2_bulk_impl.c)
-        target_compile_options(melty2_bulk_sse2_ PRIVATE -msse2)
-        target_compile_definitions(melty2_bulk_sse2_ PRIVATE MELTY2_BULK_SUFFIX=sse2)
-        list(APPEND BULK_LIBS melty2_bulk_sse2_)
     endif()
 
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
