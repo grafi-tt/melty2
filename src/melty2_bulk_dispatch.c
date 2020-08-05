@@ -11,10 +11,12 @@ static X86Features features;
 #define GetInfo() GetX86Info()
 void melty2_bulkgen_avx512(const uint32_t * restrict key_v, uint64_t idx, uint64_t len, uint32_t * restrict out);
 void melty2_bulkgen_avx2(const uint32_t * restrict key_v, uint64_t idx, uint64_t len, uint32_t * restrict out);
+#ifndef _MSC_VER
 void melty2_bulkgen_sse2(const uint32_t * restrict key_v, uint64_t idx, uint64_t len, uint32_t * restrict out);
 #endif
+#endif
 
-#ifdef CPU_FEATURES_ARCH_ARM
+#if defined(CPU_FEATURES_ARCH_ARM) && !defined(_MSC_VER)
 #include <cpuinfo_arm.h>
 static ArmFeatures features;
 #define GetInfo() GetArmInfo()
@@ -38,14 +40,19 @@ void melty2_bulkgen(const melty2_key *key, uint64_t idx, uint64_t len, uint32_t 
         }
     }
 #endif
+
 #ifdef CPU_FEATURES_ARCH_X86
     if (features.avx512f && features.avx512dq) return melty2_bulkgen_avx512(key->v_, idx, len, out);
     if (features.avx2) return melty2_bulkgen_avx2(key->v_, idx, len, out);
+#ifndef _MSC_VER
     if (features.sse2) return melty2_bulkgen_sse2(key->v_, idx, len, out);
 #endif
-#ifdef CPU_FEATURES_ARCH_ARM
+#endif
+
+#if defined(CPU_FEATURES_ARCH_ARM) && !defined(_MSC_VER)
     static ArmFeatures *p_features;
     if (features.neon) return melty2_bulkgen_neon(key->v_, idx, len, out);
 #endif
+
     return melty2_bulkgen_generic(key->v_, idx, len, out);
 }
