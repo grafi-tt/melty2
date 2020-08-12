@@ -6,10 +6,10 @@ import msgpack
 
 
 class TestGenerator():
-    def __init__(self, f, name):
+    def __init__(self, f, name, use_fp32):
         self._f = f
         self._hctx = hashlib.blake2b()
-        self._packer = msgpack.Packer()
+        self._packer = msgpack.Packer(use_single_float=use_fp32)
 
         self._f.write(f"static void {name}(melty2_key *key)" " {\n")
         self._f.write("    melty2_seeder seeder[1];\n")
@@ -32,12 +32,10 @@ class TestGenerator():
         self._f.write(f'    melty2_seed_int(seeder, INT64_C({s}));\n')
 
     def seed_float(self, s):
-        self._packer.use_single_float = True
         self._hctx.update(self._packer.pack(s))
         self._f.write(f'    melty2_seed_float(seeder, {s});\n')
 
     def seed_double(self, s):
-        self._packer.use_single_float = False
         self._hctx.update(self._packer.pack(s))
         self._f.write(f'    melty2_seed_double(seeder, {s});\n')
 
@@ -57,7 +55,7 @@ class TestGenerator():
 
 
 def gen_test_case(f, name, *seeds, use_fp32=False):
-    gen = TestGenerator(f, name)
+    gen = TestGenerator(f, name, use_fp32)
     for s in seeds:
         if s is None:
             gen.seed_null()
@@ -117,6 +115,8 @@ def gen_tests(f):
         # INT64_C doesn't work well for INT64_MIN
         # gen_test_case(f, 'test_m_2to63', -(2 ** 63)),
         gen_test_case(f, 'test_m_2to63m1', -(2 ** 63 - 1)),
+        gen_test_case(f, 'test_float', 1.23, use_fp32=True),
+        gen_test_case(f, 'test_double', 1.23, use_fp32=False),
     ]
 
     f.write('typedef struct {\n')

@@ -202,6 +202,20 @@ static void test_m_2to63m1(melty2_key *key) {
     melty2_initkey(seeder, key);
 }
 
+static void test_float(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_float(seeder, 1.23);
+    melty2_initkey(seeder, key);
+}
+
+static void test_double(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_double(seeder, 1.23);
+    melty2_initkey(seeder, key);
+}
+
 typedef struct {
     const char* name;
     void (*fn)(melty2_key *key);
@@ -267,4 +281,8 @@ static const TestCase test_cases[] = {
      "92b8c2b12aa43faadde45ee671efc2a11cd79fe637756ff8"},
     {"test_m_2to63m1", test_m_2to63m1,
      "6d9c62d21e89d71f26415fab0c29adb9dea0999e612bef14"},
+    {"test_float", test_float,
+     "901f50a481165cba5334c86aef50ad78ebf66eac909cfc96"},
+    {"test_double", test_double,
+     "70e9631695b510e31c349ad51085db5c7b7234e48124c9b3"},
 };
