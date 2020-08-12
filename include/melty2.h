@@ -8,25 +8,25 @@
 extern "C" {
 #endif
 
+typedef struct melty2_seeder_ {
+    uint64_t v_[25];
+} melty2_seeder;
+
+void melty2_initseeder(melty2_seeder *seeder);
+void melty2_seed_null(melty2_seeder *seeder);
+void melty2_seed_bool(melty2_seeder *seeder, int s);
+void melty2_seed_uint(melty2_seeder *seeder, uint64_t s);
+void melty2_seed_int(melty2_seeder *seeder, int64_t s);
+void melty2_seed_float(melty2_seeder *seeder, float s);
+void melty2_seed_double(melty2_seeder *seeder, double s);
+void melty2_seed_str(melty2_seeder *seeder, const char *str, uint32_t len);
+void melty2_seed_bin(melty2_seeder *seeder, const char *bin, uint32_t len);
+
 typedef struct melty2_key_ {
     uint32_t v_[6];
 } melty2_key;
 
-typedef struct melty2_keygen_ {
-    uint64_t v_[25];
-} melty2_keygen;
-
-void melty2_keygen_begin(melty2_keygen *keygen);
-void melty2_keygen_null(melty2_keygen *keygen);
-void melty2_keygen_bool(melty2_keygen *keygen, int v);
-void melty2_keygen_uint(melty2_keygen *keygen, uint64_t v);
-void melty2_keygen_int(melty2_keygen *keygen, int64_t v);
-void melty2_keygen_float(melty2_keygen *keygen, float v);
-void melty2_keygen_double(melty2_keygen *keygen, double v);
-void melty2_keygen_str(melty2_keygen *keygen, const char *str, uint32_t len);
-void melty2_keygen_bin(melty2_keygen *keygen, const char *bin, uint32_t len);
-void melty2_keygen_end(melty2_keygen *keygen, melty2_key *key);
-
+void melty2_initkey(melty2_seeder *seeder, melty2_key *key);
 void melty2_splitkey(melty2_key *key, melty2_key *newkey);
 
 uint32_t melty2_gen(const melty2_key *key, uint64_t idx);

@@ -49,9 +49,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    melty2_keygen keygen;
-    melty2_keygen_begin(&keygen);
-    melty2_keygen_end(&keygen, &key);
+    melty2_seeder seeder;
+    melty2_initseeder(&seeder);
+    melty2_initkey(&seeder, &key);
 
     unif01_Gen *gen = unif01_CreateExternGenBits("melty2", next);
     bbattery_BigCrush(gen);

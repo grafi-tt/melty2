@@ -113,21 +113,21 @@ static void blake2b_finalize(blake2b_state *state) {
     blake2b_compress(state, ~(uint64_t)0);
 }
 
-void melty2_keygen_begin(melty2_keygen *keygen) {
-    blake2b_init((blake2b_state *)keygen);
+void melty2_initseeder(melty2_seeder *seeder) {
+    blake2b_init((blake2b_state *)seeder);
 }
 
-void melty2_keygen_null(melty2_keygen *keygen) {
+void melty2_seed_null(melty2_seeder *seeder) {
     uint8_t input[1] = {0xc0};
-    blake2b_update((blake2b_state *)keygen, input, 1);
+    blake2b_update((blake2b_state *)seeder, input, 1);
 }
 
-void melty2_keygen_bool(melty2_keygen *keygen, int v) {
-    uint8_t input[1] = {v ? 0xc3 : 0xc2};
-    blake2b_update((blake2b_state *)keygen, input, 1);
+void melty2_seed_bool(melty2_seeder *seeder, int s) {
+    uint8_t input[1] = {s ? 0xc3 : 0xc2};
+    blake2b_update((blake2b_state *)seeder, input, 1);
 }
 
-void melty2_keygen_uint(melty2_keygen *keygen, uint64_t v) {
+void melty2_seed_uint(melty2_seeder *seeder, uint64_t s) {
     uint8_t input[9];
     input[0] = 0xcf;
     input[4] = 0xce;
@@ -135,34 +135,34 @@ void melty2_keygen_uint(melty2_keygen *keygen, uint64_t v) {
     input[7] = 0xcc;
 
     int len = 1;
-    input[8] = (uint8_t)v;
+    input[8] = (uint8_t)s;
 
-    if (v < UINT64_C(1) << 7) goto update;
+    if (s < UINT64_C(1) << 7) goto update;
     len += 1;
 
-    if (v < UINT64_C(1) << 8) goto update;
-    input[7] = (uint8_t)(v >> 8);
+    if (s < UINT64_C(1) << 8) goto update;
+    input[7] = (uint8_t)(s >> 8);
     len += 1;
 
-    if (v < UINT64_C(1) << 16) goto update;
-    input[6] = (uint8_t)(v >> 16);
-    input[5] = (uint8_t)(v >> 24);
+    if (s < UINT64_C(1) << 16) goto update;
+    input[6] = (uint8_t)(s >> 16);
+    input[5] = (uint8_t)(s >> 24);
     len += 2;
 
-    if (v < UINT64_C(1) << 32) goto update;
-    input[4] = (uint8_t)(v >> 32);
-    input[3] = (uint8_t)(v >> 40);
-    input[2] = (uint8_t)(v >> 48);
-    input[1] = (uint8_t)(v >> 56);
+    if (s < UINT64_C(1) << 32) goto update;
+    input[4] = (uint8_t)(s >> 32);
+    input[3] = (uint8_t)(s >> 40);
+    input[2] = (uint8_t)(s >> 48);
+    input[1] = (uint8_t)(s >> 56);
     len += 4;
 
 update:
-    blake2b_update((blake2b_state *)keygen, &input[9 - len], len);
+    blake2b_update((blake2b_state *)seeder, &input[9 - len], len);
 }
 
-void melty2_keygen_int(melty2_keygen *keygen, int64_t v) {
-    if (v >= 0) {
-        melty2_keygen_uint(keygen, v);
+void melty2_seed_int(melty2_seeder *seeder, int64_t s) {
+    if (s >= 0) {
+        melty2_seed_uint(seeder, s);
         return;
     }
 
@@ -173,49 +173,49 @@ void melty2_keygen_int(melty2_keygen *keygen, int64_t v) {
     input[7] = 0xd0;
 
     int len = 1;
-    input[8] = (uint8_t)v;
+    input[8] = (uint8_t)s;
 
-    if (v >= -(INT64_C(1) << 5)) goto update;
+    if (s >= -(INT64_C(1) << 5)) goto update;
     len += 1;
 
-    if (v >= -(INT64_C(1) << 8)) goto update;
-    input[7] = (uint8_t)(v >> 8);
+    if (s >= -(INT64_C(1) << 8)) goto update;
+    input[7] = (uint8_t)(s >> 8);
     len += 1;
 
-    if (v >= -(INT64_C(1) << 16)) goto update;
-    input[6] = (uint8_t)(v >> 16);
-    input[5] = (uint8_t)(v >> 24);
+    if (s >= -(INT64_C(1) << 16)) goto update;
+    input[6] = (uint8_t)(s >> 16);
+    input[5] = (uint8_t)(s >> 24);
     len += 2;
 
-    if (v >= -(INT64_C(1) << 32)) goto update;
-    input[4] = (uint8_t)(v >> 32);
-    input[3] = (uint8_t)(v >> 40);
-    input[2] = (uint8_t)(v >> 48);
-    input[1] = (uint8_t)(v >> 56);
+    if (s >= -(INT64_C(1) << 32)) goto update;
+    input[4] = (uint8_t)(s >> 32);
+    input[3] = (uint8_t)(s >> 40);
+    input[2] = (uint8_t)(s >> 48);
+    input[1] = (uint8_t)(s >> 56);
     len += 4;
 
 update:
-    blake2b_update((blake2b_state *)keygen, &input[9 - len], len);
+    blake2b_update((blake2b_state *)seeder, &input[9 - len], len);
 }
 
-void melty2_keygen_float(melty2_keygen *keygen, float v) {
+void melty2_seed_float(melty2_seeder *seeder, float s) {
     uint32_t u;
-    memcpy(&u, &v, sizeof(uint32_t));
+    memcpy(&u, &s, sizeof(uint32_t));
     uint8_t input[5] = {0xca, (uint8_t)(u >> 24), (uint8_t)(u >> 16), (uint8_t)(u >> 8), (uint8_t)u};
-    blake2b_update((blake2b_state *)keygen, input, sizeof(input));
+    blake2b_update((blake2b_state *)seeder, input, sizeof(input));
 }
 
-void melty2_keygen_double(melty2_keygen *keygen, double v) {
+void melty2_seed_double(melty2_seeder *seeder, double s) {
     uint64_t u;
-    memcpy(&u, &v, sizeof(uint64_t));
+    memcpy(&u, &s, sizeof(uint64_t));
     uint8_t input[9] = {
         0xcb, (uint8_t)(u >> 56), (uint8_t)(u >> 48), (uint8_t)(u >> 40), (uint8_t)(u >> 32),
               (uint8_t)(u >> 24), (uint8_t)(u >> 16), (uint8_t)(u >>  8), (uint8_t)u,
     };
-    blake2b_update((blake2b_state *)keygen, input, sizeof(input));
+    blake2b_update((blake2b_state *)seeder, input, sizeof(input));
 }
 
-void melty2_keygen_str(melty2_keygen *keygen, const char *str, uint32_t len) {
+void melty2_seed_str(melty2_seeder *seeder, const char *str, uint32_t len) {
     uint8_t head[5];
     head[0] = 0xdb;
     head[2] = 0xda;
@@ -240,11 +240,11 @@ void melty2_keygen_str(melty2_keygen *keygen, const char *str, uint32_t len) {
     head_len += 2;
 
 update:
-    blake2b_update((blake2b_state *)keygen, &head[5 - head_len], head_len);
-    blake2b_update((blake2b_state *)keygen, str, len);
+    blake2b_update((blake2b_state *)seeder, &head[5 - head_len], head_len);
+    blake2b_update((blake2b_state *)seeder, str, len);
 }
 
-void melty2_keygen_bin(melty2_keygen *keygen, const char *bin, uint32_t len) {
+void melty2_seed_bin(melty2_seeder *seeder, const char *bin, uint32_t len) {
     uint8_t head[5];
     head[0] = 0xc6;
     head[2] = 0xc5;
@@ -263,12 +263,12 @@ void melty2_keygen_bin(melty2_keygen *keygen, const char *bin, uint32_t len) {
     head_len += 2;
 
 update:
-    blake2b_update((blake2b_state *)keygen, &head[5 - head_len], head_len);
-    blake2b_update((blake2b_state *)keygen, bin, len);
+    blake2b_update((blake2b_state *)seeder, &head[5 - head_len], head_len);
+    blake2b_update((blake2b_state *)seeder, bin, len);
 }
 
-void melty2_keygen_end(melty2_keygen *keygen, melty2_key *key) {
-    blake2b_state* state = (blake2b_state *)keygen;
+void melty2_initkey(melty2_seeder *seeder, melty2_key *key) {
+    blake2b_state* state = (blake2b_state *)seeder;
     blake2b_finalize(state);
     *key = (melty2_key) {{
         (uint32_t)state->h[0], (uint32_t)(state->h[0] >> 32),
