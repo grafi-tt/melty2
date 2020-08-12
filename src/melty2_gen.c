@@ -1,4 +1,4 @@
-#include <stdint.h>
+#include "melty2.h"
 
 static inline uint32_t melty2_rotl(uint32_t v, int n) {
     return (v << n) | (v >> (32 - n));
@@ -49,12 +49,15 @@ static inline void melty2_round(uint32_t *v) {
 #define melty2_gen_expand2(suffix) melty2_gen_ ## suffix
 #endif
 
-void melty2_gen(const uint32_t * restrict key_v, uint64_t idx, uint64_t len, uint32_t * restrict out) {
+void melty2_gen(const melty2_key *key, uint64_t idx, uint64_t len, uint32_t *out) {
+    const uint32_t * restrict key_v = key->v_;
+    uint32_t * restrict out_p = out;
+
     for (uint64_t k = 0; k < len; ++k) {
         uint32_t v[6] = {key_v[0], key_v[1], key_v[2], key_v[3], key_v[4], key_v[5]};
         uint64_t idx_k = idx + k;
         melty2_inject(v, (uint32_t)idx_k, (uint32_t)(idx_k >> 32));
         melty2_round(v);
-        out[k] = v[0] ^ v[3];
+        out_p[k] = v[0] ^ v[3];
     }
 }
