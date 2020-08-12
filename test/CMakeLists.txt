@@ -1,10 +1,10 @@
-add_executable(test_blake3 test_blake3.c)
-add_test(NAME test_blake3 COMMAND test_blake3)
+add_executable(test_seeder test_seeder.c)
+add_test(NAME test_seeder COMMAND test_seeder)
 
-add_executable(test_melty2 test_melty2.c)
-add_test(NAME test_melty2 COMMAND test_melty2)
+#add_executable(test_melty2 test_melty2.c)
+#add_test(NAME test_melty2 COMMAND test_melty2)
 
-set(EXES test_blake3 test_melty2)
+set(EXES test_seeder)
 
 set_property(TARGET ${EXES} PROPERTY C_STANDARD 99)
 set_property(TARGET ${EXES} PROPERTY C_STANDARD_REQUIRED ON)
