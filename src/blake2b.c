@@ -85,7 +85,7 @@ static void blake2b_compress(blake2b_state *state, uint64_t final) {
 
 static void blake2b_init(blake2b_state *state) {
     memcpy(state->h, BLAKE2B_IV, sizeof(BLAKE2B_IV));
-    state->h[0] ^= 64;
+    state->h[0] ^= 0x01010040;
     state->ctr = 0;
 }
 
