@@ -12,7 +12,7 @@ if(MELTY2_ENABLE_CPU_FEATURES)
     set_property(TARGET melty2_gen_dispatch_ PROPERTY CXX_STANDARD 11)
     set_property(TARGET melty2_gen_dispatch_ PROPERTY CXX_STANDARD_REQUIRED ON)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        set_property(TARGET melty2_gen_dispatch_ APPEND PROPERTY COMPILE_OPTIONS
+        target_compile_options(melty2_gen_dispatch_ PRIVATE
             -std=c++11 -Wall -Wextra -Wpedantic -Werror)
     endif()
 
