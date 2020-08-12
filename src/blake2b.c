@@ -113,10 +113,6 @@ static void blake2b_finalize(blake2b_state *state) {
     blake2b_compress(state, ~(uint64_t)0);
 }
 
-typedef struct melty2_keygen_ {
-    uint64_t v_[25];
-} melty2_keygen;
-
 void melty2_keygen_begin(melty2_keygen *keygen) {
     blake2b_init((blake2b_state *)keygen);
 }

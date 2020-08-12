@@ -10,7 +10,6 @@
 
 static int bitrev;
 
-static melty2_name name;
 static melty2_key key;
 static uint64_t idx = 0;
 
@@ -50,8 +49,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    melty2_initname(&name, "run_bigcrush");
-    melty2_initkey(&key, &name, 0, 0);
+    melty2_keygen keygen;
+    melty2_keygen_begin(&keygen);
+    melty2_keygen_end(&keygen, &key);
 
     unif01_Gen *gen = unif01_CreateExternGenBits("melty2", next);
     bbattery_BigCrush(gen);

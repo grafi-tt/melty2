@@ -55,7 +55,7 @@ if(MELTY2_ENABLE_CPU_FEATURES)
     target_compile_definitions(melty2_bulk_generic_ PRIVATE MELTY2_BULK_SUFFIX=generic)
 endif()
 
-add_library(melty2 blake3.c melty2.c)
+add_library(melty2 blake2b.c melty2.c)
 target_include_directories(melty2
     PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
