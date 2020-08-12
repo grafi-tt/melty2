@@ -114,9 +114,17 @@ def gen_tests(f):
         gen_test_case(f, 'test_m_pi19d', -3141592653589693238),
         # INT64_C doesn't work well for INT64_MIN
         # gen_test_case(f, 'test_m_2to63', -(2 ** 63)),
-        gen_test_case(f, 'test_m_2to63m1', -(2 ** 63 - 1)),
         gen_test_case(f, 'test_float', 1.23, use_fp32=True),
         gen_test_case(f, 'test_double', 1.23, use_fp32=False),
+        gen_test_case(f, 'test_str0', ""),
+        gen_test_case(f, 'test_fixstr', "spam"),
+        gen_test_case(f, 'test_str31', "spam" * 7 + "ham"),
+        gen_test_case(f, 'test_str32', "spam" * 2 + "egg" * 8),
+        gen_test_case(f, 'test_str255', "x" * 255),
+        gen_test_case(f, 'test_str256', "x" * 256),
+        # Avoid too large literal
+        # gen_test_case(f, 'test_str65535', "x" * 65535),
+        # gen_test_case(f, 'test_str65536', "x" * 65536),
     ]
 
     f.write('typedef struct {\n')

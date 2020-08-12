@@ -195,13 +195,6 @@ static void test_m_pi19d(melty2_key *key) {
     melty2_initkey(seeder, key);
 }
 
-static void test_m_2to63m1(melty2_key *key) {
-    melty2_seeder seeder[1];
-    melty2_initseeder(seeder);
-    melty2_seed_int(seeder, INT64_C(-9223372036854775807));
-    melty2_initkey(seeder, key);
-}
-
 static void test_float(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
@@ -213,6 +206,48 @@ static void test_double(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_double(seeder, 1.23);
+    melty2_initkey(seeder, key);
+}
+
+static void test_str0(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_str(seeder, "", 0);
+    melty2_initkey(seeder, key);
+}
+
+static void test_fixstr(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_str(seeder, "spam", 4);
+    melty2_initkey(seeder, key);
+}
+
+static void test_str31(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_str(seeder, "spamspamspamspamspamspamspamham", 31);
+    melty2_initkey(seeder, key);
+}
+
+static void test_str32(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_str(seeder, "spamspameggeggeggeggeggeggeggegg", 32);
+    melty2_initkey(seeder, key);
+}
+
+static void test_str255(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_str(seeder, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 255);
+    melty2_initkey(seeder, key);
+}
+
+static void test_str256(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_str(seeder, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 256);
     melty2_initkey(seeder, key);
 }
 
@@ -279,10 +314,20 @@ static const TestCase test_cases[] = {
      "b5ee5300e6cb130aa4b643a3944d98cb2b534d154d7db178"},
     {"test_m_pi19d", test_m_pi19d,
      "92b8c2b12aa43faadde45ee671efc2a11cd79fe637756ff8"},
-    {"test_m_2to63m1", test_m_2to63m1,
-     "6d9c62d21e89d71f26415fab0c29adb9dea0999e612bef14"},
     {"test_float", test_float,
      "901f50a481165cba5334c86aef50ad78ebf66eac909cfc96"},
     {"test_double", test_double,
      "70e9631695b510e31c349ad51085db5c7b7234e48124c9b3"},
+    {"test_str0", test_str0,
+     "d17f0a6aa8cc2f282a33fac0c32fc710368946831fb5bee8"},
+    {"test_fixstr", test_fixstr,
+     "a8fe3171ca3159b0952c019d61765f67bd2184f251c73e6f"},
+    {"test_str31", test_str31,
+     "dd7f02614cdacdcf0d0fb93ae308c6db50c2df4c6406e8d3"},
+    {"test_str32", test_str32,
+     "2aea929329398767bdd0942394f880e1e036fdc0fb9538fa"},
+    {"test_str255", test_str255,
+     "37a907eb4fd63b3669035610bf06db1c7cc4e969226f9619"},
+    {"test_str256", test_str256,
+     "0be7ea1e2688a410670b1b5dee57808e86696f7ffc182c77"},
 };
