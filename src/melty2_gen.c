@@ -43,13 +43,13 @@ static inline void melty2_round(uint32_t *v) {
     v[0] ^= v[5];
 }
 
-#ifdef MELTY2_BULK_SUFFIX
-#define melty2_bulkgen melty2_bulkgen_expand1(MELTY2_BULK_SUFFIX)
-#define melty2_bulkgen_expand1(suffix) melty2_bulkgen_expand2(suffix)
-#define melty2_bulkgen_expand2(suffix) melty2_bulkgen_ ## suffix
+#ifdef MELTY2_GEN_SUFFIX
+#define melty2_gen melty2_gen_expand1(MELTY2_GEN_SUFFIX)
+#define melty2_gen_expand1(suffix) melty2_gen_expand2(suffix)
+#define melty2_gen_expand2(suffix) melty2_gen_ ## suffix
 #endif
 
-void melty2_bulkgen(const uint32_t * restrict key_v, uint64_t idx, uint64_t len, uint32_t * restrict out) {
+void melty2_gen(const uint32_t * restrict key_v, uint64_t idx, uint64_t len, uint32_t * restrict out) {
     for (uint64_t k = 0; k < len; ++k) {
         uint32_t v[6] = {key_v[0], key_v[1], key_v[2], key_v[3], key_v[4], key_v[5]};
         uint64_t idx_k = idx + k;

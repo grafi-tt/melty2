@@ -19,7 +19,7 @@ static int pos = BUFLEN;
 static uint32_t next() {
     if (pos == BUFLEN) {
         pos = 0;
-        melty2_bulkgen(&key, idx, BUFLEN, buf);
+        melty2_gen(&key, idx, BUFLEN, buf);
         idx += BUFLEN;
     }
     uint32_t r = buf[pos++];
