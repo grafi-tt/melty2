@@ -69,7 +69,7 @@ typedef struct blake2b_state_ {
 
 static void blake2b_compress(blake2b_state *state, uint64_t final) {
     uint64_t x[16];
-    memcpy(&x[0], state->h, sizeof(&state->h));
+    memcpy(&x[0], state->h, sizeof(state->h));
     memcpy(&x[8], BLAKE2B_IV, sizeof(BLAKE2B_IV));
     x[12] ^= state->ctr;
     x[14] ^= final;

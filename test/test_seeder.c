@@ -21,11 +21,11 @@ int test(const TestCase* test_case) {
     melty2_key key;
     test_case->fn(&key);
     unsigned char result[24];
-    for (size_t i = 0; i < sizeof(key.v_) / sizeof(uint32_t); ++i) {
-        result[i * sizeof(uint32_t)] = (unsigned char)(key.v_[i]);
-        result[i * sizeof(uint32_t) + 1] = (unsigned char)(key.v_[i] >> 8);
-        result[i * sizeof(uint32_t) + 2] = (unsigned char)(key.v_[i] >> 16);
-        result[i * sizeof(uint32_t) + 3] = (unsigned char)(key.v_[i] >> 24);
+    for (int i = 0; i < 6; ++i) {
+        result[i * 4 + 0] = (unsigned char)(key.v_[i]);
+        result[i * 4 + 1] = (unsigned char)(key.v_[i] >> 8);
+        result[i * 4 + 2] = (unsigned char)(key.v_[i] >> 16);
+        result[i * 4 + 3] = (unsigned char)(key.v_[i] >> 24);
     }
 
     int err = !!memcmp(result, expected, sizeof(expected));
