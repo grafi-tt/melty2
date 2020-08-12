@@ -268,28 +268,31 @@ update:
 }
 
 void melty2_initkey(melty2_seeder *seeder, melty2_key *key) {
-    blake2b_state* state = (blake2b_state *)seeder;
-    blake2b_finalize(state);
+    blake2b_finalize((blake2b_state *)seeder);
     *key = (melty2_key) {{
-        (uint32_t)state->h[0], (uint32_t)(state->h[0] >> 32),
-        (uint32_t)state->h[1], (uint32_t)(state->h[1] >> 32),
-        (uint32_t)state->h[2], (uint32_t)(state->h[2] >> 32),
+        (uint32_t)seeder->v_[0], (uint32_t)(seeder->v_[0] >> 32),
+        (uint32_t)seeder->v_[1], (uint32_t)(seeder->v_[1] >> 32),
+        (uint32_t)seeder->v_[2], (uint32_t)(seeder->v_[2] >> 32),
     }};
 }
 
 void melty2_splitkey(melty2_key *key, melty2_key *newkey) {
-    blake2b_state state[1];
-    blake2b_init(state);
-    blake2b_update(state, key, sizeof(*key));
-    blake2b_finalize(state);
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    uint8_t array6_head[1] = {0x96};
+    blake2b_update((blake2b_state *)seeder, array6_head, 1);
+    for (int i = 0; i < 6; ++i) {
+        melty2_seed_uint(seeder, key->v_[i]);
+    }
+    blake2b_finalize((blake2b_state *)seeder);
     *key = (melty2_key) {{
-        (uint32_t)state->h[0], (uint32_t)(state->h[0] >> 32),
-        (uint32_t)state->h[1], (uint32_t)(state->h[1] >> 32),
-        (uint32_t)state->h[2], (uint32_t)(state->h[2] >> 32),
+        (uint32_t)seeder->v_[0], (uint32_t)(seeder->v_[0] >> 32),
+        (uint32_t)seeder->v_[1], (uint32_t)(seeder->v_[1] >> 32),
+        (uint32_t)seeder->v_[2], (uint32_t)(seeder->v_[2] >> 32),
     }};
     *newkey = (melty2_key) {{
-        (uint32_t)state->h[3], (uint32_t)(state->h[3] >> 32),
-        (uint32_t)state->h[4], (uint32_t)(state->h[4] >> 32),
-        (uint32_t)state->h[5], (uint32_t)(state->h[5] >> 32),
+        (uint32_t)seeder->v_[3], (uint32_t)(seeder->v_[3] >> 32),
+        (uint32_t)seeder->v_[4], (uint32_t)(seeder->v_[4] >> 32),
+        (uint32_t)seeder->v_[5], (uint32_t)(seeder->v_[5] >> 32),
     }};
 }
