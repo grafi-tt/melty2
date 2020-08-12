@@ -76,7 +76,7 @@ static void test_65536(melty2_key *key) {
     melty2_initkey(seeder, key);
 }
 
-static void test_pi_10d(melty2_key *key) {
+static void test_pi10d(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(3141592653));
@@ -97,10 +97,10 @@ static void test_2to32(melty2_key *key) {
     melty2_initkey(seeder, key);
 }
 
-static void test_sqrt2_10d_pi_10d(melty2_key *key) {
+static void test_pi19d(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
-    melty2_seed_uint(seeder, UINT64_C(14142135623141592653));
+    melty2_seed_uint(seeder, UINT64_C(3141592653589693238));
     melty2_initkey(seeder, key);
 }
 
@@ -108,6 +108,97 @@ static void test_2to64m1(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(18446744073709551615));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m1(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-1));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m32(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-32));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m33(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-33));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m256(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-256));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m257(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-257));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m12345(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-12345));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m65536(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-65536));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m65537(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-65537));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m_pi10d(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-3141592653));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m_2to32(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-4294967296));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m_2to32p1(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-4294967297));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m_pi19d(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-3141592653589693238));
+    melty2_initkey(seeder, key);
+}
+
+static void test_m_2to63m1(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_int(seeder, INT64_C(-9223372036854775807));
     melty2_initkey(seeder, key);
 }
 
@@ -140,14 +231,40 @@ static const TestCase test_cases[] = {
      "8bbca3bc2cb94a4ea061e42bc0060b0849ff7426bd7c3168"},
     {"test_65536", test_65536,
      "9f98b0f8307963aa34f3272102e5b69b72c23510c36803e8"},
-    {"test_pi_10d", test_pi_10d,
+    {"test_pi10d", test_pi10d,
      "1b9e63e491215e9bb96502b8d55728e31d7686b049c7b3a2"},
     {"test_2to32m1", test_2to32m1,
      "9fd5bfca3617be2aeaf36aac1aaec1d19016015ce4ee7fea"},
     {"test_2to32", test_2to32,
      "bcd981776095b3757a106f95936514c0dd481824752b591a"},
-    {"test_sqrt2_10d_pi_10d", test_sqrt2_10d_pi_10d,
-     "3aecdca6aebafcc34bbbf894652f35b33cbd2043ece692d1"},
+    {"test_pi19d", test_pi19d,
+     "1f439de74a433a815c6541622d919f4c232aafb4d29831fa"},
     {"test_2to64m1", test_2to64m1,
      "011dd784631c27d6d93316319cf1e40f242c6b3b62a856fa"},
+    {"test_m1", test_m1,
+     "eb65152dcb7b3371d6399005e2e0fac3e0858c5c51448384"},
+    {"test_m32", test_m32,
+     "67d0ae5403416faf5c21190b82df6677b8d30b3fc3803347"},
+    {"test_m33", test_m33,
+     "b718d304e89b905ba95a083673b0f79765c20a6a3c504e0b"},
+    {"test_m256", test_m256,
+     "067762d6b0dc69d98f4e83339c51d11fbdc8f5728ddc06b4"},
+    {"test_m257", test_m257,
+     "95ca2f2e2887a06e627eef889598eda2fe255dc12e935241"},
+    {"test_m12345", test_m12345,
+     "6685e154af0501fd7f6c66d3716d1e1e7ef3fcb4cd0343f2"},
+    {"test_m65536", test_m65536,
+     "9ebdf66ed81192f0eb3a257cc635425ddfa6563b52f442cf"},
+    {"test_m65537", test_m65537,
+     "82dae309eed889bd829aa9c2f3d8b6f638b4e49d6c6b07ca"},
+    {"test_m_pi10d", test_m_pi10d,
+     "4b0b3173c200799afa7a601049ada9fec16ee85d8994837f"},
+    {"test_m_2to32", test_m_2to32,
+     "c35e4c89fad17d56f0a1acab27155ad10ac6f000cc12cfc9"},
+    {"test_m_2to32p1", test_m_2to32p1,
+     "b5ee5300e6cb130aa4b643a3944d98cb2b534d154d7db178"},
+    {"test_m_pi19d", test_m_pi19d,
+     "92b8c2b12aa43faadde45ee671efc2a11cd79fe637756ff8"},
+    {"test_m_2to63m1", test_m_2to63m1,
+     "6d9c62d21e89d71f26415fab0c29adb9dea0999e612bef14"},
 };

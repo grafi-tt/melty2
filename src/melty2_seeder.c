@@ -173,25 +173,25 @@ void melty2_seed_int(melty2_seeder *seeder, int64_t s) {
     input[7] = 0xd0;
 
     int len = 1;
-    input[8] = (uint8_t)s;
+    input[8] = (uint8_t)(uint64_t)s;
 
     if (s >= -(INT64_C(1) << 5)) goto update;
     len += 1;
 
-    if (s >= -(INT64_C(1) << 8)) goto update;
-    input[7] = (uint8_t)(s >> 8);
+    if (s >= -(INT64_C(1) << 7)) goto update;
+    input[7] = (uint8_t)(uint64_t)(s >> 8);
     len += 1;
 
-    if (s >= -(INT64_C(1) << 16)) goto update;
-    input[6] = (uint8_t)(s >> 16);
-    input[5] = (uint8_t)(s >> 24);
+    if (s >= -(INT64_C(1) << 15)) goto update;
+    input[6] = (uint8_t)(uint64_t)(s >> 16);
+    input[5] = (uint8_t)(uint64_t)(s >> 24);
     len += 2;
 
-    if (s >= -(INT64_C(1) << 32)) goto update;
-    input[4] = (uint8_t)(s >> 32);
-    input[3] = (uint8_t)(s >> 40);
-    input[2] = (uint8_t)(s >> 48);
-    input[1] = (uint8_t)(s >> 56);
+    if (s >= -(INT64_C(1) << 31)) goto update;
+    input[4] = (uint8_t)(uint64_t)(s >> 32);
+    input[3] = (uint8_t)(uint64_t)(s >> 40);
+    input[2] = (uint8_t)(uint64_t)(s >> 48);
+    input[1] = (uint8_t)(uint64_t)(s >> 56);
     len += 4;
 
 update:
