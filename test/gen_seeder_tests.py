@@ -44,9 +44,8 @@ class TestGenerator():
         self._f.write(f'    melty2_seed_str(seeder, "{s}", {len(s)});\n')
 
     def seed_bin(self, s):
-        s = s.decode()
         self._hctx.update(self._packer.pack(s))
-        self._f.write(f'    melty2_seed_str(seeder, "{s}", {len(s)});\n')
+        self._f.write(f'    melty2_seed_bin(seeder, "{s.decode()}", {len(s)});\n')
 
     def generate(self):
         self._f.write('    melty2_initkey(seeder, key);\n')
@@ -116,15 +115,21 @@ def gen_tests(f):
         # gen_test_case(f, 'test_m_2to63', -(2 ** 63)),
         gen_test_case(f, 'test_float', 1.23, use_fp32=True),
         gen_test_case(f, 'test_double', 1.23, use_fp32=False),
-        gen_test_case(f, 'test_str0', ""),
-        gen_test_case(f, 'test_fixstr', "spam"),
-        gen_test_case(f, 'test_str31', "spam" * 7 + "ham"),
-        gen_test_case(f, 'test_str32', "spam" * 2 + "egg" * 8),
-        gen_test_case(f, 'test_str255', "x" * 255),
-        gen_test_case(f, 'test_str256', "x" * 256),
+        gen_test_case(f, 'test_str0', ''),
+        gen_test_case(f, 'test_fixstr', 'spam'),
+        gen_test_case(f, 'test_str31', 'spam' * 7 + 'ham'),
+        gen_test_case(f, 'test_str32', 'spam' * 2 + 'egg' * 8),
+        gen_test_case(f, 'test_str255', 'x' * 255),
+        gen_test_case(f, 'test_str256', 'x' * 256),
         # Avoid too large literal
-        # gen_test_case(f, 'test_str65535', "x" * 65535),
-        # gen_test_case(f, 'test_str65536', "x" * 65536),
+        # gen_test_case(f, 'test_str65535', 'x' * 65535),
+        # gen_test_case(f, 'test_str65536', 'x' * 65536),
+        gen_test_case(f, 'test_bin0', b''),
+        gen_test_case(f, 'test_bin255', b'x' * 255),
+        gen_test_case(f, 'test_bin256', b'x' * 256),
+        # Avoid too large literal
+        # gen_test_case(f, 'test_bin65535', b'x' * 65535),
+        # gen_test_case(f, 'test_bin65536', b'x' * 65536),
     ]
 
     f.write('typedef struct {\n')

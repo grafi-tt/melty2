@@ -251,6 +251,27 @@ static void test_str256(melty2_key *key) {
     melty2_initkey(seeder, key);
 }
 
+static void test_bin0(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_bin(seeder, "", 0);
+    melty2_initkey(seeder, key);
+}
+
+static void test_bin255(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_bin(seeder, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 255);
+    melty2_initkey(seeder, key);
+}
+
+static void test_bin256(melty2_key *key) {
+    melty2_seeder seeder[1];
+    melty2_initseeder(seeder);
+    melty2_seed_bin(seeder, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 256);
+    melty2_initkey(seeder, key);
+}
+
 typedef struct {
     const char* name;
     void (*fn)(melty2_key *key);
@@ -330,4 +351,10 @@ static const TestCase test_cases[] = {
      "37a907eb4fd63b3669035610bf06db1c7cc4e969226f9619"},
     {"test_str256", test_str256,
      "0be7ea1e2688a410670b1b5dee57808e86696f7ffc182c77"},
+    {"test_bin0", test_bin0,
+     "78c7d0ef4755b1de921144dab1a1da0677f066c67fd4a1f7"},
+    {"test_bin255", test_bin255,
+     "e12b4d8d01a70a234d3f664d802c31d067ae058686839ae1"},
+    {"test_bin256", test_bin256,
+     "c6bd8c75f8e2075bdfc9b1b27df8b21d2649eec3428c390a"},
 };
