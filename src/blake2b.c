@@ -28,7 +28,7 @@ static const uint8_t BLAKE2B_MSG_SCHEDULE[12][16] = {
     {14, 10,  4,  8,  9, 15, 13,  6,  1, 12,  0,  2, 11,  7,  5,  3},
 };
 
-static inline uint64_t blake2b_rotr(uint64_t v, int n) {
+static inline uint64_t blake2b_rotr(uint64_t v, unsigned int n) {
     return (v >> n) | (v << (64 - n));
 }
 
@@ -44,21 +44,21 @@ static inline void blake2b_g(uint64_t x[16], int a, int b, int c, int d, uint64_
 }
 
 static inline uint64_t blake2b_load_u64(const uint8_t m[128], uint8_t i) {
-    return (uint64_t)(m[8 * i + 0]) << 56 | (uint64_t)(m[8 * i + 1]) << 48 |
-           (uint64_t)(m[8 * i + 2]) << 40 | (uint64_t)(m[8 * i + 3]) << 32 |
-           (uint64_t)(m[8 * i + 4]) << 24 | (uint64_t)(m[8 * i + 5]) << 16 |
-           (uint64_t)(m[8 * i + 6]) <<  8 | (uint64_t)(m[8 * i + 7]);
+    return (uint64_t)(m[8 * i + 0])       | (uint64_t)(m[8 * i + 1]) <<  8 |
+           (uint64_t)(m[8 * i + 2]) << 16 | (uint64_t)(m[8 * i + 3]) << 24 |
+           (uint64_t)(m[8 * i + 4]) << 32 | (uint64_t)(m[8 * i + 5]) << 40 |
+           (uint64_t)(m[8 * i + 6]) << 48 | (uint64_t)(m[8 * i + 7]) << 56;
 }
 
 static void blake2b_round(uint64_t x[16], const uint8_t m[128], const uint8_t perm[16]) {
-    blake2b_g(x, 0, 4, 8,  12, blake2b_load_u64(m, perm[0]),  blake2b_load_u64(m, perm[1]));
-    blake2b_g(x, 1, 5, 9,  13, blake2b_load_u64(m, perm[2]),  blake2b_load_u64(m, perm[3]));
+    blake2b_g(x, 0, 4,  8, 12, blake2b_load_u64(m, perm[0]),  blake2b_load_u64(m, perm[1]));
+    blake2b_g(x, 1, 5,  9, 13, blake2b_load_u64(m, perm[2]),  blake2b_load_u64(m, perm[3]));
     blake2b_g(x, 2, 6, 10, 14, blake2b_load_u64(m, perm[4]),  blake2b_load_u64(m, perm[5]));
     blake2b_g(x, 3, 7, 11, 15, blake2b_load_u64(m, perm[6]),  blake2b_load_u64(m, perm[7]));
     blake2b_g(x, 0, 5, 10, 15, blake2b_load_u64(m, perm[8]),  blake2b_load_u64(m, perm[9]));
     blake2b_g(x, 1, 6, 11, 12, blake2b_load_u64(m, perm[10]), blake2b_load_u64(m, perm[11]));
-    blake2b_g(x, 2, 7, 8,  13, blake2b_load_u64(m, perm[12]), blake2b_load_u64(m, perm[13]));
-    blake2b_g(x, 3, 4, 9,  14, blake2b_load_u64(m, perm[14]), blake2b_load_u64(m, perm[15]));
+    blake2b_g(x, 2, 7,  8, 13, blake2b_load_u64(m, perm[12]), blake2b_load_u64(m, perm[13]));
+    blake2b_g(x, 3, 4,  9, 14, blake2b_load_u64(m, perm[14]), blake2b_load_u64(m, perm[15]));
 }
 
 typedef struct blake2b_state_ {
@@ -79,7 +79,7 @@ static void blake2b_compress(blake2b_state *state, uint64_t final) {
     }
 
     for (int i = 0; i < 8; ++i) {
-        state->h[i] = x[i] ^ x[i + 8];
+        state->h[i] ^= x[i] ^ x[i + 8];
     }
 }
 

@@ -8,24 +8,24 @@
 #include "test_seeder.h"
 
 int test(const TestCase* test_case) {
-    char expected[24];
+    unsigned char expected[24];
     for (int i = 0; i < 24; i++) {
         unsigned int c;
         if (sscanf(&test_case->expected_hex[i * 2], "%02x", &c) != 1) {
             fputs("sscanf failed\n", stderr);
             return -1;
         }
-        expected[i] = (char)c;
+        expected[i] = (unsigned char)c;
     }
 
     melty2_key key;
     test_case->fn(&key);
-    char result[24];
+    unsigned char result[24];
     for (size_t i = 0; i < sizeof(key.v_) / sizeof(uint32_t); ++i) {
-        result[i * sizeof(uint32_t)] = (char)(unsigned char)(key.v_[i]);
-        result[i * sizeof(uint32_t) + 1] = (char)(unsigned char)(key.v_[i] >> 8);
-        result[i * sizeof(uint32_t) + 2] = (char)(unsigned char)(key.v_[i] >> 16);
-        result[i * sizeof(uint32_t) + 3] = (char)(unsigned char)(key.v_[i] >> 24);
+        result[i * sizeof(uint32_t)] = (unsigned char)(key.v_[i]);
+        result[i * sizeof(uint32_t) + 1] = (unsigned char)(key.v_[i] >> 8);
+        result[i * sizeof(uint32_t) + 2] = (unsigned char)(key.v_[i] >> 16);
+        result[i * sizeof(uint32_t) + 3] = (unsigned char)(key.v_[i] >> 24);
     }
 
     int err = !!memcmp(result, expected, sizeof(expected));
