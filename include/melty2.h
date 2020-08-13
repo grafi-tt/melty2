@@ -30,7 +30,7 @@ typedef struct melty2_key_ {
 void melty2_initkey(melty2_key *key, melty2_seeder *seeder);
 void melty2_splitkey(melty2_key *key, melty2_key *newkey);
 
-void melty2_gen(const melty2_key *key, uint64_t idx, uint64_t len, uint32_t *out);
+void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out);
 
 #ifdef __cplusplus
 }

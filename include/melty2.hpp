@@ -61,14 +61,22 @@ private:
 
 template <size_t buflen = 32>
 class generator {
+    static_assert(buflen != 0, "buflen must be non-zero");
+
 public:
+    generator(key key, uint64_t ctr = 0) : key_(key), ctr_(ctr), idx_(buflen) {}
+
     uint32_t operator()() {
         if (idx_ == buflen) {
             idx_ = 0;
             key_.gen(ctr_, buflen, buf_);
+            ctr_ += static_cast<uint64_t>(buflen);
         }
         return buf_[idx_++];
     }
+
+    uint64_t current_ctr() const { return ctr_ - static_cast<uint64_t>(buflen - idx_); }
+    void set_ctr(uint64_t ctr) { ctr_ = ctr, idx_ = buflen; }
 
     static constexpr uint32_t min() { return std::numeric_limits<uint32_t>::min(); }
     static constexpr uint32_t max() { return std::numeric_limits<uint32_t>::max(); }
