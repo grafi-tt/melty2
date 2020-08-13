@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "test_seeder.h"
+#include "test_melty2_seeder.h"
 
 int test(const TestCase* test_case) {
     unsigned char expected[24];
