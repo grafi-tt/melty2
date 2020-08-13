@@ -19,14 +19,15 @@ void melty2_seed_uint(melty2_seeder *seeder, uint64_t s);
 void melty2_seed_int(melty2_seeder *seeder, int64_t s);
 void melty2_seed_float(melty2_seeder *seeder, float s);
 void melty2_seed_double(melty2_seeder *seeder, double s);
-void melty2_seed_str(melty2_seeder *seeder, const char *str, uint32_t len);
+void melty2_seed_str(melty2_seeder *seeder, const char *str);
+void melty2_seed_strwithlen(melty2_seeder *seeder, const char *str, uint32_t len);
 void melty2_seed_bin(melty2_seeder *seeder, const char *bin, uint32_t len);
 
 typedef struct melty2_key_ {
     uint32_t v_[6];
 } melty2_key;
 
-void melty2_initkey(melty2_seeder *seeder, melty2_key *key);
+void melty2_initkey(melty2_key *key, melty2_seeder *seeder);
 void melty2_splitkey(melty2_key *key, melty2_key *newkey);
 
 void melty2_gen(const melty2_key *key, uint64_t idx, uint64_t len, uint32_t *out);

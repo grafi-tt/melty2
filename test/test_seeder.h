@@ -3,273 +3,273 @@
 static void test_empty(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_null(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_null(seeder);
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_0(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(0));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_1(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(1));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_127(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(127));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_128(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(128));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_255(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(255));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_256(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(256));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_12345(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(12345));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_65535(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(65535));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_65536(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(65536));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_pi10d(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(3141592653));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_2to32m1(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(4294967295));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_2to32(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(4294967296));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_pi19d(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(3141592653589693238));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_2to64m1(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_uint(seeder, UINT64_C(18446744073709551615));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m1(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-1));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m32(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-32));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m33(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-33));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m256(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-256));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m257(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-257));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m12345(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-12345));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m65536(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-65536));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m65537(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-65537));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m_pi10d(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-3141592653));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m_2to32(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-4294967296));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m_2to32p1(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-4294967297));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_m_pi19d(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_int(seeder, INT64_C(-3141592653589693238));
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_float(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_float(seeder, 1.23);
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_double(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_double(seeder, 1.23);
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_str0(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
-    melty2_seed_str(seeder, "", 0);
-    melty2_initkey(seeder, key);
+    melty2_seed_strwithlen(seeder, "", 0);
+    melty2_initkey(key, seeder);
 }
 
 static void test_fixstr(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
-    melty2_seed_str(seeder, "spam", 4);
-    melty2_initkey(seeder, key);
+    melty2_seed_strwithlen(seeder, "spam", 4);
+    melty2_initkey(key, seeder);
 }
 
 static void test_str31(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
-    melty2_seed_str(seeder, "spamspamspamspamspamspamspamham", 31);
-    melty2_initkey(seeder, key);
+    melty2_seed_strwithlen(seeder, "spamspamspamspamspamspamspamham", 31);
+    melty2_initkey(key, seeder);
 }
 
 static void test_str32(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
-    melty2_seed_str(seeder, "spamspameggeggeggeggeggeggeggegg", 32);
-    melty2_initkey(seeder, key);
+    melty2_seed_strwithlen(seeder, "spamspameggeggeggeggeggeggeggegg", 32);
+    melty2_initkey(key, seeder);
 }
 
 static void test_str255(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
-    melty2_seed_str(seeder, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 255);
-    melty2_initkey(seeder, key);
+    melty2_seed_strwithlen(seeder, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 255);
+    melty2_initkey(key, seeder);
 }
 
 static void test_str256(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
-    melty2_seed_str(seeder, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 256);
-    melty2_initkey(seeder, key);
+    melty2_seed_strwithlen(seeder, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 256);
+    melty2_initkey(key, seeder);
 }
 
 static void test_bin0(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_bin(seeder, "", 0);
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_bin255(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_bin(seeder, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 255);
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 static void test_bin256(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
     melty2_seed_bin(seeder, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 256);
-    melty2_initkey(seeder, key);
+    melty2_initkey(key, seeder);
 }
 
 typedef struct {

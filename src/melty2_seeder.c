@@ -127,39 +127,6 @@ void melty2_seed_bool(melty2_seeder *seeder, int s) {
     blake2b_update((blake2b_state *)seeder, input, 1);
 }
 
-void melty2_seed_uint(melty2_seeder *seeder, uint64_t s) {
-    uint8_t input[9];
-    input[0] = 0xcf;
-    input[4] = 0xce;
-    input[6] = 0xcd;
-    input[7] = 0xcc;
-
-    int len = 1;
-    input[8] = (uint8_t)s;
-
-    if (s < UINT64_C(1) << 7) goto update;
-    len += 1;
-
-    if (s < UINT64_C(1) << 8) goto update;
-    input[7] = (uint8_t)(s >> 8);
-    len += 1;
-
-    if (s < UINT64_C(1) << 16) goto update;
-    input[6] = (uint8_t)(s >> 16);
-    input[5] = (uint8_t)(s >> 24);
-    len += 2;
-
-    if (s < UINT64_C(1) << 32) goto update;
-    input[4] = (uint8_t)(s >> 32);
-    input[3] = (uint8_t)(s >> 40);
-    input[2] = (uint8_t)(s >> 48);
-    input[1] = (uint8_t)(s >> 56);
-    len += 4;
-
-update:
-    blake2b_update((blake2b_state *)seeder, &input[9 - len], len);
-}
-
 void melty2_seed_int(melty2_seeder *seeder, int64_t s) {
     if (s >= 0) {
         melty2_seed_uint(seeder, s);
@@ -198,6 +165,39 @@ update:
     blake2b_update((blake2b_state *)seeder, &input[9 - len], len);
 }
 
+void melty2_seed_uint(melty2_seeder *seeder, uint64_t s) {
+    uint8_t input[9];
+    input[0] = 0xcf;
+    input[4] = 0xce;
+    input[6] = 0xcd;
+    input[7] = 0xcc;
+
+    int len = 1;
+    input[8] = (uint8_t)s;
+
+    if (s < UINT64_C(1) << 7) goto update;
+    len += 1;
+
+    if (s < UINT64_C(1) << 8) goto update;
+    input[7] = (uint8_t)(s >> 8);
+    len += 1;
+
+    if (s < UINT64_C(1) << 16) goto update;
+    input[6] = (uint8_t)(s >> 16);
+    input[5] = (uint8_t)(s >> 24);
+    len += 2;
+
+    if (s < UINT64_C(1) << 32) goto update;
+    input[4] = (uint8_t)(s >> 32);
+    input[3] = (uint8_t)(s >> 40);
+    input[2] = (uint8_t)(s >> 48);
+    input[1] = (uint8_t)(s >> 56);
+    len += 4;
+
+update:
+    blake2b_update((blake2b_state *)seeder, &input[9 - len], len);
+}
+
 void melty2_seed_float(melty2_seeder *seeder, float s) {
     uint32_t u;
     memcpy(&u, &s, sizeof(uint32_t));
@@ -215,7 +215,11 @@ void melty2_seed_double(melty2_seeder *seeder, double s) {
     blake2b_update((blake2b_state *)seeder, input, sizeof(input));
 }
 
-void melty2_seed_str(melty2_seeder *seeder, const char *str, uint32_t len) {
+void melty2_seed_str(melty2_seeder *seeder, const char *str) {
+    melty2_seed_strwithlen(seeder, str, strlen(str));
+}
+
+void melty2_seed_strwithlen(melty2_seeder *seeder, const char *str, uint32_t len) {
     uint8_t head[5];
     head[0] = 0xdb;
     head[2] = 0xda;
@@ -267,7 +271,7 @@ update:
     blake2b_update((blake2b_state *)seeder, bin, len);
 }
 
-void melty2_initkey(melty2_seeder *seeder, melty2_key *key) {
+void melty2_initkey(melty2_key *key, melty2_seeder *seeder) {
     blake2b_finalize((blake2b_state *)seeder);
     *key = (melty2_key) {{
         (uint32_t)seeder->v_[0], (uint32_t)(seeder->v_[0] >> 32),

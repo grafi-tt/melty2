@@ -16,9 +16,9 @@ int main() {
     int n_err = 0;
     melty2_seeder seeder;
     melty2_initseeder(&seeder);
-    melty2_seed_str(&seeder, "test", 4);
+    melty2_seed_str(&seeder, "test");
     melty2_key key;
-    melty2_initkey(&seeder, &key);
+    melty2_initkey(&key, &seeder);
 
     uint32_t result8[8];
     melty2_gen(&key, 0, 8, result8);

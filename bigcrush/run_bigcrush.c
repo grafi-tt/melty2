@@ -51,8 +51,8 @@ int main(int argc, char *argv[]) {
 
     melty2_seeder seeder;
     melty2_initseeder(&seeder);
-    melty2_seed_str(&seeder, "melty2", 6);
-    melty2_initkey(&seeder, &key);
+    melty2_seed_str(&seeder, "melty2");
+    melty2_initkey(&key, &seeder);
 
     unif01_Gen *gen = unif01_CreateExternGenBits("melty2", next);
     bbattery_BigCrush(gen);

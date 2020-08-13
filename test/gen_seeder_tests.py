@@ -41,14 +41,14 @@ class TestGenerator():
 
     def seed_str(self, s):
         self._hctx.update(self._packer.pack(s))
-        self._f.write(f'    melty2_seed_str(seeder, "{s}", {len(s)});\n')
+        self._f.write(f'    melty2_seed_strwithlen(seeder, "{s}", {len(s)});\n')
 
     def seed_bin(self, s):
         self._hctx.update(self._packer.pack(s))
         self._f.write(f'    melty2_seed_bin(seeder, "{s.decode()}", {len(s)});\n')
 
     def generate(self):
-        self._f.write('    melty2_initkey(seeder, key);\n')
+        self._f.write('    melty2_initkey(key, seeder);\n')
         self._f.write('}\n')
         return self._hctx.hexdigest()[:48]
 
