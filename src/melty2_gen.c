@@ -44,9 +44,9 @@ static inline void melty2_round(uint32_t *v) {
 }
 
 #ifdef MELTY2_GEN_SUFFIX
-#define melty2_gen melty2_gen_expand1(MELTY2_GEN_SUFFIX)
-#define melty2_gen_expand1(suffix) melty2_gen_expand2(suffix)
-#define melty2_gen_expand2(suffix) melty2_gen_ ## suffix
+#define melty2_gen melty2_gen_EXPAND1(MELTY2_GEN_SUFFIX)
+#define melty2_gen_EXPAND1(suffix) melty2_gen_EXPAND2(suffix)
+#define melty2_gen_EXPAND2(suffix) melty2_gen_ ## suffix
 #endif
 
 void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out) {
