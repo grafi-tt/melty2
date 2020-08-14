@@ -62,16 +62,16 @@ static void blake2b_round(uint64_t x[16], const uint8_t m[128], const uint8_t pe
 }
 
 typedef struct blake2b_state_ {
-    uint64_t h[8];
-    uint64_t ctr;
+    uint64_t chain[8];
+    uint64_t bytes;
     uint8_t block[128];
 } blake2b_state;
 
 static void blake2b_compress(blake2b_state *state, uint64_t final) {
     uint64_t x[16];
-    memcpy(&x[0], state->h, sizeof(state->h));
+    memcpy(&x[0], state->chain, sizeof(state->chain));
     memcpy(&x[8], BLAKE2B_IV, sizeof(BLAKE2B_IV));
-    x[12] ^= state->ctr;
+    x[12] ^= state->bytes;
     x[14] ^= final;
 
     for (int r = 0; r < 12; ++r) {
@@ -79,26 +79,26 @@ static void blake2b_compress(blake2b_state *state, uint64_t final) {
     }
 
     for (int i = 0; i < 8; ++i) {
-        state->h[i] ^= x[i] ^ x[i + 8];
+        state->chain[i] ^= x[i] ^ x[i + 8];
     }
 }
 
 static void blake2b_init(blake2b_state *state) {
-    memcpy(state->h, BLAKE2B_IV, sizeof(BLAKE2B_IV));
-    state->h[0] ^= 0x01010040;
-    state->ctr = 0;
+    memcpy(state->chain, BLAKE2B_IV, sizeof(BLAKE2B_IV));
+    state->chain[0] ^= 0x01010040;
+    state->bytes = 0;
 }
 
 static void blake2b_update(blake2b_state *state, const void *input, size_t len) {
     if (len == 0) return;
 
     const size_t block_size = sizeof(state->block);
-    size_t rest_size = block_size - state->ctr % block_size;
+    size_t rest_size = block_size - state->bytes % block_size;
 
     for (;;) {
         size_t copy_len = rest_size < len ? rest_size : len;
-        memcpy(&state->block[state->ctr % block_size], input, copy_len);
-        state->ctr += copy_len;
+        memcpy(&state->block[state->bytes % block_size], input, copy_len);
+        state->bytes += copy_len;
         len -= copy_len;
         if (len == 0) return;
 
@@ -109,7 +109,7 @@ static void blake2b_update(blake2b_state *state, const void *input, size_t len) 
 
 static void blake2b_finalize(blake2b_state *state) {
     const size_t block_size = sizeof(state->block);
-    memset(&state->block[state->ctr % block_size], 0, block_size - state->ctr % block_size);
+    memset(&state->block[state->bytes % block_size], 0, block_size - state->bytes % block_size);
     blake2b_compress(state, ~(uint64_t)0);
 }
 
