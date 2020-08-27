@@ -2,35 +2,101 @@
 #define MELTY2_MELTY2_HPP_
 
 #include <limits>
+#include <string>
 #include <utility>
+
+#if __cplusplus >= 201703L
+#include <string_view>
+#endif
 
 #include "melty2.h"
 
 namespace melty2 {
 
+namespace detail {
+
+struct manip_str_t {};
+struct manip_bin_t {};
+
+}  // namespace detail
+
+static auto str = detail::manip_str_t{};
+static auto bin = detail::manip_bin_t{};
+
 class seeder {
 public:
-    seeder() { melty2_initseeder(&impl_); }
+    seeder() : use_bin_(false) {
+        melty2_initseeder(&impl_);
+    }
 
     friend seeder& operator<<(seeder& seeder, nullptr_t) {
         melty2_seed_null(&seeder.impl_);
         return seeder;
     }
+
     friend seeder& operator<<(seeder& seeder, bool s) {
         melty2_seed_bool(&seeder.impl_, s);
         return seeder;
     }
+
     friend seeder& operator<<(seeder& seeder, uint64_t s) {
         melty2_seed_uint(&seeder.impl_, s);
         return seeder;
     }
+
     friend seeder& operator<<(seeder& seeder, int64_t s) {
         melty2_seed_int(&seeder.impl_, s);
         return seeder;
     }
 
+    friend seeder& operator<<(seeder& seeder, float s) {
+        melty2_seed_float(&seeder.impl_, s);
+        return seeder;
+    }
+
+    friend seeder& operator<<(seeder& seeder, double s) {
+        melty2_seed_double(&seeder.impl_, s);
+        return seeder;
+    }
+
+    friend seeder& operator<<(seeder& seeder, const char* s) {
+        melty2_seed_str(&seeder.impl_, s);
+        return seeder;
+    }
+
+    friend seeder& operator<<(seeder& seeder, detail::manip_str_t) {
+        seeder.use_bin_ = false;
+        return seeder;
+    }
+
+    friend seeder& operator<<(seeder& seeder, detail::manip_bin_t) {
+        seeder.use_bin_ = true;
+        return seeder;
+    }
+
+    friend seeder& operator<<(seeder& seeder, const std::string& s) {
+        if (seeder.use_bin_) {
+            melty2_seed_bin(&seeder.impl_, s.data(), s.size());
+        } else {
+            melty2_seed_strwithlen(&seeder.impl_, s.data(), s.size());
+        }
+        return seeder;
+    }
+
+#if __cplusplus >= 201703L
+    friend seeder& operator<<(seeder& seeder, std::string_view s) {
+        if (seeder.use_bin_) {
+            melty2_seed_bin(&seeder.impl_, s.data(), s.size());
+        } else {
+            melty2_seed_strwithlen(&seeder.impl_, s.data(), s.size());
+        }
+        return seeder;
+    }
+#endif
+
 private:
     melty2_seeder impl_;
+    bool use_bin_;
     friend class key;
 };
 
