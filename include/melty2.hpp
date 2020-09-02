@@ -39,12 +39,42 @@ public:
         return seeder;
     }
 
-    friend seeder& operator<<(seeder& seeder, uint64_t s) {
+    friend seeder& operator<<(seeder& seeder, unsigned short s) {
         melty2_seed_uint(&seeder.impl_, s);
         return seeder;
     }
 
-    friend seeder& operator<<(seeder& seeder, int64_t s) {
+    friend seeder& operator<<(seeder& seeder, unsigned int s) {
+        melty2_seed_uint(&seeder.impl_, s);
+        return seeder;
+    }
+
+    friend seeder& operator<<(seeder& seeder, unsigned long s) {
+        melty2_seed_uint(&seeder.impl_, s);
+        return seeder;
+    }
+
+    friend seeder& operator<<(seeder& seeder, unsigned long long s) {
+        melty2_seed_uint(&seeder.impl_, s);
+        return seeder;
+    }
+
+    friend seeder& operator<<(seeder& seeder, short s) {
+        melty2_seed_int(&seeder.impl_, s);
+        return seeder;
+    }
+
+    friend seeder& operator<<(seeder& seeder, int s) {
+        melty2_seed_int(&seeder.impl_, s);
+        return seeder;
+    }
+
+    friend seeder& operator<<(seeder& seeder, long s) {
+        melty2_seed_int(&seeder.impl_, s);
+        return seeder;
+    }
+
+    friend seeder& operator<<(seeder& seeder, long long s) {
         melty2_seed_int(&seeder.impl_, s);
         return seeder;
     }
@@ -102,10 +132,13 @@ private:
 
 class key {
 public:
-    key(seeder&& seeder) { melty2_initkey(&impl_, &seeder.impl_); }
+    key(const key&) = default;
+    key(key&&) = default;
+
+    explicit key(seeder&& seeder) { melty2_initkey(&impl_, &seeder.impl_); }
 
     template <typename... Args>
-    key(Args&&... args) {
+    explicit key(Args&&... args) {
         seeder seeder;
         seed_args(seeder, std::forward<Args>(args)...);
         melty2_initkey(&impl_, &seeder.impl_);
@@ -130,7 +163,7 @@ class generator {
     static_assert(buflen != 0, "buflen must be non-zero");
 
 public:
-    generator(key key, uint64_t ctr = 0) : key_(key), ctr_(ctr), idx_(buflen) {}
+    generator(const key& key, uint64_t ctr = 0) : key_(key), ctr_(ctr), idx_(buflen) {}
 
     uint32_t operator()() {
         if (idx_ == buflen) {
