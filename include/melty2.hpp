@@ -3,6 +3,7 @@
 
 #include <limits>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #if __cplusplus >= 201703L
@@ -132,17 +133,14 @@ private:
 
 class key {
 public:
-    key(const key&) = default;
-    key(key&&) = default;
-
     explicit key(seeder&& seeder) { melty2_initkey(&impl_, &seeder.impl_); }
 
-    template <typename... Args>
-    explicit key(Args&&... args) {
-        seeder seeder;
-        seed_args(seeder, std::forward<Args>(args)...);
-        melty2_initkey(&impl_, &seeder.impl_);
-    }
+    explicit key() : key(seeder()) {}
+
+    template <typename Head, typename... Tail, typename std::enable_if<
+        !std::is_same<typename std::decay<Head>::type, key>::value,
+        std::nullptr_t>::type = nullptr>
+    explicit key(Head&& head, Tail&&... tail) : key(seed_args(seeder(), std::forward(head), std::forward(tail)...)) {}
 
     void gen(uint64_t ctr, size_t len, uint32_t* out) {
         melty2_gen(&impl_, ctr, len, out);
@@ -150,20 +148,28 @@ public:
 
 private:
     template <typename Head, typename... Tail>
-    static seeder& seed_args(seeder& seeder, Head&& head, Tail&&... tail) {
-        return seed_args(seeder << head, std::forward<Tail>(tail)...);
+    static seeder&& seed_args(seeder&& seeder, Head&& head, Tail&&... tail) {
+        return seed_args(std::move(seeder << head), std::forward<Tail>(tail)...);
     }
-    static seeder& seed_args(seeder& seeder) { return seeder; }
+    static seeder&& seed_args(seeder&& seeder) { return std::move(seeder); }
 
     melty2_key impl_;
 };
 
-template <size_t buflen = 32>
-class generator {
+template <size_t buflen>
+class basic_generator {
     static_assert(buflen != 0, "buflen must be non-zero");
 
 public:
-    generator(const key& key, uint64_t ctr = 0) : key_(key), ctr_(ctr), idx_(buflen) {}
+    explicit basic_generator(const key& key, uint64_t ctr) : key_(key), ctr_(ctr), idx_(buflen) {}
+
+    explicit basic_generator() : basic_generator(key(), 0) {}
+
+    template <typename Head, typename... Tail, typename std::enable_if<
+        !std::is_same<typename std::decay<Head>::type, key>::value &&
+        !std::is_same<typename std::decay<Head>::type, basic_generator<buflen>>::value,
+        std::nullptr_t>::type = nullptr>
+    explicit basic_generator(Head&& head, Tail&&... tail) : basic_generator(key(std::forward<Head>(head), std::forward<Tail>(tail)...), 0) {}
 
     uint32_t operator()() {
         if (idx_ == buflen) {
@@ -186,6 +192,8 @@ private:
     size_t idx_;
     uint32_t buf_[buflen];
 };
+
+using generator = basic_generator<32>;
 
 }  // namespace melty2
 

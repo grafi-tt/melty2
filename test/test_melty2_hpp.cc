@@ -10,8 +10,7 @@ static int err = 0;
 void test_empty_seed() {
     constexpr size_t N = 123;
 
-    melty2::key k{};
-    melty2::generator<> gen(k);
+    melty2::generator gen;
     std::array<uint32_t, N> result;
     for (size_t i = 0; i < N; ++i) {
         result[i] = gen();
