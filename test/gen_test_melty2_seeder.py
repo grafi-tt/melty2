@@ -33,7 +33,7 @@ class TestGenerator():
 
     def seed_float(self, s):
         self._hctx.update(self._packer.pack(s))
-        self._f.write(f'    melty2_seed_float(seeder, {s});\n')
+        self._f.write(f'    melty2_seed_float(seeder, {s}f);\n')
 
     def seed_double(self, s):
         self._hctx.update(self._packer.pack(s))

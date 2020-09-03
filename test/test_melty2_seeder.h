@@ -198,7 +198,7 @@ static void test_m_pi19d(melty2_key *key) {
 static void test_float(melty2_key *key) {
     melty2_seeder seeder[1];
     melty2_initseeder(seeder);
-    melty2_seed_float(seeder, 1.23);
+    melty2_seed_float(seeder, 1.23f);
     melty2_initkey(key, seeder);
 }
 
