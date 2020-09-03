@@ -50,6 +50,9 @@ static inline void melty2_round(uint32_t *v) {
 #endif
 
 void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out) {
+#ifdef _MSC_VER
+#define restrict __restrict
+#endif
     const uint32_t * restrict key_v = key->v_;
     uint32_t * restrict out_p = out;
 
