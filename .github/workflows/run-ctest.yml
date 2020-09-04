@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-18.04, windows-2019]
-        enable_cpu_features: [ON, OFF]
+        cpu_features_opt: [MELTY2_ENABLE_CPU_FEATURES=ON, MELTY2_ENABLE_CPU_FEATURES=OFF]
 
     # The CMake configure and build commands are platform agnostic and should work equally
     # well on Windows or Mac.  You can convert this to a matrix build if you need
@@ -37,7 +37,7 @@ jobs:
       # Note the current convention is to use the -S and -B options here to specify source
       # and build directories, but this is only available with CMake 3.13 and higher.
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DMELTY2_ENABLE_CPU_FEATURES=${{matrix.enable_cpu_features}}
+      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -D${{matrix.cpu_features_opt}}
 
     - name: Build
       working-directory: ${{runner.workspace}}/build
