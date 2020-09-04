@@ -1,3 +1,4 @@
 [submodule "third_party/cpu_features"]
 	path = third_party/cpu_features
 	url = https://github.com/google/cpu_features
+	branch = 339bfd32be1285877ff517cba8b82ce72e946afd
