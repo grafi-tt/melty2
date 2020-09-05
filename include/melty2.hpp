@@ -30,7 +30,7 @@ public:
         melty2_initseeder(&impl_);
     }
 
-    friend seeder& operator<<(seeder& seeder, nullptr_t) {
+    friend seeder& operator<<(seeder& seeder, std::nullptr_t) {
         melty2_seed_null(&seeder.impl_);
         return seeder;
     }
