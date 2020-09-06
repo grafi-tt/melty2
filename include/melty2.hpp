@@ -180,8 +180,8 @@ public:
         return buf_[idx_++];
     }
 
-    uint64_t current_ctr() const { return ctr_ - static_cast<uint64_t>(buflen - idx_); }
-    void set_ctr(uint64_t ctr) { ctr_ = ctr, idx_ = buflen; }
+    uint64_t ctr() const { return ctr_ - static_cast<uint64_t>(buflen - idx_); }
+    basic_generator<buflen> ctr(uint64_t new_ctr) { return ctr_ = new_ctr, idx_ = buflen, *this; }
 
     static constexpr uint32_t min() { return std::numeric_limits<uint32_t>::min(); }
     static constexpr uint32_t max() { return std::numeric_limits<uint32_t>::max(); }

@@ -30,17 +30,17 @@ void test_ctr() {
     constexpr size_t N = 123;
 
     melty2::generator gen;
-    gen.set_ctr(123);
+    gen.ctr(123);
     std::array<uint32_t, 2 * N> result;
     for (size_t i = 0; i < N; ++i) {
         result[i] = gen();
     }
-    test_assert(gen.current_ctr() == 2 * N);
-    gen.set_ctr(10 * N);
+    test_assert(gen.ctr() == 2 * N);
+    gen.ctr(10 * N);
     for (size_t i = N; i < 2 * N; ++i) {
         result[i] = gen();
     }
-    test_assert(gen.current_ctr() == 11 * N);
+    test_assert(gen.ctr() == 11 * N);
 
     melty2_seeder seeder;
     melty2_initseeder(&seeder);
