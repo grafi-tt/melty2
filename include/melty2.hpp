@@ -183,7 +183,7 @@ public:
     }
 
     uint64_t ctr() const noexcept { return ctr_ - static_cast<uint64_t>(buflen - idx_); }
-    basic_generator<buflen> ctr(uint64_t new_ctr) noexcept { return ctr_ = new_ctr, idx_ = buflen, *this; }
+    basic_generator<buflen>& ctr(uint64_t new_ctr) noexcept { return ctr_ = new_ctr, idx_ = buflen, *this; }
 
     static constexpr uint32_t min() noexcept { return std::numeric_limits<uint32_t>::min(); }
     static constexpr uint32_t max() noexcept { return std::numeric_limits<uint32_t>::max(); }
