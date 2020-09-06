@@ -43,6 +43,7 @@ static inline void melty2_round(uint32_t *v) {
     v[0] ^= v[5];
 }
 
+/* Add suffix to melty2_gen symbol */
 #ifdef MELTY2_GEN_SUFFIX
 #define melty2_gen melty2_gen_EXPAND1(MELTY2_GEN_SUFFIX)
 #define melty2_gen_EXPAND1(suffix) melty2_gen_EXPAND2(suffix)
