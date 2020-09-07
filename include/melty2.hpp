@@ -134,20 +134,28 @@ private:
 class key {
 public:
     explicit key(seeder&& seeder) noexcept { melty2_initkey(&impl_, &seeder.impl_); }
-
     explicit key() noexcept : key(seeder()) {}
 
     template <typename Head, typename... Tail, typename std::enable_if<
-        !std::is_same<typename std::decay<Head>::type, key>::value,
+        !std::is_same<typename std::decay<Head>::type, key>::value &&
+        !std::is_same<typename std::decay<Head>::type, melty2_key>::value,
         std::nullptr_t>::type = nullptr>
     explicit key(Head&& head, Tail&&... tail) noexcept :
         key(seed_args(seeder(), std::forward(head), std::forward(tail)...)) {}
 
-    void gen(uint64_t ctr, size_t len, uint32_t* out) noexcept {
+    key split() noexcept {
+        melty2_key newimpl;
+        melty2_splitkey(&impl_, &newimpl);
+        return key(newimpl);
+    }
+
+    void gen(uint64_t ctr, size_t len, uint32_t* out) const noexcept {
         melty2_gen(&impl_, ctr, len, out);
     }
 
 private:
+    explicit key(melty2_key impl) noexcept : impl_(impl) {}
+
     template <typename Head, typename... Tail>
     static seeder&& seed_args(seeder&& seeder, Head&& head, Tail&&... tail) noexcept {
         return seed_args(std::move(seeder << head), std::forward<Tail>(tail)...);
@@ -162,13 +170,13 @@ class basic_generator {
     static_assert(buflen != 0, "buflen must be non-zero");
 
 public:
-    explicit basic_generator(const key& key, uint64_t ctr) noexcept : key_(key), ctr_(ctr), idx_(buflen) {}
-
+    explicit basic_generator(const key& key, uint64_t ctr = 0) noexcept : key_(key), ctr_(ctr), idx_(buflen) {}
+    explicit basic_generator(seeder&& seeder, uint64_t ctr = 0) noexcept : key_(std::move(seeder)), ctr_(ctr), idx_(buflen) {}
     explicit basic_generator() noexcept : basic_generator(key(), 0) {}
 
     template <typename Head, typename... Tail, typename std::enable_if<
-        !std::is_same<typename std::decay<Head>::type, key>::value &&
-        !std::is_same<typename std::decay<Head>::type, basic_generator<buflen>>::value,
+        !std::is_same<typename std::decay<Head>::type, basic_generator<buflen>>::value &&
+        !std::is_same<typename std::decay<Head>::type, key>::value,
         std::nullptr_t>::type = nullptr>
     explicit basic_generator(Head&& head, Tail&&... tail) noexcept :
         basic_generator(key(std::forward<Head>(head), std::forward<Tail>(tail)...), 0) {}
@@ -182,8 +190,19 @@ public:
         return buf_[idx_++];
     }
 
-    uint64_t ctr() const noexcept { return ctr_ - static_cast<uint64_t>(buflen - idx_); }
-    basic_generator<buflen>& ctr(uint64_t new_ctr) noexcept { return ctr_ = new_ctr, idx_ = buflen, *this; }
+    uint64_t ctr() const noexcept {
+        return ctr_ - static_cast<uint64_t>(buflen - idx_);
+    }
+    basic_generator<buflen>& ctr(uint64_t new_ctr) noexcept {
+        ctr_ = new_ctr;
+        idx_ = buflen;
+        return *this;
+    }
+
+    basic_generator<buflen> split() noexcept {
+        key newkey = key_.split();
+        return basic_generator<buflen>(newkey, ctr());
+    }
 
     static constexpr uint32_t min() noexcept { return std::numeric_limits<uint32_t>::min(); }
     static constexpr uint32_t max() noexcept { return std::numeric_limits<uint32_t>::max(); }
