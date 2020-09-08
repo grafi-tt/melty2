@@ -4,14 +4,14 @@ static inline uint32_t melty2_rotl(uint32_t v, int n) {
     return (v << n) | (v >> (32 - n));
 }
 
-static inline void melty2_inject(uint32_t *v, uint32_t a, uint32_t b) {
+static inline void melty2_inject(uint32_t v[6], uint32_t a, uint32_t b) {
     v[0] += a;
     v[1] ^= a;
     v[2] += b;
     v[3] ^= b;
 }
 
-static inline void melty2_round(uint32_t *v) {
+static inline void melty2_round(uint32_t v[6]) {
     v[0] = melty2_rotl(v[0], 7);
     v[1] -= v[0];
     v[2] ^= v[1];
