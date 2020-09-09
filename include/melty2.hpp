@@ -141,7 +141,7 @@ public:
         !std::is_same<typename std::decay<Head>::type, melty2_key>::value,
         std::nullptr_t>::type = nullptr>
     explicit key(Head&& head, Tail&&... tail) noexcept :
-        key(seed_args(seeder(), std::forward(head), std::forward(tail)...)) {}
+        key(seed_args(seeder(), std::forward<Head>(head), std::forward<Tail>(tail)...)) {}
 
     key split() noexcept {
         melty2_key newimpl;
