@@ -2,6 +2,7 @@
 
 #include <array>
 #include <iostream>
+#include <random>
 
 static int err = 0;
 
@@ -92,10 +93,20 @@ void test_ctr() {
     test_assert(result == expected);
 }
 
+void test_std_random() {
+    melty2::generator gen;
+    std::uniform_int_distribution<uint32_t> dist(gen.min(), gen.max());
+    uint32_t result = dist(gen);
+    uint32_t expected = gen.ctr(0)();
+
+    test_assert(result == expected);
+}
+
 int main() {
     test_empty_seed();
     test_multi_seed();
     test_bin_seed();
     test_ctr();
+    test_std_random();
     return !!err;
 }

@@ -201,6 +201,10 @@ public:
         return buf_[idx_++];
     }
 
+    using result_type = uint32_t;
+    static constexpr uint32_t min() noexcept { return std::numeric_limits<uint32_t>::min(); }
+    static constexpr uint32_t max() noexcept { return std::numeric_limits<uint32_t>::max(); }
+
     uint64_t ctr() const noexcept {
         return ctr_ - static_cast<uint64_t>(buflen - idx_);
     }
@@ -214,9 +218,6 @@ public:
         key newkey = key_.split();
         return basic_generator<buflen>(newkey, ctr());
     }
-
-    static constexpr uint32_t min() noexcept { return std::numeric_limits<uint32_t>::min(); }
-    static constexpr uint32_t max() noexcept { return std::numeric_limits<uint32_t>::max(); }
 
 private:
     key key_;
