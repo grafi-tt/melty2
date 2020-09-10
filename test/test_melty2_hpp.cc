@@ -27,7 +27,7 @@ void test_empty_seed() {
 }
 
 void test_multi_seed() {
-    melty2::generator gen(nullptr, true, 42u, -42, 3.14f, 3.14, "hoge");
+    melty2::generator gen(nullptr, true, 42u, -42, 3.14f, 3.14, "foo", std::string{"bar"});
     uint32_t result = gen();
 
     melty2_seeder seeder;
@@ -38,7 +38,25 @@ void test_multi_seed() {
     melty2_seed_int(&seeder, -42);
     melty2_seed_float(&seeder, 3.14f);
     melty2_seed_double(&seeder, 3.14);
-    melty2_seed_str(&seeder, "hoge");
+    melty2_seed_str(&seeder, "foo");
+    melty2_seed_str(&seeder, "bar");
+    melty2_key key;
+    melty2_initkey(&key, &seeder);
+    uint32_t expected;
+    melty2_gen(&key, 0, 1, &expected);
+
+    test_assert(result == expected);
+}
+
+void test_bin_seed() {
+    melty2::generator gen(melty2::bin, "foo", std::string{"bar"}, melty2::str, "baz");
+    uint32_t result = gen();
+
+    melty2_seeder seeder;
+    melty2_initseeder(&seeder);
+    melty2_seed_bin(&seeder, "foo", 3);
+    melty2_seed_bin(&seeder, "bar", 3);
+    melty2_seed_str(&seeder, "baz");
     melty2_key key;
     melty2_initkey(&key, &seeder);
     uint32_t expected;
@@ -77,6 +95,7 @@ void test_ctr() {
 int main() {
     test_empty_seed();
     test_multi_seed();
+    test_bin_seed();
     test_ctr();
     return !!err;
 }
