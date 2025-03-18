@@ -82,12 +82,12 @@ public:
         return seeder;
     }
     friend seeder& operator<<(seeder& seeder, const std::string& s) noexcept {
-        melty2_seed_strwithlen(&seeder.impl_, s.data(), truncate_size(s.size()));;
+        melty2_seed_strwithlen(&seeder.impl_, s.data(), truncate_size(s.size()));
         return seeder;
     }
 #if __cplusplus >= 201703L
     friend seeder& operator<<(seeder& seeder, std::string_view s) noexcept {
-        melty2_seed_strwithlen(&seeder.impl_, s.data(), truncate_size(s.size()));;
+        melty2_seed_strwithlen(&seeder.impl_, s.data(), truncate_size(s.size()));
         return seeder;
     }
 #endif
