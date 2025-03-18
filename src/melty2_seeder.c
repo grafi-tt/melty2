@@ -248,6 +248,10 @@ update:
     blake2b_update((blake2b_state *)seeder, str, len);
 }
 
+void melty2_seed_binwithoutlen(melty2_seeder *seeder, const char *bin) {
+    melty2_seed_bin(seeder, bin, strlen(bin));
+}
+
 void melty2_seed_bin(melty2_seeder *seeder, const char *bin, uint32_t len) {
     uint8_t head[5];
     head[0] = 0xc6;

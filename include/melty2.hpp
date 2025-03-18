@@ -30,61 +30,59 @@ public:
         melty2_initseeder(&impl_);
     }
 
+    seeder&  update() noexcept {
+        return *this;
+    }
+
+    template <typename Head, typename... Tail>
+    seeder& update(const Head& head, const Tail&... tail) noexcept {
+        return (*this << head).update(tail...);
+    }
+
     friend seeder& operator<<(seeder& seeder, std::nullptr_t) noexcept {
         melty2_seed_null(&seeder.impl_);
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, bool s) noexcept {
         melty2_seed_bool(&seeder.impl_, s);
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, unsigned short s) noexcept {
         melty2_seed_uint(&seeder.impl_, s);
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, unsigned int s) noexcept {
         melty2_seed_uint(&seeder.impl_, s);
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, unsigned long s) noexcept {
         melty2_seed_uint(&seeder.impl_, s);
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, unsigned long long s) noexcept {
         melty2_seed_uint(&seeder.impl_, s);
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, short s) noexcept {
         melty2_seed_int(&seeder.impl_, s);
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, int s) noexcept {
         melty2_seed_int(&seeder.impl_, s);
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, long s) noexcept {
         melty2_seed_int(&seeder.impl_, s);
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, long long s) noexcept {
         melty2_seed_int(&seeder.impl_, s);
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, float s) noexcept {
         melty2_seed_float(&seeder.impl_, s);
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, double s) noexcept {
         melty2_seed_double(&seeder.impl_, s);
         return seeder;
@@ -94,7 +92,6 @@ public:
         seeder.use_bin_ = false;
         return seeder;
     }
-
     friend seeder& operator<<(seeder& seeder, detail::manip_bin_t) noexcept {
         seeder.use_bin_ = true;
         return seeder;
@@ -111,12 +108,7 @@ public:
 
     friend seeder& operator<<(seeder& seeder, const char* s) {
         if (seeder.use_bin_) {
-#if __cplusplus >= 201703L
-            std::string_view v(s);
-#else
-            std::string v(s);
-#endif
-            melty2_seed_bin(&seeder.impl_, v.data(), v.size());
+            melty2_seed_binwithoutlen(&seeder.impl_, s);
         } else {
             melty2_seed_str(&seeder.impl_, s);
         }
@@ -124,7 +116,7 @@ public:
     }
 
 #if __cplusplus >= 201703L
-    friend seeder& operator<<(seeder& seeder, std::string_view s) {
+    friend seeder& operator<<(seeder& seeder, std::string_view s) noexcept {
         if (seeder.use_bin_) {
             melty2_seed_bin(&seeder.impl_, s.data(), s.size());
         } else {
@@ -137,42 +129,9 @@ public:
 private:
     melty2_seeder impl_;
     bool use_bin_;
-    friend class key;
-};
 
-class key {
-public:
-    explicit key() noexcept : key(seeder()) {}
-    explicit key(seeder&& seeder) noexcept { melty2_initkey(&impl_, &seeder.impl_); }
-
-    template <typename Head, typename... Tail, typename std::enable_if<
-        !std::is_same<typename std::decay<Head>::type, key>::value &&
-        !std::is_same<typename std::decay<Head>::type, seeder>::value &&
-        !std::is_same<typename std::decay<Head>::type, melty2_key>::value,
-        std::nullptr_t>::type = nullptr>
-    explicit key(Head&& head, Tail&&... tail) :
-        key(seed_args(seeder(), std::forward<Head>(head), std::forward<Tail>(tail)...)) {}
-
-    key split() noexcept {
-        melty2_key newimpl;
-        melty2_splitkey(&impl_, &newimpl);
-        return key(newimpl);
-    }
-
-    void gen(uint64_t ctr, size_t len, uint32_t* out) const noexcept {
-        melty2_gen(&impl_, ctr, len, out);
-    }
-
-private:
-    explicit key(melty2_key impl) noexcept : impl_(impl) {}
-
-    template <typename Head, typename... Tail>
-    static seeder&& seed_args(seeder&& seeder, Head&& head, Tail&&... tail) {
-        return seed_args(std::move(seeder << head), std::forward<Tail>(tail)...);
-    }
-    static seeder&& seed_args(seeder&& seeder) { return std::move(seeder); }
-
-    melty2_key impl_;
+    template <size_t buflen>
+    friend class basic_generator;
 };
 
 template <size_t buflen>
@@ -180,22 +139,23 @@ class basic_generator {
     static_assert(buflen != 0, "buflen must be non-zero");
 
 public:
-    explicit basic_generator() noexcept : basic_generator(key(), 0) {}
-    explicit basic_generator(const key& key, uint64_t ctr = 0) noexcept : key_(key), ctr_(ctr), idx_(buflen) {}
-    explicit basic_generator(seeder&& seeder, uint64_t ctr = 0) noexcept : key_(std::move(seeder)), ctr_(ctr), idx_(buflen) {}
+    explicit basic_generator(seeder&& seeder, uint64_t ctr = 0) noexcept : ctr_(ctr), idx_(buflen) {
+        melty2_initkey(&key_, &seeder.impl_);
+    }
+
+    basic_generator() noexcept : basic_generator(seeder(), 0) {}
 
     template <typename Head, typename... Tail, typename std::enable_if<
-        !std::is_same<typename std::decay<Head>::type, key>::value &&
         !std::is_same<typename std::decay<Head>::type, seeder>::value &&
         !std::is_same<typename std::decay<Head>::type, basic_generator<buflen>>::value,
         std::nullptr_t>::type = nullptr>
-    explicit basic_generator(Head&& head, Tail&&... tail) :
-        basic_generator(key(std::forward<Head>(head), std::forward<Tail>(tail)...), 0) {}
+    explicit basic_generator(const Head& head, const Tail&... tail) noexcept :
+        basic_generator(make_seeder(head, tail...), 0) {}
 
     uint32_t operator()() noexcept {
         if (idx_ == buflen) {
             idx_ = 0;
-            key_.gen(ctr_, buflen, buf_);
+            melty2_gen(&key_, ctr_, buflen, buf_);
             ctr_ += static_cast<uint64_t>(buflen);
         }
         return buf_[idx_++];
@@ -215,12 +175,26 @@ public:
     }
 
     basic_generator<buflen> split() noexcept {
-        key newkey = key_.split();
-        return basic_generator<buflen>(newkey, ctr());
+        basic_generator newgen(uninit_tag{});
+        newgen.ctr_ = 0;
+        newgen.idx_ = buflen;
+        melty2_splitkey(&key_, &newgen.key);
+        return newgen;
     }
 
 private:
-    key key_;
+    struct uninit_tag {};
+
+    explicit basic_generator(uninit_tag) noexcept {}
+
+    template <typename... Args>
+    static seeder make_seeder(const Args&... args) noexcept {
+        seeder s;
+        s.update(args...);
+        return s;
+    }
+
+    melty2_key key_;
     uint64_t ctr_;
     size_t idx_;
     uint32_t buf_[buflen];
