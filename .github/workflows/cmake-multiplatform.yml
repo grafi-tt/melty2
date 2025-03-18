@@ -43,6 +43,7 @@ jobs:
             c_compiler: clang
           - os: ubuntu-latest
             c_compiler: cl
+        cpu_features_opt: [MELTY2_ENABLE_CPU_FEATURES=ON, MELTY2_ENABLE_CPU_FEATURES=OFF]
 
     steps:
     - uses: actions/checkout@v3
@@ -64,6 +65,7 @@ jobs:
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -D${{matrix.cpu_features_opt}}
         -S ${{ github.workspace }}
 
     - name: Build
