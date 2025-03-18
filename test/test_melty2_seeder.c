@@ -35,7 +35,7 @@ int test(const TestCase* test_case) {
     return err;
 }
 
-int main() {
+int main(void) {
     int n_err = 0;
     for (size_t t = 0; t < sizeof(test_cases) / sizeof(TestCase); ++t) {
         int err = test(&test_cases[t]);
