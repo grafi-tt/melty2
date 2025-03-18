@@ -49,23 +49,6 @@ void test_multi_seed() {
     test_assert(result == expected);
 }
 
-void test_bin_seed() {
-    melty2::generator gen(melty2::bin, "foo", std::string{"bar"}, melty2::str, "baz");
-    uint32_t result = gen();
-
-    melty2_seeder seeder;
-    melty2_initseeder(&seeder);
-    melty2_seed_bin(&seeder, "foo", 3);
-    melty2_seed_bin(&seeder, "bar", 3);
-    melty2_seed_str(&seeder, "baz");
-    melty2_key key;
-    melty2_initkey(&key, &seeder);
-    uint32_t expected;
-    melty2_gen(&key, 0, 1, &expected);
-
-    test_assert(result == expected);
-}
-
 void test_ctr() {
     constexpr size_t N = 123;
 
@@ -105,7 +88,6 @@ void test_std_random() {
 int main() {
     test_empty_seed();
     test_multi_seed();
-    test_bin_seed();
     test_ctr();
     test_std_random();
     return !!err;

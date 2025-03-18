@@ -14,29 +14,23 @@
 
 namespace melty2 {
 
-namespace detail {
-
-struct manip_str_t {};
-struct manip_bin_t {};
-
-}  // namespace detail
-
-static auto str = detail::manip_str_t{};
-static auto bin = detail::manip_bin_t{};
-
 class seeder {
 public:
-    seeder() noexcept : use_bin_(false) {
+    seeder() noexcept {
         melty2_initseeder(&impl_);
     }
 
     seeder&  update() noexcept {
         return *this;
     }
-
     template <typename Head, typename... Tail>
     seeder& update(const Head& head, const Tail&... tail) noexcept {
         return (*this << head).update(tail...);
+    }
+
+    seeder& write(const char *data, uint32_t len) {
+        melty2_seed_strwithlen(&impl_, data, len);
+        return *this;
     }
 
     friend seeder& operator<<(seeder& seeder, std::nullptr_t) noexcept {
@@ -87,51 +81,31 @@ public:
         melty2_seed_double(&seeder.impl_, s);
         return seeder;
     }
-
-    friend seeder& operator<<(seeder& seeder, detail::manip_str_t) noexcept {
-        seeder.use_bin_ = false;
-        return seeder;
-    }
-    friend seeder& operator<<(seeder& seeder, detail::manip_bin_t) noexcept {
-        seeder.use_bin_ = true;
-        return seeder;
-    }
-
     friend seeder& operator<<(seeder& seeder, const std::string& s) noexcept {
-        if (seeder.use_bin_) {
-            melty2_seed_bin(&seeder.impl_, s.data(), s.size());
-        } else {
-            melty2_seed_strwithlen(&seeder.impl_, s.data(), s.size());
-        }
+        melty2_seed_strwithlen(&seeder.impl_, s.data(), truncate_size(s.size()));;
         return seeder;
     }
-
-    friend seeder& operator<<(seeder& seeder, const char* s) {
-        if (seeder.use_bin_) {
-            melty2_seed_binwithoutlen(&seeder.impl_, s);
-        } else {
-            melty2_seed_str(&seeder.impl_, s);
-        }
-        return seeder;
-    }
-
 #if __cplusplus >= 201703L
     friend seeder& operator<<(seeder& seeder, std::string_view s) noexcept {
-        if (seeder.use_bin_) {
-            melty2_seed_bin(&seeder.impl_, s.data(), s.size());
-        } else {
-            melty2_seed_strwithlen(&seeder.impl_, s.data(), s.size());
-        }
+        melty2_seed_strwithlen(&seeder.impl_, s.data(), truncate_size(s.size()));;
         return seeder;
     }
 #endif
+    friend seeder& operator<<(seeder& seeder, const char* s) noexcept {
+        melty2_seed_str(&seeder.impl_, s);
+        return seeder;
+    }
 
 private:
-    melty2_seeder impl_;
-    bool use_bin_;
-
     template <size_t buflen>
     friend class basic_generator;
+
+    static uint32_t truncate_size(size_t sz) {
+        constexpr uint32_t max_sz = std::numeric_limits<uint32_t>::max();
+        return sz <= max_sz ? static_cast<uint32_t>(sz) : max_sz;
+    }
+
+    melty2_seeder impl_;
 };
 
 template <size_t buflen>

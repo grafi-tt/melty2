@@ -216,7 +216,10 @@ void melty2_seed_double(melty2_seeder *seeder, double s) {
 }
 
 void melty2_seed_str(melty2_seeder *seeder, const char *str) {
-    melty2_seed_strwithlen(seeder, str, strlen(str));
+    size_t raw_sz = strlen(str);
+    uint32_t max_sz = UINT32_MAX;
+    uint32_t sz = raw_sz <= max_sz ? (uint32_t)raw_sz : max_sz;
+    melty2_seed_strwithlen(seeder, str, sz);
 }
 
 void melty2_seed_strwithlen(melty2_seeder *seeder, const char *str, uint32_t len) {
@@ -246,33 +249,6 @@ void melty2_seed_strwithlen(melty2_seeder *seeder, const char *str, uint32_t len
 update:
     blake2b_update((blake2b_state *)seeder, &head[5 - head_len], head_len);
     blake2b_update((blake2b_state *)seeder, str, len);
-}
-
-void melty2_seed_binwithoutlen(melty2_seeder *seeder, const char *bin) {
-    melty2_seed_bin(seeder, bin, strlen(bin));
-}
-
-void melty2_seed_bin(melty2_seeder *seeder, const char *bin, uint32_t len) {
-    uint8_t head[5];
-    head[0] = 0xc6;
-    head[2] = 0xc5;
-    head[3] = 0xc4;
-
-    int head_len = 2;
-    head[4] = (uint8_t)len;
-
-    if (len < UINT64_C(1) << 8) goto update;
-    head[3] = (uint8_t)(len >> 8);
-    head_len += 1;
-
-    if (len < UINT64_C(1) << 16) goto update;
-    head[2] = (uint8_t)(len >> 16);
-    head[1] = (uint8_t)(len >> 24);
-    head_len += 2;
-
-update:
-    blake2b_update((blake2b_state *)seeder, &head[5 - head_len], head_len);
-    blake2b_update((blake2b_state *)seeder, bin, len);
 }
 
 void melty2_initkey(melty2_key *key, melty2_seeder *seeder) {

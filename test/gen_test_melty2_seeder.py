@@ -43,10 +43,6 @@ class TestGenerator():
         self._hctx.update(self._packer.pack(s))
         self._f.write(f'    melty2_seed_strwithlen(seeder, "{s}", {len(s)});\n')
 
-    def seed_bin(self, s):
-        self._hctx.update(self._packer.pack(s))
-        self._f.write(f'    melty2_seed_bin(seeder, "{s.decode()}", {len(s)});\n')
-
     def generate(self):
         self._f.write('    melty2_initkey(key, seeder);\n')
         self._f.write('}\n')
@@ -72,8 +68,6 @@ def gen_test_case(f, name, *seeds, use_fp32=False):
                 gen.seed_double(s)
         elif isinstance(s, str):
             gen.seed_str(s)
-        elif isinstance(s, bytes):
-            gen.seed_bin(s)
         else:
             raise TypeError(f"Invlid seed type: {type(s)}")
     expected_hex = gen.generate()
@@ -124,12 +118,6 @@ def gen_tests(f):
         # Avoid too large literal
         # gen_test_case(f, 'test_str65535', 'x' * 65535),
         # gen_test_case(f, 'test_str65536', 'x' * 65536),
-        gen_test_case(f, 'test_bin0', b''),
-        gen_test_case(f, 'test_bin255', b'x' * 255),
-        gen_test_case(f, 'test_bin256', b'x' * 256),
-        # Avoid too large literal
-        # gen_test_case(f, 'test_bin65535', b'x' * 65535),
-        # gen_test_case(f, 'test_bin65536', b'x' * 65536),
     ]
 
     f.write('typedef struct {\n')
