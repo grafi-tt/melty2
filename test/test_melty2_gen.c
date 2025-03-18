@@ -12,7 +12,7 @@ int check_number32(char *title, uint32_t result, uint32_t expected) {
     }
 }
 
-int main() {
+int main(void) {
     int n_err = 0;
     melty2_seeder seeder;
     melty2_initseeder(&seeder);
