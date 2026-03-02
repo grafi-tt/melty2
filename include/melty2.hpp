@@ -152,7 +152,7 @@ public:
         basic_generator newgen(uninit_tag{});
         newgen.ctr_ = 0;
         newgen.idx_ = buflen;
-        melty2_splitkey(&key_, &newgen.key);
+        melty2_splitkey(&key_, &newgen.key_);
         return newgen;
     }
 
