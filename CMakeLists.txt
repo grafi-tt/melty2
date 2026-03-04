@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.1.0 FATAL_ERROR)
 project(melty2 LANGUAGES C CXX)
 
+option(BUILD_SHARED_LIBS "Build library as shared" ON)
 option(MELTY2_ENABLE_CPU_FEATURES "Enable runtime CPU detection by cpu_features" ON)
 option(MELTY2_ENABLE_TEST "Enable test targets" ON)
 option(MELTY2_ENABLE_BIGCRUSH "Enable bigcrush targets" OFF)

@@ -1,12 +1,12 @@
 macro(melty2_add_rawblkgen_lib_ suffix)
-  add_library(melty2_rawblkgen_${suffix}_ STATIC EXCLUDE_FROM_ALL melty2_rawblkgen.c)
+  add_library(melty2_rawblkgen_${suffix}_ OBJECT melty2_rawblkgen.c)
   target_include_directories(melty2_rawblkgen_${suffix}_ PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
   target_compile_features(melty2_rawblkgen_${suffix}_ PRIVATE c_std_99)
   if(CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
     target_compile_options(melty2_rawblkgen_${suffix}_ PRIVATE -std=c99 -Wall -Wextra -Wpedantic -Werror $<$<NOT:$<CONFIG:Debug>>:-O3>)
   endif()
   if(MELTY2_ENABLE_CPU_FEATURES)
-    target_compile_definitions(melty2_rawblkgen_${suffix}_ PRIVATE MELTY2_GEN_SUFFIX=${suffix})
+    target_compile_definitions(melty2_rawblkgen_${suffix}_ PRIVATE MELTY2_RAWBLKGEN_SUFFIX=${suffix})
   endif()
 endmacro()
 
@@ -19,12 +19,11 @@ melty2_add_rawblkgen_lib_(generic)
 list(APPEND MELTY2_RAWBLKGEN_LIBS melty2_rawblkgen_generic_)
 
 if(MELTY2_ENABLE_CPU_FEATURES)
-  add_library(melty2_rawblkgen_dispatch_ STATIC EXCLUDE_FROM_ALL melty2_rawblkgen_dispatch.cc)
+  add_library(melty2_rawblkgen_dispatch_ OBJECT melty2_rawblkgen_dispatch.cc)
   target_include_directories(melty2_rawblkgen_dispatch_ PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cpu_features/include
   )
-  target_link_libraries(melty2_rawblkgen_dispatch_ PRIVATE cpu_features)
   target_compile_features(melty2_rawblkgen_dispatch_ PRIVATE cxx_std_11)
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(melty2_rawblkgen_dispatch_ PRIVATE -std=c++11 -Wall -Wextra -Wpedantic -Werror)
@@ -53,17 +52,26 @@ if(MELTY2_ENABLE_CPU_FEATURES)
   endif()
 endif()
 
-add_library(melty2 melty2_gen.c melty2_init.c)
+foreach(l ${MELTY2_RAWBLKGEN_LIBS})
+  list(APPEND MELTY2_RAWBLKGEN_OBJS $<TARGET_OBJECTS:${l}>)
+endforeach()
+add_library(melty2 melty2_gen.c melty2_init.c ${MELTY2_RAWBLKGEN_OBJS})
+
 target_include_directories(melty2 PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
   $<INSTALL_INTERFACE:include>
 )
-
 target_compile_features(melty2 PUBLIC c_std_99)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
   target_compile_options(melty2 PRIVATE -std=c99 -Wall -Wextra -Wpedantic -Werror)
 endif()
+if(MELTY2_ENABLE_CPU_FEATURES)
+  target_link_libraries(melty2 PRIVATE cpu_features)
+endif()
 
-get_property(melty2_use_pic_ TARGET melty2 PROPERTY POSITION_INDEPENDENT_CODE)
-set_property(TARGET ${MELTY2_RAWBLKGEN_LIBS} PROPERTY POSITION_INDEPENDENT_CODE ${melty2_use_pic_})
-target_link_libraries(melty2 ${MELTY2_RAWBLKGEN_LIBS})
+get_target_property(melty2_use_pic_ melty2 POSITION_INDEPENDENT_CODE)
+set_target_properties(${MELTY2_RAWBLKGEN_LIBS} PROPERTIES POSITION_INDEPENDENT_CODE ${melty2_use_pic_})
+
+install(TARGETS melty2 EXPORT melty2-config)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/ DESTINATION include)
+install(EXPORT melty2-config DESTINATION lib/cmake/melty2)

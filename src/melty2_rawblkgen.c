@@ -3,8 +3,8 @@
 #include "melty2_util.h"
 
 /* Add suffix to melty2_rawblkgen symbol */
-#ifdef MELTY2_GEN32_SUFFIX
-#define melty2_rawblkgen melty2_rawblkgen_EXPAND1(MELTY2_GEN32_SUFFIX)
+#ifdef MELTY2_RAWBLKGEN_SUFFIX
+#define melty2_rawblkgen melty2_rawblkgen_EXPAND1(MELTY2_RAWBLKGEN_SUFFIX)
 #define melty2_rawblkgen_EXPAND1(suffix) melty2_rawblkgen_EXPAND2(suffix)
 #define melty2_rawblkgen_EXPAND2(suffix) melty2_rawblkgen_ ## suffix
 #endif
