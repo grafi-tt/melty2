@@ -6,9 +6,11 @@
 
 static int err = 0;
 
-#define test_assert(cond) if (!(cond)) { std::cerr << __func__ << ":" << __LINE__ << " " << #cond << "failed" << std::endl; ++err; }
+#define test_assert(cond) \
+    for (bool test_assert_failed_ = !(cond); test_assert_failed_; std::cerr << std::endl, ++err, test_assert_failed_ = false) \
+        std::cerr << __func__ << ":" << __LINE__ << " " << #cond << "failed"
 
-void test_empty_seed() {
+void test_default() {
     constexpr size_t N = 123;
 
     melty2::generator gen;
@@ -17,32 +19,20 @@ void test_empty_seed() {
         result[i] = gen();
     }
 
-    melty2_seeder seeder;
-    melty2_initseeder(&seeder);
     melty2_key key;
-    melty2_initkey(&key, &seeder);
+    melty2_init(&key, 0, 0, 0, 0);
     std::array<uint32_t, N> expected;
     melty2_gen(&key, 0, N, expected.data());
 
     test_assert(result == expected);
 }
 
-void test_multi_seed() {
-    melty2::generator gen(nullptr, true, 42u, -42, 3.14f, 3.14, "foo", std::string{"bar"});
+void test_seed() {
+    melty2::generator gen{{3141592653u, 2718281828u, 123456789, 42}};
     uint32_t result = gen();
 
-    melty2_seeder seeder;
-    melty2_initseeder(&seeder);
-    melty2_seed_null(&seeder);
-    melty2_seed_bool(&seeder, true);
-    melty2_seed_uint(&seeder, 42u);
-    melty2_seed_int(&seeder, -42);
-    melty2_seed_float(&seeder, 3.14f);
-    melty2_seed_double(&seeder, 3.14);
-    melty2_seed_str(&seeder, "foo");
-    melty2_seed_str(&seeder, "bar");
     melty2_key key;
-    melty2_initkey(&key, &seeder);
+    melty2_init(&key, 3141592653u, 2718281828u, 123456789, 42);
     uint32_t expected;
     melty2_gen(&key, 0, 1, &expected);
 
@@ -65,10 +55,8 @@ void test_ctr() {
     }
     test_assert(gen.ctr() == 11 * N);
 
-    melty2_seeder seeder;
-    melty2_initseeder(&seeder);
     melty2_key key;
-    melty2_initkey(&key, &seeder);
+    melty2_init(&key, 0, 0, 0, 0);
     std::array<uint32_t, 2 * N> expected;
     melty2_gen(&key, N, N, expected.data());
     melty2_gen(&key, 10 * N, N, expected.data() + N);
@@ -86,8 +74,8 @@ void test_std_random() {
 }
 
 int main() {
-    test_empty_seed();
-    test_multi_seed();
+    test_default();
+    test_seed();
     test_ctr();
     test_std_random();
     return !!err;

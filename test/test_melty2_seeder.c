@@ -2,45 +2,27 @@
 
 #include <inttypes.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #include "test_melty2_seeder.h"
 
 int test(const TestCase* test_case) {
-    unsigned char expected[24];
-    for (int i = 0; i < 24; i++) {
-        unsigned int c;
-        if (sscanf(&test_case->expected_hex[i * 2], "%02x", &c) != 1) {
-            fputs("sscanf failed\n", stderr);
-            return -1;
-        }
-        expected[i] = (unsigned char)c;
-    }
-
     melty2_key key;
-    test_case->fn(&key);
-    unsigned char result[24];
+    melty2_init(&key, test_case->seed[0], test_case->seed[1], test_case->seed[2], test_case->seed[3]);
+    const uint32_t *expected = test_case->key;
+    uint32_t *result = key.v_;
     for (int i = 0; i < 6; ++i) {
-        result[i * 4 + 0] = (unsigned char)(key.v_[i]);
-        result[i * 4 + 1] = (unsigned char)(key.v_[i] >> 8);
-        result[i * 4 + 2] = (unsigned char)(key.v_[i] >> 16);
-        result[i * 4 + 3] = (unsigned char)(key.v_[i] >> 24);
+        if (result[i] != expected[i]) {
+            fprintf(stderr, "test failed: result=0x%08"PRIx32", expected=0x%08"PRIx32", i=%d\n", result[i], expected[i], i);
+            return 1;
+        }
     }
-
-    int err = !!memcmp(result, expected, sizeof(expected));
-    if (err) {
-        fprintf(stderr, "test failed: %s\n", test_case->name);
-    }
-    return err;
+    return 0;
 }
 
 int main(void) {
     int n_err = 0;
     for (size_t t = 0; t < sizeof(test_cases) / sizeof(TestCase); ++t) {
-        int err = test(&test_cases[t]);
-        if (err < 0) return 2;
-        n_err += err;
+        n_err += test(&test_cases[t]);
     }
     return !!n_err;
 }

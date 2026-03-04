@@ -3,6 +3,7 @@
 
 #include <bbattery.h>
 #include <unif01.h>
+//#include <sknuth.h>
 
 #include "melty2.h"
 
@@ -49,11 +50,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    melty2_seeder seeder;
-    melty2_initseeder(&seeder);
-    melty2_seed_str(&seeder, "melty2");
-    melty2_initkey(&key, &seeder);
-
+    melty2_init(&key, 0, 0, 0, 0);
     unif01_Gen *gen = unif01_CreateExternGenBits("melty2", next);
     bbattery_BigCrush(gen);
     unif01_DeleteExternGenBits(gen);
