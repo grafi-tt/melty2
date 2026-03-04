@@ -1,13 +1,10 @@
-add_executable(test_melty2_gen test_melty2_gen.c)
-add_test(NAME test_melty2_gen COMMAND test_melty2_gen)
-
-add_executable(test_melty2_seeder test_melty2_seeder.c)
-add_test(NAME test_melty2_seeder COMMAND test_melty2_seeder)
+add_executable(test_melty2 test_melty2.c)
+add_test(NAME test_melty2 COMMAND test_melty2)
 
 add_executable(test_melty2_hpp test_melty2_hpp.cc)
 add_test(NAME test_melty2_hpp COMMAND test_melty2_hpp)
 
-set(EXES_C test_melty2_gen test_melty2_seeder)
+set(EXES_C test_melty2)
 set_property(TARGET ${EXES_C} PROPERTY C_STANDARD 99)
 set_property(TARGET ${EXES_C} PROPERTY C_STANDARD_REQUIRED ON)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
