@@ -14,7 +14,8 @@ typedef struct melty2_key_ {
 
 void melty2_init(melty2_key *key, uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3);
 void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out);
-void melty2_gen32(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
+
+void melty2_rawblkgen(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
 
 #ifdef __cplusplus
 }

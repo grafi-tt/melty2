@@ -30,7 +30,7 @@ void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out) 
 
         while (len >= 32) {
             len -= 32;
-            melty2_gen32(key, (uint32_t)ctr, (uint32_t)(ctr >> 32), out_p);
+            melty2_rawblkgen(key, (uint32_t)ctr, (uint32_t)(ctr >> 32), out_p);
             ctr += 32;
             out_p += 32;
         }

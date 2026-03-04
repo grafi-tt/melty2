@@ -2,14 +2,14 @@
 
 #include "melty2_util.h"
 
-/* Add suffix to melty2_gen32 symbol */
+/* Add suffix to melty2_rawblkgen symbol */
 #ifdef MELTY2_GEN32_SUFFIX
-#define melty2_gen32 melty2_gen32_EXPAND1(MELTY2_GEN32_SUFFIX)
-#define melty2_gen32_EXPAND1(suffix) melty2_gen32_EXPAND2(suffix)
-#define melty2_gen32_EXPAND2(suffix) melty2_gen32_ ## suffix
+#define melty2_rawblkgen melty2_rawblkgen_EXPAND1(MELTY2_GEN32_SUFFIX)
+#define melty2_rawblkgen_EXPAND1(suffix) melty2_rawblkgen_EXPAND2(suffix)
+#define melty2_rawblkgen_EXPAND2(suffix) melty2_rawblkgen_ ## suffix
 #endif
 
-void melty2_gen32(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out) {
+void melty2_rawblkgen(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out) {
 #ifdef _MSC_VER
 #define restrict __restrict
 #endif
