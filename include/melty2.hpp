@@ -18,7 +18,7 @@ public:
     uint32_t operator()() noexcept {
         if (idx_ >= 32) {
             idx_ -= 32;
-            melty2_rawblkgen(&key_, ctr_, ctr_ >> 32, buf_);
+            melty2_rawblkgen(&key_, static_cast<uint32_t>(ctr_), static_cast<uint32_t>(ctr_ >> 32), buf_);
             ctr_ += 32u;
         }
         return buf_[idx_++];
