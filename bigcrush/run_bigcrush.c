@@ -7,21 +7,19 @@
 
 #include "melty2.h"
 
-#define BUFLEN 128
-
 static int bitrev;
 
 static melty2_key key;
 static uint64_t idx = 0;
 
-static uint32_t buf[BUFLEN];
-static int pos = BUFLEN;
+static uint32_t buf[MELTY2_RAWBLKLEN];
+static int pos = MELTY2_RAWBLKLEN;
 
 static uint32_t next() {
-    if (pos == BUFLEN) {
+    if (pos == MELTY2_RAWBLKLEN) {
         pos = 0;
-        melty2_gen(&key, idx, BUFLEN, buf);
-        idx += BUFLEN;
+        melty2_rawblkgen(&key, (uint32_t)idx, (uint32_t)(idx >> 32), buf);
+        idx += MELTY2_RAWBLKLEN;
     }
     uint32_t r = buf[pos++];
 

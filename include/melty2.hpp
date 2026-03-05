@@ -29,11 +29,11 @@ public:
     static constexpr uint32_t max() noexcept { return std::numeric_limits<uint32_t>::max(); }
 
     uint64_t ctr() const noexcept {
-        return ctr_ - 32u + idx_;
+        return ctr_ + idx_ - uint32_t{MELTY2_RAWBLKLEN};
     }
     generator& ctr(uint64_t new_ctr) noexcept {
-        ctr_ = new_ctr - new_ctr % 32;
-        idx_ = 32 + new_ctr % 32;
+        ctr_ = new_ctr - new_ctr % MELTY2_RAWBLKLEN;
+        idx_ = MELTY2_RAWBLKLEN + new_ctr % MELTY2_RAWBLKLEN;
         return *this;
     }
 
