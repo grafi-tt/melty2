@@ -16,24 +16,25 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, ubuntu24.04-arm, windows-latest]
+        c_compiler: [cl, gcc, clang]
         build_type: [Release]
         cpu_features_opt: [MELTY2_ENABLE_CPU_FEATURES=ON, MELTY2_ENABLE_CPU_FEATURES=OFF]
         include:
-          - os: windows-latest
+          - c_compiler: cl
+            cxx_compiler: cl
+          - c_compiler: gcc
+            cxx_compiler: g++
+          - c_compiler: clang
+            cxx_compiler: clang++
+        exclude:
+          - os: ubuntu-latest
             c_compiler: cl
-            cpp_compiler: cl
-          - os: ubuntu-latest
-            c_compiler: gcc
-            cpp_compiler: g++
-          - os: ubuntu-latest
-            c_compiler: clang
-            cpp_compiler: clang++
           - os: ubuntu-24.04-arm
+            c_compiler: cl
+          - os: windows-latest
             c_compiler: gcc
-            cpp_compiler: g++
-          - os: ubuntu-24.04-arm
+          - os: windows-latest
             c_compiler: clang
-            cpp_compiler: clang++
 
     steps:
     - uses: actions/checkout@v3
