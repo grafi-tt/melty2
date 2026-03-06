@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu24.04-arm, windows-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest]
         build_type: [Release]
         c_compiler: [gcc, clang, cl]
         cpu_features_opt: [MELTY2_ENABLE_CPU_FEATURES=ON, MELTY2_ENABLE_CPU_FEATURES=OFF]
@@ -26,10 +26,10 @@ jobs:
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
-          - os: ubuntu24.04-arm
+          - os: ubuntu-24.04-arm
             c_compiler: gcc
             cpp_compiler: g++
-          - os: ubuntu24.04-arm
+          - os: ubuntu-24.04-arm
             c_compiler: clang
             cpp_compiler: clang++
           - os: windows-latest
