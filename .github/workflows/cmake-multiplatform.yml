@@ -15,6 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, ubuntu24.04-arm, windows-latest]
         build_type: [Release]
         cpu_features_opt: [MELTY2_ENABLE_CPU_FEATURES=ON, MELTY2_ENABLE_CPU_FEATURES=OFF]
         include:
