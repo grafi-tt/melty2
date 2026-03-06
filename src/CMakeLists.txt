@@ -19,14 +19,14 @@ melty2_add_rawblkgen_lib_(generic)
 list(APPEND MELTY2_RAWBLKGEN_LIBS melty2_rawblkgen_generic_)
 
 if(MELTY2_ENABLE_CPU_FEATURES)
-  add_library(melty2_rawblkgen_dispatch_ OBJECT melty2_rawblkgen_dispatch.cc)
+  add_library(melty2_rawblkgen_dispatch_ OBJECT melty2_rawblkgen_dispatch.c)
   target_include_directories(melty2_rawblkgen_dispatch_ PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cpu_features/include
   )
-  target_compile_features(melty2_rawblkgen_dispatch_ PRIVATE cxx_std_11)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(melty2_rawblkgen_dispatch_ PRIVATE -std=c++11 -Wall -Wextra -Wpedantic -Werror)
+  target_compile_features(melty2_rawblkgen_dispatch_ PRIVATE c_std_11)
+  if(CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
+    target_compile_options(melty2_rawblkgen_dispatch_ PRIVATE -std=c11 -Wall -Wextra -Wpedantic -Werror)
   endif()
   list(APPEND MELTY2_RAWBLKGEN_LIBS melty2_rawblkgen_dispatch_)
 
