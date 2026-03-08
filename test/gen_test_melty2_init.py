@@ -52,12 +52,11 @@ def encode_key(seed):
     is_positive = False
     key = 0
     for i in range(32):
-        n = (c >> i & 1) | (seed >> (4 * i) & 0b1111) << 1
+        n = (seed >> (4 * i) & 0b1111) | (c >> i & 1) << 4
         sw = (c >> (i + 1)) % 4
-        n = (n << sw | n >> (5 - sw)) & 0b11111
-        codes = code5b6b_tbl[n]
-        code = codes[0 if is_positive else 1]
-        code_alt = codes[1 if is_positive else 0]
+        n ^= 1 << sw
+        code = code5b6b_tbl[n][0 if is_positive else 1]
+        code_alt = code5b6b_tbl[n][1 if is_positive else 0]
         if code != code_alt:
             is_positive = not is_positive
         key |= code << (6 * i)
