@@ -67,21 +67,18 @@ def check_seed(seed):
 def gen_key(seed):
     check_seed(seed)
     c = compute_crc32(seed)
-    seed = ''.join('{:032b}'.format(s)[::-1] for s in seed)
-    c = '{:032b}'.format(c)[::-1]
+    seed = seed[0] | seed[1] << 32 | seed[2] << 64 | seed[3] << 96
     is_positive = False
-    tmp = []
+    key = 0
     for i in range(32):
-        n = seed[4*i:4*(i+1)] + c[i:i+1] 
-        n = int(n[::-1], 2)
+        n = seed >> (4 * i) & 0b1111 | (c >> i & 1) << 4
         codes = code5b6b_tbl[n]
         code = codes[0 if is_positive else 1]
         code_alt = codes[1 if is_positive else 0]
         if code != code_alt:
             is_positive = not is_positive
-        tmp.append('{:06b}'.format(code)[::-1])
-    key = ''.join(tmp)
-    return [int(key[32*i:32*(i+1)][::-1], 2) for i in range(6)]
+        key |= code << (6 * i)
+    return [key >> (32 * i) & 0xffffffff for i in range(6)]
 
 
 def gen_tests(f):
