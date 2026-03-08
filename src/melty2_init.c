@@ -1,5 +1,4 @@
 #include "melty2.h"
-#include <stdio.h>
 
 static uint32_t compute_crc32(const uint32_t* seed) {
     /* zlib crc32 by naive polynomial division */
