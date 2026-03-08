@@ -1,6 +1,6 @@
 #include "melty2.h"
 
-#include "melty2_util.h"
+#include "melty2_kernel.h"
 
 void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out) {
 #ifdef _MSC_VER

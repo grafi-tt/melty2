@@ -1,5 +1,5 @@
-#ifndef MELTY2_MELTY2_UTIL_H_
-#define MELTY2_MELTY2_UTIL_H_
+#ifndef MELTY2_MELTY2_KERNEL_H_
+#define MELTY2_MELTY2_KERNEL_H_
 
 #define melty2_kernel(v, a, b) do { \
     v[0] += a; \
@@ -35,4 +35,4 @@
     v[0] ^= v[5]; \
 } while (0)
 
-#endif  // MELTY2_MELTY2_UTIL_H_
+#endif  // MELTY2_MELTY2_KERNEL_H_

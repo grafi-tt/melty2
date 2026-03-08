@@ -1,6 +1,6 @@
 #include "melty2.h"
 
-#include "melty2_util.h"
+#include "melty2_kernel.h"
 
 /* Add suffix to melty2_rawblkgen symbol */
 #ifdef MELTY2_RAWBLKGEN_SUFFIX
