@@ -1,37 +1,59 @@
 #!/usr/bin/env python3
 # This script generates test_melty2_init.h
 
-table = [
-    0b011010,
-    0b101001,
-    0b011001,
-    0b110001,
-    0b001101,
-    0b101100,
-    0b011100,
-    0b110100,
-    0b001011,
-    0b100011,
-    0b010011,
-    0b110010,
-    0b001110,
-    0b100110,
-    0b010110,
-    0b100101,
+import binascii
+import struct
+
+
+def compute_crc32(seed):
+    return binascii.crc32(struct.pack("<4L", *seed))
+
+
+code5b6b_tbl = [
+    [0x27, 0x18],
+    [0x1d, 0x22],
+    [0x2d, 0x12],
+    [0x31, 0x31],
+    [0x35, 0x0a],
+    [0x29, 0x29],
+    [0x19, 0x19],
+    [0x38, 0x07],
+    [0x39, 0x06],
+    [0x25, 0x25],
+    [0x15, 0x15],
+    [0x34, 0x34],
+    [0x0d, 0x0d],
+    [0x2c, 0x2c],
+    [0x1c, 0x1c],
+    [0x17, 0x28],
+    [0x1b, 0x24],
+    [0x23, 0x23],
+    [0x13, 0x13],
+    [0x32, 0x32],
+    [0x0b, 0x0b],
+    [0x2a, 0x2a],
+    [0x1a, 0x1a],
+    [0x3a, 0x05],
+    [0x33, 0x0c],
+    [0x26, 0x26],
+    [0x16, 0x16],
+    [0x36, 0x09],
+    [0x0e, 0x0e],
+    [0x2e, 0x11],
+    [0x1e, 0x21],
+    [0x2b, 0x14],
 ]
 
 
 def check_table(tbl):
-    if len(tbl) != 16:
-        raise ValueError("table length must be 16")
-    for v in tbl:
-        if not 0 <= v < 64:
-            raise ValueError("each table value must be in [0, 64)")
-        if not v.bit_count != 3:
-            raise ValueError("each table value must has three 1-bit")
+    if len(tbl) != 32:
+        raise ValueError("table length must be 32")
+    for p, n in tbl:
+        if not (2 <= n.bit_count() <= p.bit_count() and p.bit_count() + n.bit_count() == 6):
+            raise ValueError("invalid bitcount")
 
 
-check_table(table)
+check_table(code5b6b_tbl)
 
 
 def check_seed(seed):
@@ -44,19 +66,29 @@ def check_seed(seed):
 
 def gen_key(seed):
     check_seed(seed)
-    shift = 0
-    key = 0
-    for s in seed:
-        for r in range(0, 32, 4):
-            key |= table[s >> r & 0xff] << shift
-            shift += 6
-    return [key >> r & 0xffffffff for r in range(0, 192, 32)]
+    c = compute_crc32(seed)
+    seed = ''.join('{:032b}'.format(s)[::-1] for s in seed)
+    c = '{:032b}'.format(c)[::-1]
+    is_positive = False
+    tmp = []
+    for i in range(32):
+        n = seed[4*i:4*(i+1)] + c[i:i+1] 
+        n = int(n[::-1], 2)
+        codes = code5b6b_tbl[n]
+        code = codes[0 if is_positive else 1]
+        code_alt = codes[1 if is_positive else 0]
+        if code != code_alt:
+            is_positive = not is_positive
+        tmp.append('{:06b}'.format(code)[::-1])
+    key = ''.join(tmp)
+    return [int(key[32*i:32*(i+1)][::-1], 2) for i in range(6)]
 
 
 def gen_tests(f):
     cases = [
         [0, 0, 0, 0],
         [1, 2, 3, 4],
+        [3141592653, 2718281828, 0x67452301, 0xefcdab89],
     ]
 
     def to_literal(ary):
