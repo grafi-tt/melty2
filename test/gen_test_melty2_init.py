@@ -45,26 +45,7 @@ code5b6b_tbl = [
 ]
 
 
-def check_table(tbl):
-    if len(tbl) != 32:
-        raise ValueError("table length must be 32")
-    for p, n in tbl:
-        if not (2 <= n.bit_count() <= p.bit_count() and p.bit_count() + n.bit_count() == 6):
-            raise ValueError("invalid bitcount")
-
-
-check_table(code5b6b_tbl)
-
-
-def check_seed(seed):
-    if len(seed) != 4:
-        raise ValueError("seed length must be 4")
-    for s in seed:
-        if not 0 <= s < 2 ** 32:
-            raise ValueError("each seed value must be in [0, 2**32)")
-
-
-def gen_key(seed):
+def encode_key(seed):
     check_seed(seed)
     c = compute_crc32(seed)
     seed = seed[0] | seed[1] << 32 | seed[2] << 64 | seed[3] << 96
@@ -81,7 +62,24 @@ def gen_key(seed):
     return [key >> (32 * i) & 0xffffffff for i in range(6)]
 
 
+def check_table(tbl):
+    if len(tbl) != 32:
+        raise ValueError("table length must be 32")
+    for p, n in tbl:
+        if not (2 <= n.bit_count() <= p.bit_count() and p.bit_count() + n.bit_count() == 6):
+            raise ValueError("invalid bitcount")
+
+
+def check_seed(seed):
+    if len(seed) != 4:
+        raise ValueError("seed length must be 4")
+    for s in seed:
+        if not 0 <= s < 2 ** 32:
+            raise ValueError("each seed value must be in [0, 2**32)")
+
+
 def gen_tests(f):
+    check_table(code5b6b_tbl)
     cases = [
         [0, 0, 0, 0],
         [1, 2, 3, 4],
@@ -98,8 +96,9 @@ def gen_tests(f):
     f.write("\n")
     f.write("static const TestCase test_cases[] = {\n")
     for seed in cases:
+        check_seed(seed)
         f.write(f"    {{{to_literal(seed)},\n")
-        f.write(f"     {to_literal(gen_key(seed))}}},\n")
+        f.write(f"     {to_literal(encode_key(seed))}}},\n")
     f.write("};\n")
 
 
