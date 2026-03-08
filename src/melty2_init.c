@@ -55,18 +55,28 @@ static void encode_key(const uint32_t* seed, uint32_t* key) {
     int is_positive = 0;
     for (int i = 0; i < 8; ) {
         uint32_t s = *seed++;
+        /* Loop body, which read 16 bits from s and 4 bits from c to obtain 24 bits t, runs 2 times. */
         do {
-            // Read 4 bits from `s` and 1 bits from `c`, then apply 5b/6b to get 6 bits.
-            // Repeat the procedure 4 times and concatenate outputs to obtain 24 bits `t`.
             uint32_t t = 0;
+            /* Loop body runs 4 times. */
             while (!(t & 0x3f)) {
-                uint32_t n = (s & UINT32_C(0xf)) | (c & UINT32_C(1)) << 4;
+                /*
+                 * Compute 5 bits n by
+                 *   n = rotl((c' | s' << 1), sw), where c' = c & 1, s' = s & 0xf, and sw = (c >> 1) % 4 .
+                 * Then apply 5b/6b encoding to n.
+                 * The 6 bits code is concatenated to t.
+                 */
+                uint32_t n = s & UINT32_C(0xf);
+                n |= n << 5;
+                n |= (c & UINT32_C(1)) << 4;
                 s >>= 4;
                 c >>= 1;
+                int sw = c % 4;
+                n = n >> (4 - sw) & 0x1f;
                 uint32_t code = code5b6b_tbl[n][!is_positive];
                 uint32_t code_alt = code5b6b_tbl[n][is_positive];
-                t = code << 18 | t >> 6;
                 is_positive ^= (code != code_alt);
+                t = code << 18 | t >> 6;
             }
             tmp[i++] = t;
         } while (i % 2);
