@@ -1,7 +1,5 @@
-add_executable(run_bigcrush run_bigcrush.c)
-
-set_property(TARGET run_bigcrush PROPERTY C_STANDARD 99)
-set_property(TARGET run_bigcrush PROPERTY C_STANDARD_REQUIRED ON)
+add_executable(run_bigcrush run_bigcrush.cc)
+target_compile_features(run_bigcrush PRIVATE cxx_std_20)
 
 find_library(${PROJECT_NAME}_TESTU01_LIBRARIES NAMES testu01 probdist mylib REQUIRED)
 find_path(${PROJECT_NAME}_TESTU01_INCLUDE_DIR NAMES unif01.h bbattery.h REQUIRED)

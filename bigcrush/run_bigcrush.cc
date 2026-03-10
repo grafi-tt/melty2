@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <string.h>
 
+extern "C" {
 #include <bbattery.h>
 #include <unif01.h>
 //#include <sknuth.h>
+}
 
 #include "melty2.h"
 
@@ -49,7 +51,8 @@ int main(int argc, char *argv[]) {
     }
 
     melty2_init(&key, 0, 0, 0, 0);
-    unif01_Gen *gen = unif01_CreateExternGenBits("melty2", next);
+    char name[] = "melty2";
+    unif01_Gen *gen = unif01_CreateExternGenBits(name, next);
     bbattery_BigCrush(gen);
     unif01_DeleteExternGenBits(gen);
     return 0;
