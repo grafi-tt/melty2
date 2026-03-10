@@ -1,5 +1,7 @@
-#include <stdio.h>
-#include <string.h>
+#include <charconv>
+#include <iostream>
+#include <optional>
+#include <string_view>
 
 extern "C" {
 #include <bbattery.h>
@@ -7,25 +9,69 @@ extern "C" {
 //#include <sknuth.h>
 }
 
-#include "melty2.h"
+#include "melty2.hpp"
 
-static int bitrev;
+namespace {
 
-static melty2_key key;
-static uint64_t idx = 0;
+void show_help() {
+    std::cerr << "usage: bigcrush [--bitrev] seeds...\n"
+                 "    seeds consists of 4 unsigned 32bit integers, with default value 0\n";
+}
 
-static uint32_t buf[MELTY2_RAWBLKLEN];
-static int pos = MELTY2_RAWBLKLEN;
-
-static uint32_t next() {
-    if (pos == MELTY2_RAWBLKLEN) {
-        pos = 0;
-        melty2_rawblkgen(&key, (uint32_t)idx, (uint32_t)(idx >> 32), buf);
-        idx += MELTY2_RAWBLKLEN;
+std::optional<uint32_t> parse_seed(std::string_view arg) {
+    uint32_t v;
+    auto [ptr, ec] = ([&]() {
+        if (arg.starts_with("0x")) {
+            return std::from_chars(arg.data() + 2, arg.data() + arg.size(), v, 16);
+        }
+        if (arg.starts_with("0o")) {
+            return std::from_chars(arg.data() + 2, arg.data() + arg.size(), v, 8);
+        }
+        if (arg.starts_with("0b")) {
+            return std::from_chars(arg.data() + 2, arg.data() + arg.size(), v, 2);
+        }
+        if (arg.starts_with("0d")) {
+            return std::from_chars(arg.data() + 2, arg.data() + arg.size(), v, 10);
+        }
+        return std::from_chars(arg.data(), arg.data() + arg.size(), v, 10);
+    })();
+    if (ec != std::errc{} || ptr != arg.data() + arg.size()) {
+        return std::nullopt;
     }
-    uint32_t r = buf[pos++];
+    return v;
+}
 
-    if (bitrev) {
+}  // namespace
+
+int main(int argc, const char **argv) {
+    static bool bitrev = false;
+    static std::array<uint32_t, 4> seed{};
+
+    int argi = 1;
+    int num_seed = 0;
+    while (argi < argc) {
+        std::string_view arg{argv[argi++]};
+        if (num_seed == 0 && arg.starts_with("--")) {
+            if (arg == "--bitrev") {
+                bitrev = true;
+                continue;
+            }
+        } else if (num_seed < 4) {
+            if (std::optional<uint32_t> v = parse_seed(arg)) {
+                seed[num_seed++] = *v;
+            }
+            continue;
+        }
+        show_help();
+        return 1;
+    }
+
+    static melty2::generator gen(seed);
+    auto next = []() {
+        return gen();
+    };
+    auto next_bitrev = []() {
+        uint32_t r = gen();
         uint32_t t;
         t = r & UINT32_C(0x00FF00FF);
         r = (t << 16) | (t >> 16) | (t ^ r);
@@ -36,24 +82,13 @@ static uint32_t next() {
         t = r & UINT32_C(0x55555555);
         r = (t << 2) | (t >> 30) | (t ^ r);
         r = (r << 1) | (r >> 31);
-    }
-    return r;
-}
+        return r;
+    };
 
-int main(int argc, char *argv[]) {
-    if (argc == 1) {
-        bitrev = 0;
-    } else if (argc == 2 && !strcmp(argv[1], "--bitrev")) {
-        bitrev = 1;
-    } else {
-        fputs("usage: bigcrush [--bitrev]", stderr);
-        return 1;
-    }
-
-    melty2_init(&key, 0, 0, 0, 0);
     char name[] = "melty2";
-    unif01_Gen *gen = unif01_CreateExternGenBits(name, next);
-    bbattery_BigCrush(gen);
-    unif01_DeleteExternGenBits(gen);
+    unif01_Gen *ugen = unif01_CreateExternGenBits(name, bitrev ? next_bitrev : next);
+    bbattery_BigCrush(ugen);
+    unif01_DeleteExternGenBits(ugen);
+
     return 0;
 }
