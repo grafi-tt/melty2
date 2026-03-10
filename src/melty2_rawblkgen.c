@@ -18,7 +18,6 @@ void melty2_rawblkgen(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, u
 
     for (uint32_t k = 0; k < MELTY2_RAWBLKLEN; ++k) {
         uint32_t v[6] = {key_v[0], key_v[1], key_v[2], key_v[3], key_v[4], key_v[5]};
-        melty2_kernel(v, ctr_lo + k, ctr_hi);
-        out_p[k] = v[0] ^ v[3];
+        out_p[k] = melty2_kernel(v, ctr_lo + k, ctr_hi);
     }
 }
