@@ -37,6 +37,10 @@ void melty2_rawblkgen_neon(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_
 
 #endif
 
+#ifndef __GNUC__
+#define __builtin_expect(c, v) c
+#endif
+
 void melty2_rawblkgen_generic(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
 
 #ifdef MELTY2_RAWBLKGEN_DISPATCH_X86
@@ -61,12 +65,22 @@ void melty2_rawblkgen(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, u
     static Features features;
 
     int v = atomic_load_explicit(&tri_flag, memory_order_acquire);
-    if (v == 0 && atomic_compare_exchange_strong_explicit(&tri_flag, &v, -1, memory_order_acq_rel, memory_order_acquire)) {
-        features = GetInfo().features;
-        atomic_store_explicit(&tri_flag, 1, memory_order_release);
-    } else {
-        while (v == -1) {
-            v = atomic_load_explicit(&tri_flag, memory_order_acquire);
+    if (__builtin_expect(v <= 0, 0)) {
+        int locked = 1;
+        if (__builtin_expect(v == 0, 1)) {
+            if (__builtin_expect(atomic_compare_exchange_strong_explicit(
+                    &tri_flag, &v, -1, memory_order_acq_rel, memory_order_acquire), 1)) {
+                features = GetInfo().features;
+                atomic_store_explicit(&tri_flag, 1, memory_order_release);
+                locked = 0;
+            } else if (v > 0) {
+                locked = 0;
+            }
+        }
+        if (locked) {
+            do {
+                v = atomic_load_explicit(&tri_flag, memory_order_acquire);
+            } while (v < 0);
         }
     }
 
