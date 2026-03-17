@@ -40,14 +40,14 @@ int main(void) {
     melty2_init(&key, 0, 0, 0, 0);
     uint32_t result8[8];
     melty2_gen(&key, 0, 8, result8);
-    n_err += check_number32("ctr=0", result8[0], UINT32_C(0xc3226a46));
-    n_err += check_number32("ctr=1", result8[1], UINT32_C(0xfaa29682));
-    n_err += check_number32("ctr=2", result8[2], UINT32_C(0x50a238f0));
-    n_err += check_number32("ctr=3", result8[3], UINT32_C(0xde39854c));
-    n_err += check_number32("ctr=4", result8[4], UINT32_C(0xa6b1a261));
-    n_err += check_number32("ctr=5", result8[5], UINT32_C(0xe972b7e8));
-    n_err += check_number32("ctr=6", result8[6], UINT32_C(0x938836ce));
-    n_err += check_number32("ctr=7", result8[7], UINT32_C(0x81286890));
+    n_err += check_number32("ctr=0", result8[0], UINT32_C(0x4f73997d));
+    n_err += check_number32("ctr=1", result8[1], UINT32_C(0x1eb935c3));
+    n_err += check_number32("ctr=2", result8[2], UINT32_C(0xa3b67532));
+    n_err += check_number32("ctr=3", result8[3], UINT32_C(0xac52c23e));
+    n_err += check_number32("ctr=4", result8[4], UINT32_C(0x0709e8a6));
+    n_err += check_number32("ctr=5", result8[5], UINT32_C(0xc4fea155));
+    n_err += check_number32("ctr=6", result8[6], UINT32_C(0xdbccff7c));
+    n_err += check_number32("ctr=7", result8[7], UINT32_C(0xc11fb793));
 
     for (size_t t = 0; t < sizeof(test_cases) / sizeof(TestCase); ++t) {
         n_err += test_init(&test_cases[t]);
