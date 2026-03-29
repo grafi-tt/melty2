@@ -8,7 +8,7 @@ static int err = 0;
 
 #define test_assert(cond) \
     for (bool test_assert_failed_ = !(cond); test_assert_failed_; std::cerr << std::endl, ++err, test_assert_failed_ = false) \
-        std::cerr << __func__ << ":" << __LINE__ << " " << #cond << "failed"
+        std::cerr << __func__ << ":" << __LINE__ << " " << #cond << " failed"
 
 void test_default() {
     constexpr size_t N = 123;

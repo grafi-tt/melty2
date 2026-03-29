@@ -9,8 +9,8 @@ void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out) 
     const uint32_t * restrict key_v = key->v_;
     uint32_t * restrict out_p = out;
 
-    size_t peel_len = -ctr % 32;
-    if (len < 32) {
+    size_t peel_len = -ctr % MELTY2_RAWBLKLEN;
+    if (len < MELTY2_RAWBLKLEN) {
         peel_len = len;
     }
 
@@ -26,11 +26,11 @@ void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out) 
         ctr += peel_len;
         out_p += peel_len;
 
-        while (len >= 32) {
-            len -= 32;
+        while (len >= MELTY2_RAWBLKLEN) {
+            len -= MELTY2_RAWBLKLEN;
             melty2_rawblkgen(key, (uint32_t)ctr, (uint32_t)(ctr >> 32), out_p);
-            ctr += 32;
-            out_p += 32;
+            ctr += MELTY2_RAWBLKLEN;
+            out_p += MELTY2_RAWBLKLEN;
         }
         peel_len = len;
     }
