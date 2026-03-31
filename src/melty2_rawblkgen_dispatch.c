@@ -4,7 +4,7 @@
 
 #include <cpu_features_macros.h>
 
-#ifdef _MSC_VER
+void melty2_rawblkgen_generic(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
 
 #ifdef CPU_FEATURES_ARCH_X86_64
 #define MELTY2_RAWBLKGEN_DISPATCH_X86
@@ -12,51 +12,46 @@ void melty2_rawblkgen_avx512(const melty2_key *key, uint32_t ctr_lo, uint32_t ct
 void melty2_rawblkgen_avx2(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
 #endif
 
-#else
+#ifndef _MSC_VER
 
-#ifdef CPU_FEATURES_ARCH_X86_64
-#define MELTY2_RAWBLKGEN_DISPATCH_X86
-void melty2_rawblkgen_avx512(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
-void melty2_rawblkgen_avx2(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
-#endif
 #ifdef CPU_FEATURES_ARCH_X86_32
 #define MELTY2_RAWBLKGEN_DISPATCH_X86
 void melty2_rawblkgen_avx2(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
 void melty2_rawblkgen_sse2(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
 #endif
+
 #ifdef CPU_FEATURES_ARCH_AARCH64
 #define MELTY2_RAWBLKGEN_DISPATCH_AARCH64
-#include <cpuinfo_aarch64.h>
 void melty2_rawblkgen_sve(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
 #endif
+
 #ifdef CPU_FEATURES_ARCH_ARM
 #define MELTY2_RAWBLKGEN_DISPATCH_ARM
-#include <cpuinfo_arm.h>
 void melty2_rawblkgen_neon(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
 #endif
 
-#endif
-
-#ifndef __GNUC__
-#define __builtin_expect(c, v) c
-#endif
-
-void melty2_rawblkgen_generic(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
+#endif  /* _MSC_VER */
 
 #ifdef MELTY2_RAWBLKGEN_DISPATCH_X86
 #include <cpuinfo_x86.h>
 #define Features X86Features
 #define GetInfo() GetX86Info()
 #endif
+
 #ifdef MELTY2_RAWBLKGEN_DISPATCH_AARCH64
 #include <cpuinfo_aarch64.h>
 #define Features Aarch64Features
 #define GetInfo() GetAarch64Info()
 #endif
+
 #ifdef MELTY2_RAWBLKGEN_DISPATCH_ARM
 #include <cpuinfo_arm.h>
 #define Features ArmFeatures
 #define GetInfo() GetArmInfo()
+#endif
+
+#ifndef __GNUC__
+#define __builtin_expect(c, v) c
 #endif
 
 void melty2_rawblkgen(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out) {
@@ -116,6 +111,6 @@ void melty2_rawblkgen(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, u
         return;
     }
 #endif
-#endif
+#endif  /* GetInfo */
     melty2_rawblkgen_generic(key, ctr_lo, ctr_hi, out);
 }
