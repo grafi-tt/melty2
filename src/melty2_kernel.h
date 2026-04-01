@@ -43,4 +43,4 @@
     (v)[0] += (v)[2] \
 )
 
-#endif  // MELTY2_MELTY2_KERNEL_H_
+#endif  /* MELTY2_MELTY2_KERNEL_H_ */

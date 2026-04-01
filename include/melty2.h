@@ -52,4 +52,4 @@ void melty2_rawblkgen(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, u
 }
 #endif
 
-#endif
+#endif  /* MELTY2_MELTY2_H_ */

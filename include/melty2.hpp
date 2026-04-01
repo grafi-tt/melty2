@@ -46,4 +46,4 @@ private:
 
 }  // namespace melty2
 
-#endif
+#endif  // MELTY2_MELTY2_HPP_
