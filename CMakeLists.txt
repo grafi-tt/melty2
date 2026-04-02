@@ -5,6 +5,7 @@ option(BUILD_SHARED_LIBS "Build library as shared" OFF)
 option(MELTY2_ENABLE_CPU_FEATURES "Enable runtime CPU detection by cpu_features" ON)
 option(MELTY2_ENABLE_TEST "Enable test targets" ON)
 option(MELTY2_ENABLE_BIGCRUSH "Enable bigcrush targets" OFF)
+option(MELTY2_INTERNAL_SWAP32_CTR "Swap 32bits of counter for testing (internal use)" OFF)
 
 if(MELTY2_ENABLE_CPU_FEATURES)
   # Build cpu_featurs as static library

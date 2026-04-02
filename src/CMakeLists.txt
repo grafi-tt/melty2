@@ -1,3 +1,7 @@
+if(MELTY2_INTERNAL_SWAP32_CTR)
+  add_compile_definitions(MELTY2_INTERNAL_SWAP32_CTR)
+endif()
+
 macro(melty2_add_rawblkgen_lib_ suffix)
   add_library(melty2_rawblkgen_${suffix}_ OBJECT melty2_rawblkgen.c)
   target_include_directories(melty2_rawblkgen_${suffix}_ PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
