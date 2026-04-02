@@ -6,7 +6,11 @@ static uint32_t compute_crc32(const uint32_t* seed) {
     for (int i = 0; i < 4; ++i) {
         c ^= seed[i];
         for (int j = 0; j < 32; ++j) {
-            c = (c >> 1) ^ (-(c & UINT32_C(1)) & UINT32_C(0xedb88320));
+            int flag = c & 1;
+            c >>= 1;
+            if (flag) {
+                c ^= UINT32_C(0xedb88320);
+            }
         }
     }
     return ~c;

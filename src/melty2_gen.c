@@ -5,6 +5,7 @@
 void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out) {
 #ifdef _MSC_VER
 #define restrict __restrict
+#pragma warning(disable : 4146)
 #endif
     const uint32_t * restrict key_v = key->v_;
     uint32_t * restrict out_p = out;
