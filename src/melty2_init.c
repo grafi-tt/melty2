@@ -1,100 +1,63 @@
 #include "melty2.h"
 
-static uint32_t compute_crc32(const uint32_t* seed) {
-    /* zlib crc32 by naive polynomial division */
-    uint32_t c = ~UINT32_C(0);
-    for (int i = 0; i < 4; ++i) {
-        c ^= seed[i];
-        for (int j = 0; j < 32; ++j) {
-            int flag = c & 1;
-            c >>= 1;
-            if (flag) {
-                c ^= UINT32_C(0xedb88320);
-            }
-        }
-    }
-    return ~c;
-}
+/*
+ * Key derivation by SipHash-2-4 (Aumasson & Bernstein, 2012).
+ *
+ * The 128bit seed is used as the SipHash key, and the 192bit melty2 key is
+ * the concatenation of SipHash-2-4(seed, m) for the 8 bytes messages
+ * m = 0, 1, 2 (as little-endian 64bit integers).
+ *
+ * As the outputs are uniform, keys of distinct seeds are independent, and
+ * related keys of melty2 (whose difference cancels with that of counter)
+ * appear only with a negligible probability.
+ */
 
-static const uint8_t code5b6b_tbl[32][2] = {
-    /* this 5b/6b code is a part of widely used 8b/10b coding */
-    {0x27, 0x18},
-    {0x1d, 0x22},
-    {0x2d, 0x12},
-    {0x31, 0x31},
-    {0x35, 0x0a},
-    {0x29, 0x29},
-    {0x19, 0x19},
-    {0x38, 0x07},
-    {0x39, 0x06},
-    {0x25, 0x25},
-    {0x15, 0x15},
-    {0x34, 0x34},
-    {0x0d, 0x0d},
-    {0x2c, 0x2c},
-    {0x1c, 0x1c},
-    {0x17, 0x28},
-    {0x1b, 0x24},
-    {0x23, 0x23},
-    {0x13, 0x13},
-    {0x32, 0x32},
-    {0x0b, 0x0b},
-    {0x2a, 0x2a},
-    {0x1a, 0x1a},
-    {0x3a, 0x05},
-    {0x33, 0x0c},
-    {0x26, 0x26},
-    {0x16, 0x16},
-    {0x36, 0x09},
-    {0x0e, 0x0e},
-    {0x2e, 0x11},
-    {0x1e, 0x21},
-    {0x2b, 0x14},
-};
+#define MELTY2_ROTL64(x, s) ((x) << (s) | (x) >> (64 - (s)))
 
-static void encode_key(const uint32_t* seed, uint32_t* key) {
-    uint32_t c = compute_crc32(seed);
-    uint32_t tmp[8];
+#define MELTY2_SIPROUND(v0, v1, v2, v3) ( \
+    (v0) += (v1), (v1) = MELTY2_ROTL64((v1), 13), (v1) ^= (v0), (v0) = MELTY2_ROTL64((v0), 32), \
+    (v2) += (v3), (v3) = MELTY2_ROTL64((v3), 16), (v3) ^= (v2), \
+    (v0) += (v3), (v3) = MELTY2_ROTL64((v3), 21), (v3) ^= (v0), \
+    (v2) += (v1), (v1) = MELTY2_ROTL64((v1), 17), (v1) ^= (v2), (v2) = MELTY2_ROTL64((v2), 32) \
+)
 
-    int is_positive = 0;
-    for (int i = 0; i < 8; ) {  /* runs 4 times */
-        uint32_t s = *seed++;
-        do {  /* runs 2 times */
-            uint32_t t = 0;
-            while (!(t & 0x3f)) {  /* runs 4 times */
-                /*
-                 * Compute 5 bits n by
-                 *   n = (s' ^ (1 << sw)) | c' << 4, where c' = c & 1, s' = s & 0xf, and sw = (c >> 1) % 4 .
-                 * Then apply 5b/6b encoding to n.
-                 * The 6 bits code is concatenated to t.
-                 */
-                uint32_t n = (s & 0xf) | (c & 1) << 4;
-                s >>= 4;
-                c >>= 1;
-                int sw = c % 4;
-                n ^= 1 << sw;
-                uint32_t code = code5b6b_tbl[n][!is_positive];
-                uint32_t code_alt = code5b6b_tbl[n][is_positive];
-                is_positive ^= (code != code_alt);
-                t = code << 18 | t >> 6;
-            }
-            tmp[i++] = t;
-        } while (i % 2);
-    }
+/* SipHash-2-4 with 64bit output for a 8 bytes message m (given as little-endian integer) */
+static uint64_t siphash24_u64(uint64_t k0, uint64_t k1, uint64_t m) {
+    uint64_t v0 = UINT64_C(0x736f6d6570736575) ^ k0;
+    uint64_t v1 = UINT64_C(0x646f72616e646f6d) ^ k1;
+    uint64_t v2 = UINT64_C(0x6c7967656e657261) ^ k0;
+    uint64_t v3 = UINT64_C(0x7465646279746573) ^ k1;
 
-    for (int i = 0; i < 8; i += 4) {
-        uint32_t a = tmp[i];
-        uint32_t b = tmp[i + 1];
-        uint32_t c = tmp[i + 2];
-        uint32_t d = tmp[i + 3];
-        key[0] = a | b << 24;
-        key[1] = b >> 8 | c << 16;
-        key[2] = c >> 16 | d << 8;
-        key += 3;
-    }
+    /* compression of the message block */
+    v3 ^= m;
+    MELTY2_SIPROUND(v0, v1, v2, v3);
+    MELTY2_SIPROUND(v0, v1, v2, v3);
+    v0 ^= m;
+
+    /* last block: message length (8) in the top byte, no tail bytes */
+    const uint64_t b = UINT64_C(8) << 56;
+    v3 ^= b;
+    MELTY2_SIPROUND(v0, v1, v2, v3);
+    MELTY2_SIPROUND(v0, v1, v2, v3);
+    v0 ^= b;
+
+    /* finalization */
+    v2 ^= 0xff;
+    MELTY2_SIPROUND(v0, v1, v2, v3);
+    MELTY2_SIPROUND(v0, v1, v2, v3);
+    MELTY2_SIPROUND(v0, v1, v2, v3);
+    MELTY2_SIPROUND(v0, v1, v2, v3);
+    return v0 ^ v1 ^ v2 ^ v3;
 }
 
 void melty2_init(melty2_key *key, uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3) {
-    uint32_t seed[4] = {seed0, seed1, seed2, seed3};
-    encode_key(seed, key->v_);
+    /* SipHash key as little-endian 64bit integers of the 16 bytes seed0..seed3 */
+    uint64_t k0 = (uint64_t)seed0 | (uint64_t)seed1 << 32;
+    uint64_t k1 = (uint64_t)seed2 | (uint64_t)seed3 << 32;
+
+    for (int i = 0; i < 3; ++i) {
+        uint64_t h = siphash24_u64(k0, k1, (uint64_t)i);
+        key->v_[2 * i] = (uint32_t)h;
+        key->v_[2 * i + 1] = (uint32_t)(h >> 32);
+    }
 }

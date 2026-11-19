@@ -1,74 +1,76 @@
 #!/usr/bin/env python3
 # This script generates test_melty2_init.h
 
-import binascii
 import struct
 
-
-def compute_crc32(seed):
-    return binascii.crc32(struct.pack("<4L", *seed))
+MASK64 = 0xffffffffffffffff
 
 
-code5b6b_tbl = [
-    [0x27, 0x18],
-    [0x1d, 0x22],
-    [0x2d, 0x12],
-    [0x31, 0x31],
-    [0x35, 0x0a],
-    [0x29, 0x29],
-    [0x19, 0x19],
-    [0x38, 0x07],
-    [0x39, 0x06],
-    [0x25, 0x25],
-    [0x15, 0x15],
-    [0x34, 0x34],
-    [0x0d, 0x0d],
-    [0x2c, 0x2c],
-    [0x1c, 0x1c],
-    [0x17, 0x28],
-    [0x1b, 0x24],
-    [0x23, 0x23],
-    [0x13, 0x13],
-    [0x32, 0x32],
-    [0x0b, 0x0b],
-    [0x2a, 0x2a],
-    [0x1a, 0x1a],
-    [0x3a, 0x05],
-    [0x33, 0x0c],
-    [0x26, 0x26],
-    [0x16, 0x16],
-    [0x36, 0x09],
-    [0x0e, 0x0e],
-    [0x2e, 0x11],
-    [0x1e, 0x21],
-    [0x2b, 0x14],
-]
+def rotl64(x, s):
+    return (x << s | x >> (64 - s)) & MASK64
 
 
-def encode_key(seed):
+def siphash24(key, msg):
+    """SipHash-2-4 with 64bit output (reference algorithm)."""
+    if len(key) != 16:
+        raise ValueError("key length must be 16")
+    k0, k1 = struct.unpack("<2Q", key)
+    v = [
+        0x736f6d6570736575 ^ k0,
+        0x646f72616e646f6d ^ k1,
+        0x6c7967656e657261 ^ k0,
+        0x7465646279746573 ^ k1,
+    ]
+
+    def sipround():
+        v[0] = (v[0] + v[1]) & MASK64
+        v[1] = rotl64(v[1], 13) ^ v[0]
+        v[0] = rotl64(v[0], 32)
+        v[2] = (v[2] + v[3]) & MASK64
+        v[3] = rotl64(v[3], 16) ^ v[2]
+        v[0] = (v[0] + v[3]) & MASK64
+        v[3] = rotl64(v[3], 21) ^ v[0]
+        v[2] = (v[2] + v[1]) & MASK64
+        v[1] = rotl64(v[1], 17) ^ v[2]
+        v[2] = rotl64(v[2], 32)
+
+    tail_len = len(msg) % 8
+    blocks = [struct.unpack_from("<Q", msg, i)[0] for i in range(0, len(msg) - tail_len, 8)]
+    last = (len(msg) & 0xff) << 56
+    for i, c in enumerate(msg[len(msg) - tail_len:]):
+        last |= c << (8 * i)
+    for m in blocks + [last]:
+        v[3] ^= m
+        sipround()
+        sipround()
+        v[0] ^= m
+    v[2] ^= 0xff
+    for _ in range(4):
+        sipround()
+    return v[0] ^ v[1] ^ v[2] ^ v[3]
+
+
+def check_siphash24():
+    # test vectors from the reference implementation (key = 00 01 .. 0f, msg = 00 01 .. (n-1))
+    key = bytes(range(16))
+    expected = {
+        0: 0x726fdb47dd0e0e31,
+        8: 0x93f5f5799a932462,
+        15: 0xa129ca6149be45e5,
+    }
+    for n, e in expected.items():
+        if siphash24(key, bytes(range(n))) != e:
+            raise ValueError(f"siphash24 test vector failed for length {n}")
+
+
+def derive_key(seed):
     check_seed(seed)
-    c = compute_crc32(seed)
-    seed = seed[0] | seed[1] << 32 | seed[2] << 64 | seed[3] << 96
-    is_positive = False
-    key = 0
-    for i in range(32):
-        n = (seed >> (4 * i) & 0b1111) | (c >> i & 1) << 4
-        sw = (c >> (i + 1)) % 4
-        n ^= 1 << sw
-        code = code5b6b_tbl[n][0 if is_positive else 1]
-        code_alt = code5b6b_tbl[n][1 if is_positive else 0]
-        if code != code_alt:
-            is_positive = not is_positive
-        key |= code << (6 * i)
-    return [key >> (32 * i) & 0xffffffff for i in range(6)]
-
-
-def check_table(tbl):
-    if len(tbl) != 32:
-        raise ValueError("table length must be 32")
-    for p, n in tbl:
-        if not (2 <= n.bit_count() <= p.bit_count() and p.bit_count() + n.bit_count() == 6):
-            raise ValueError("invalid bitcount")
+    sip_key = struct.pack("<4L", *seed)
+    key = []
+    for i in range(3):
+        h = siphash24(sip_key, struct.pack("<Q", i))
+        key += [h & 0xffffffff, h >> 32]
+    return key
 
 
 def check_seed(seed):
@@ -80,7 +82,7 @@ def check_seed(seed):
 
 
 def gen_tests(f):
-    check_table(code5b6b_tbl)
+    check_siphash24()
     cases = [
         [0, 0, 0, 0],
         [1, 2, 3, 4],
@@ -99,7 +101,7 @@ def gen_tests(f):
     for seed in cases:
         check_seed(seed)
         f.write(f"    {{{to_literal(seed)},\n")
-        f.write(f"     {to_literal(encode_key(seed))}}},\n")
+        f.write(f"     {to_literal(derive_key(seed))}}},\n")
     f.write("};\n")
 
 
