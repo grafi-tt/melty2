@@ -62,6 +62,39 @@ int main() {
 
 The counter can be read and set by `gen.ctr()` and `gen.ctr(new_ctr)`. Jumping ahead costs nothing more than generating one block.
 
+### Independent generators for tests
+
+A counter-based generator makes it easy to give every test its own independent random numbers while keeping them reproducible. Hash the test name into a part of the 128bit seed, and put a global seed into the rest.
+
+```cpp
+#include <cstdint>
+#include <string_view>
+#include "melty2.hpp"
+
+/* FNV-1a 64bit hash; a simple hash suffices, as melty2_init decorrelates similar seeds */
+constexpr uint64_t fnv1a64(std::string_view s) {
+    uint64_t h = 0xcbf29ce484222325;
+    for (char c : s) {
+        h ^= static_cast<unsigned char>(c);
+        h *= 0x00000100000001b3;
+    }
+    return h;
+}
+
+melty2::generator test_rng(uint64_t global_seed, std::string_view test_name) {
+    const uint64_t h = fnv1a64(test_name);
+    return melty2::generator{{static_cast<uint32_t>(global_seed), static_cast<uint32_t>(global_seed >> 32),
+                              static_cast<uint32_t>(h), static_cast<uint32_t>(h >> 32)}};
+}
+
+/* in each test */
+auto rng = test_rng(global_seed, "sort/random_ints");
+```
+
+* Each test gets numbers unrelated to those of the other tests. It avoids the common pitfall of initializing a generator with the same seed at the beginning of every test, where all tests silently consume the same random sequence.
+* The numbers of a test don't depend on which tests run before it, or on the order or the parallelism of the test runner. So a failed test can be reproduced alone.
+* Changing the global seed (e.g. by an environment variable or a command line option) runs all the tests with different random inputs, and the seed printed on failure reproduces it.
+
 ### GPU (CUDA and HIP)
 
 `melty2_gpu.h` is a header-only implementation for CUDA and HIP. It doesn't require linking the library, and its outputs are identical to those of the CPU library for the same seed and counter.
