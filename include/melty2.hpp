@@ -20,7 +20,7 @@ public:
         melty2_init_u64(&key_, seed, 0);
         this->ctr(ctr);
     }
-    generator() noexcept : generator{uint64_t{0}, 0} {}
+    generator() noexcept : generator{0, 0} {}
 
     /* the 128bit seed is seed0 | seed1 << 64, as melty2_init_u64 */
     static generator from_u64_seeds(uint64_t seed0, uint64_t seed1, uint64_t ctr = 0) noexcept {
