@@ -30,7 +30,7 @@ int main(void) {
     melty2_init(&key, 0, 0, 0, 0);  /* 128bit seed */
     uint32_t r[8];
     melty2_gen(&key, 0, 8, r);      /* outputs for counters 0, 1, ..., 7 */
-    printf("%08x\n", r[0]);         /* prints 40247540 */
+    printf("%08x\n", r[0]);         /* prints 008ae4d0 */
     return 0;
 }
 ```
@@ -41,10 +41,19 @@ It provides the following functions.
 void melty2_init(melty2_key *key, uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3);
 void melty2_init_u64(melty2_key *key, uint64_t seed0, uint64_t seed1);
 void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out);
+```
+
+`melty2_init` takes a 128bit seed as four 32bit integers, lower ones first, and stretches it to a key by a cryptographic algorithm, so even similar seeds (e.g. thread IDs) yield unrelated keys. `melty2_init_u64` takes the same seed as two 64bit integers; for example, `melty2_init_u64(&key, 42, 0)` is the same as `melty2_init(&key, 42, 0, 0, 0)`.
+
+`melty2_gen` stores `len` numbers for the counters `ctr`, `ctr + 1`, ... to `out`. The counter wraps around after 2^64 - 1.
+
+For advanced users, the low-level function generating a block of `MELTY2_RAWBLKLEN` (32) numbers is also provided.
+
+```c
 void melty2_rawblkgen(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
 ```
 
-`melty2_init` derives a 192bit key from a 128bit seed by ChaCha8, so even similar seeds (e.g. thread IDs) yield unrelated keys. The seed is `seed0 | seed1 << 32 | seed2 << 64 | seed3 << 96`, and `melty2_init_u64` takes it as `seed0 | seed1 << 64`; for example, `melty2_init_u64(&key, 42, 0)` is the same as `melty2_init(&key, 42, 0, 0, 0)`. `melty2_gen` stores the outputs for counters `ctr`, `ctr + 1`, ..., `ctr + len - 1` to `out`; the counter wraps around modulo 2^64. `melty2_rawblkgen` is the low-level function generating a block of `MELTY2_RAWBLKLEN` (32) outputs, where `ctr_lo` must not exceed `2^32 - MELTY2_RAWBLKLEN`.
+The counter is given by its lower and upper 32bit. As the carry from the lower to the upper is not handled, `ctr_lo` must not exceed `2^32 - MELTY2_RAWBLKLEN`. `melty2_gen` is built on this function, and handles any counter range.
 
 ### C++
 
@@ -62,7 +71,7 @@ int main() {
 }
 ```
 
-A generator can also be constructed from a 64bit seed as `melty2::generator gen{seed}`, which is the same as the 128bit seed `{seed & 0xffffffff, seed >> 32, 0, 0}`, or from two 64bit integers as `melty2::generator::from_u64_seeds(seed0, seed1)`, which is the same as `melty2_init_u64`. The counter is given as the optional last argument of them, and can be read and set by `gen.ctr()` and `gen.ctr(new_ctr)`. Jumping ahead costs nothing more than generating one block.
+A generator can also be constructed from a 64bit seed as `melty2::generator gen{seed}`, which is the same as the 128bit seed `{(uint32_t)seed, seed >> 32, 0, 0}`, or from two 64bit integers as `melty2::generator::from_u64_seeds(seed0, seed1)`, which is the same as `melty2_init_u64`. The counter is given as the optional last argument of them, and can be read and set by `gen.ctr()` and `gen.ctr(new_ctr)`. Jumping ahead costs nothing more than generating one block.
 
 ### Independent generators for tests
 
