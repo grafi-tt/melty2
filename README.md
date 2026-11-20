@@ -200,7 +200,7 @@ The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (R
 
   A counter-based generator based on the middle-square method, which relies on 64bit multiplications.
 
-* ChaCha (as used by e.g. [rand_chacha](https://crates.io/crates/rand_chacha))
+* [ChaCha](https://cr.yp.to/chacha.html) (as used by e.g. [rand_chacha](https://crates.io/crates/rand_chacha))
 
   ChaCha with 8, 12 or 20 rounds is a cryptographically strong counter-based generator. As one block yields 512bit, it is efficient for bulk generation, but costly when only a single 32bit number is needed.
 
@@ -222,7 +222,7 @@ The price is that every number has to go through the whole mixing function, whil
 
 ### Key derivation
 
-The 192bit melty2 key consists of the words 4 to 9 of the ChaCha8 block, where the ChaCha key is zero and the 128bit seed is given as the counter and nonce. ChaCha8 uses only 32bit ARX operations, so its implementation is straightforward on GPUs and processors without 64bit arithmetic. As ChaCha8 is a well-trusted cipher, its outputs can be regarded as uniform. Thus keys of distinct seeds are independent, and keys related to each other appear only with a negligible probability.
+The 192bit melty2 key consists of the words 4 to 9 of the [ChaCha8](https://cr.yp.to/chacha.html) block, where the ChaCha key is zero and the 128bit seed is given as the counter and nonce. ChaCha8 uses only 32bit ARX operations, so its implementation is straightforward on GPUs and processors without 64bit arithmetic. As ChaCha8 is a well-trusted cipher, its outputs can be regarded as uniform. Thus keys of distinct seeds are independent, and keys related to each other appear only with a negligible probability.
 
 ### Kernel
 
