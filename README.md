@@ -120,7 +120,24 @@ The following options are available.
 
 ## Benchmark
 
-<!-- TODO: comparison with Philox and Threefry (Random123), on CPU and GPU -->
+### GPU
+
+The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (RDNA2, gfx1030), compiled by HIP 7.16 (Clang 23.1.4) with `-O3`. Philox is implemented for the benchmark following its specification, and verified by the known-answer test vectors of Random123.
+
+| Benchmark | melty2 | Philox4x32-10 |
+|---|---|---|
+| Fill device memory (2^28 numbers) | 110 Gnum/s (440 GB/s) | 110 Gnum/s (440 GB/s) |
+| Generate in kernel, using all outputs | 242 Gnum/s | 181 Gnum/s |
+| Generate in kernel, one 32bit number per call | 242 Gnum/s | 46.5 Gnum/s |
+| Latency of a dependent chain | 98 cycles | 248 cycles |
+
+* Filling memory is limited by the memory bandwidth for both (`memset` achieves 490 GB/s).
+* When generating numbers in a kernel and consuming them without memory access, melty2 is 1.3 times faster than Philox, even though Philox yields four 32bit numbers per call. This is because 32bit multiplications (especially for the upper half) have a lower throughput than additions, xors and rotations on this GPU, while melty2 uses only ARX operations.
+* When only one 32bit number is needed for each counter (e.g. random access, or a single draw per particle), the other three outputs of Philox are wasted, and melty2 is 5.2 times faster.
+* The latency to obtain a 32bit number, measured by a single thread whose next counter depends on the previous output, is 2.5 times shorter.
+* Deriving a key from a seed in each thread costs about as much as generating 20 numbers, so it is negligible when a thread uses hundreds of numbers or more.
+
+<!-- TODO: CPU benchmark, comparison with Threefry and ARS -->
 
 ## Similar projects
 
