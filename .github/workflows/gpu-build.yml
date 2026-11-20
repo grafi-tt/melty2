@@ -1,0 +1,62 @@
+# Compile check of the GPU implementation (melty2_gpu.h) and its test for CUDA and HIP.
+# GitHub-hosted standard runners have no GPU, so the test is only built, not run.
+name: GPU build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  cuda:
+    runs-on: ubuntu-latest
+    container: nvidia/cuda:12.4.1-devel-ubuntu22.04
+
+    steps:
+    - name: Install build tools
+      # git is needed before checkout, so that actions/checkout can fetch the submodule
+      run: |
+        apt-get update
+        apt-get install -y --no-install-recommends ca-certificates git cmake make g++
+
+    - uses: actions/checkout@v7
+      with:
+        submodules: true
+
+    - name: Configure CMake
+      run: >
+        cmake -S . -B build
+        -DCMAKE_BUILD_TYPE=Release
+        -DMELTY2_GPU_TEST=CUDA
+        -DCMAKE_CUDA_ARCHITECTURES="70;80;90"
+
+    - name: Build
+      run: cmake --build build --parallel
+
+  hip:
+    runs-on: ubuntu-latest
+    container: rocm/dev-ubuntu-22.04:6.2
+
+    steps:
+    - name: Install build tools
+      run: |
+        apt-get update
+        apt-get install -y --no-install-recommends ca-certificates git cmake make g++
+
+    - uses: actions/checkout@v7
+      with:
+        submodules: true
+
+    - name: Configure CMake
+      run: >
+        cmake -S . -B build
+        -DCMAKE_BUILD_TYPE=Release
+        -DMELTY2_GPU_TEST=HIP
+        -DCMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++
+        -DCMAKE_PREFIX_PATH=/opt/rocm
+        -DCMAKE_HIP_ARCHITECTURES="gfx90a;gfx1030;gfx1100"
+
+    - name: Build
+      run: cmake --build build --parallel
