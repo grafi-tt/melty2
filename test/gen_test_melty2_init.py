@@ -3,74 +3,59 @@
 
 import struct
 
-MASK64 = 0xffffffffffffffff
+MASK32 = 0xffffffff
 
 
-def rotl64(x, s):
-    return (x << s | x >> (64 - s)) & MASK64
+def rotl32(x, s):
+    return (x << s | x >> (32 - s)) & MASK32
 
 
-def siphash24(key, msg):
-    """SipHash-2-4 with 64bit output (reference algorithm)."""
-    if len(key) != 16:
-        raise ValueError("key length must be 16")
-    k0, k1 = struct.unpack("<2Q", key)
-    v = [
-        0x736f6d6570736575 ^ k0,
-        0x646f72616e646f6d ^ k1,
-        0x6c7967656e657261 ^ k0,
-        0x7465646279746573 ^ k1,
-    ]
+def chacha_block(key, counter_nonce, rounds):
+    """ChaCha block function (reference algorithm, RFC 8439 section 2.3) returning 16 words."""
+    if len(key) != 8 or len(counter_nonce) != 4:
+        raise ValueError("key must be 8 words and counter_nonce must be 4 words")
+    initial = list(struct.unpack("<4L", b"expand 32-byte k")) + list(key) + list(counter_nonce)
+    x = list(initial)
 
-    def sipround():
-        v[0] = (v[0] + v[1]) & MASK64
-        v[1] = rotl64(v[1], 13) ^ v[0]
-        v[0] = rotl64(v[0], 32)
-        v[2] = (v[2] + v[3]) & MASK64
-        v[3] = rotl64(v[3], 16) ^ v[2]
-        v[0] = (v[0] + v[3]) & MASK64
-        v[3] = rotl64(v[3], 21) ^ v[0]
-        v[2] = (v[2] + v[1]) & MASK64
-        v[1] = rotl64(v[1], 17) ^ v[2]
-        v[2] = rotl64(v[2], 32)
+    def qround(a, b, c, d):
+        x[a] = (x[a] + x[b]) & MASK32
+        x[d] = rotl32(x[d] ^ x[a], 16)
+        x[c] = (x[c] + x[d]) & MASK32
+        x[b] = rotl32(x[b] ^ x[c], 12)
+        x[a] = (x[a] + x[b]) & MASK32
+        x[d] = rotl32(x[d] ^ x[a], 8)
+        x[c] = (x[c] + x[d]) & MASK32
+        x[b] = rotl32(x[b] ^ x[c], 7)
 
-    tail_len = len(msg) % 8
-    blocks = [struct.unpack_from("<Q", msg, i)[0] for i in range(0, len(msg) - tail_len, 8)]
-    last = (len(msg) & 0xff) << 56
-    for i, c in enumerate(msg[len(msg) - tail_len:]):
-        last |= c << (8 * i)
-    for m in blocks + [last]:
-        v[3] ^= m
-        sipround()
-        sipround()
-        v[0] ^= m
-    v[2] ^= 0xff
-    for _ in range(4):
-        sipround()
-    return v[0] ^ v[1] ^ v[2] ^ v[3]
+    for _ in range(rounds // 2):
+        qround(0, 4, 8, 12)
+        qround(1, 5, 9, 13)
+        qround(2, 6, 10, 14)
+        qround(3, 7, 11, 15)
+        qround(0, 5, 10, 15)
+        qround(1, 6, 11, 12)
+        qround(2, 7, 8, 13)
+        qround(3, 4, 9, 14)
+    return [(a + b) & MASK32 for a, b in zip(x, initial)]
 
 
-def check_siphash24():
-    # test vectors from the reference implementation (key = 00 01 .. 0f, msg = 00 01 .. (n-1))
-    key = bytes(range(16))
-    expected = {
-        0: 0x726fdb47dd0e0e31,
-        8: 0x93f5f5799a932462,
-        15: 0xa129ca6149be45e5,
-    }
-    for n, e in expected.items():
-        if siphash24(key, bytes(range(n))) != e:
-            raise ValueError(f"siphash24 test vector failed for length {n}")
+def check_chacha():
+    # RFC 8439 section 2.3.2: key 00 01 .. 1f, counter 1, nonce 00 00 00 09 00 00 00 4a 00 00 00 00
+    key = struct.unpack("<8L", bytes(range(32)))
+    counter_nonce = (1,) + struct.unpack("<3L", bytes.fromhex("000000090000004a00000000"))
+    out = struct.pack("<16L", *chacha_block(key, counter_nonce, 20))
+    if out[:16] != bytes.fromhex("10f1e7e4d13b5915500fdd1fa32071c4"):
+        raise ValueError("ChaCha20 test vector failed")
+    # ChaCha8 keystream for the all-zero 256bit key and the all-zero IV
+    out = struct.pack("<16L", *chacha_block([0] * 8, [0] * 4, 8))
+    if out[:16] != bytes.fromhex("3e00ef2f895f40d67f5bb8e81f09a5a1"):
+        raise ValueError("ChaCha8 test vector failed")
 
 
 def derive_key(seed):
+    """Words 4..9 of the ChaCha8 block with the zero key and the seed as the counter and nonce."""
     check_seed(seed)
-    sip_key = struct.pack("<4L", *seed)
-    key = []
-    for i in range(3):
-        h = siphash24(sip_key, struct.pack("<Q", i))
-        key += [h & 0xffffffff, h >> 32]
-    return key
+    return chacha_block([0] * 8, seed, 8)[4:10]
 
 
 def check_seed(seed):
@@ -82,7 +67,7 @@ def check_seed(seed):
 
 
 def gen_tests(f):
-    check_siphash24()
+    check_chacha()
     cases = [
         [0, 0, 0, 0],
         [1, 2, 3, 4],

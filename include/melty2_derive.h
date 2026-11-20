@@ -2,11 +2,12 @@
 #define MELTY2_MELTY2_DERIVE_H_
 
 /*
- * Key derivation by SipHash-2-4 (Aumasson & Bernstein, 2012).
+ * Key derivation by the ChaCha8 block function (Bernstein, 2008).
  *
- * The 128bit seed is used as the SipHash key, and the 192bit melty2 key is
- * the concatenation of SipHash-2-4(seed, m) for the 8 bytes messages
- * m = 0, 1, 2 (as little-endian 64bit integers).
+ * The ChaCha key (words 4..11 of the state) is zero, and the 128bit seed is
+ * put on the counter and nonce (words 12..15). The 192bit melty2 key is the
+ * words 4..9 of the output block. As the initial values of these words are
+ * the zero key, the final addition of the input block is omitted.
  *
  * As the outputs are uniform, keys of distinct seeds are independent, and
  * related keys of melty2 (whose difference cancels with that of counter)
@@ -22,75 +23,50 @@
 #define MELTY2_INTERNAL_FUNC static inline
 #endif
 
-MELTY2_INTERNAL_FUNC void melty2_internal_sipround(uint64_t v[4]) {
-    v[0] += v[1];
-    v[1] = v[1] << 13 | v[1] >> 51;
-    v[1] ^= v[0];
-    v[0] = v[0] << 32 | v[0] >> 32;
-    v[2] += v[3];
-    v[3] = v[3] << 16 | v[3] >> 48;
-    v[3] ^= v[2];
-    v[0] += v[3];
-    v[3] = v[3] << 21 | v[3] >> 43;
-    v[3] ^= v[0];
-    v[2] += v[1];
-    v[1] = v[1] << 17 | v[1] >> 47;
-    v[1] ^= v[2];
-    v[2] = v[2] << 32 | v[2] >> 32;
-}
-
-/* SipHash-2-4 with 64bit output for the 8 bytes message m (given as little-endian integer) */
-MELTY2_INTERNAL_FUNC uint64_t melty2_internal_siphash24_u64(uint64_t key0, uint64_t key1, uint64_t m) {
-    uint64_t v[4] = {
-        UINT64_C(0x736f6d6570736575),
-        UINT64_C(0x646f72616e646f6d),
-        UINT64_C(0x6c7967656e657261),
-        UINT64_C(0x7465646279746573),
-    };
-    v[0] ^= key0;
-    v[1] ^= key1;
-    v[2] ^= key0;
-    v[3] ^= key1;
-
-    /* the message block */
-    v[3] ^= m;
-    for (int i = 0; i < 2; ++i) {
-        melty2_internal_sipround(v);
-    }
-    v[0] ^= m;
-
-    /* the last block, which only has the message length (8) as there are no rest bytes */
-    const uint64_t b = UINT64_C(8) << 56;
-    v[3] ^= b;
-    for (int i = 0; i < 2; ++i) {
-        melty2_internal_sipround(v);
-    }
-    v[0] ^= b;
-
-    /* finalization */
-    v[2] ^= 0xff;
-    for (int i = 0; i < 4; ++i) {
-        melty2_internal_sipround(v);
-    }
-    return v[0] ^ v[1] ^ v[2] ^ v[3];
+MELTY2_INTERNAL_FUNC void melty2_internal_chacha_qround(uint32_t s[16], int a, int b, int c, int d) {
+    s[a] += s[b];
+    s[d] ^= s[a];
+    s[d] = s[d] << 16 | s[d] >> 16;
+    s[c] += s[d];
+    s[b] ^= s[c];
+    s[b] = s[b] << 12 | s[b] >> 20;
+    s[a] += s[b];
+    s[d] ^= s[a];
+    s[d] = s[d] << 8 | s[d] >> 24;
+    s[c] += s[d];
+    s[b] ^= s[c];
+    s[b] = s[b] << 7 | s[b] >> 25;
 }
 
 /* Store the 192bit key derived from the 128bit seed to v[0..5] */
 MELTY2_INTERNAL_FUNC void melty2_internal_derive_key(uint32_t v[6], uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3) {
-    /* SipHash key as little-endian 64bit integers of the 16 bytes seed0..seed3 */
-    const uint64_t key0 = (uint64_t)seed0 | (uint64_t)seed1 << 32;
-    const uint64_t key1 = (uint64_t)seed2 | (uint64_t)seed3 << 32;
+    /* "expand 32-byte k" as little-endian 32bit integers */
+    const uint32_t sigma0 = (uint32_t)'e' | (uint32_t)'x' << 8 | (uint32_t)'p' << 16 | (uint32_t)'a' << 24;
+    const uint32_t sigma1 = (uint32_t)'n' | (uint32_t)'d' << 8 | (uint32_t)' ' << 16 | (uint32_t)'3' << 24;
+    const uint32_t sigma2 = (uint32_t)'2' | (uint32_t)'-' << 8 | (uint32_t)'b' << 16 | (uint32_t)'y' << 24;
+    const uint32_t sigma3 = (uint32_t)'t' | (uint32_t)'e' << 8 | (uint32_t)' ' << 16 | (uint32_t)'k' << 24;
+    uint32_t s[16] = {
+        sigma0, sigma1, sigma2, sigma3,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        seed0, seed1, seed2, seed3,
+    };
 
-    /* written without a loop, so that GPU compilers keep the key in registers */
-    const uint64_t h0 = melty2_internal_siphash24_u64(key0, key1, 0);
-    const uint64_t h1 = melty2_internal_siphash24_u64(key0, key1, 1);
-    const uint64_t h2 = melty2_internal_siphash24_u64(key0, key1, 2);
-    v[0] = (uint32_t)h0;
-    v[1] = (uint32_t)(h0 >> 32);
-    v[2] = (uint32_t)h1;
-    v[3] = (uint32_t)(h1 >> 32);
-    v[4] = (uint32_t)h2;
-    v[5] = (uint32_t)(h2 >> 32);
+    /* 8 rounds, as 4 double rounds of column rounds and diagonal rounds */
+    for (int i = 0; i < 4; ++i) {
+        melty2_internal_chacha_qround(s, 0, 4, 8, 12);
+        melty2_internal_chacha_qround(s, 1, 5, 9, 13);
+        melty2_internal_chacha_qround(s, 2, 6, 10, 14);
+        melty2_internal_chacha_qround(s, 3, 7, 11, 15);
+        melty2_internal_chacha_qround(s, 0, 5, 10, 15);
+        melty2_internal_chacha_qround(s, 1, 6, 11, 12);
+        melty2_internal_chacha_qround(s, 2, 7, 8, 13);
+        melty2_internal_chacha_qround(s, 3, 4, 9, 14);
+    }
+
+    for (int i = 0; i < 6; ++i) {
+        v[i] = s[i + 4];
+    }
 }
 
 #endif  /* MELTY2_MELTY2_DERIVE_H_ */

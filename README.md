@@ -42,7 +42,7 @@ void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out);
 void melty2_rawblkgen(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
 ```
 
-`melty2_init` derives a 192bit key from a 128bit seed by SipHash-2-4, so even similar seeds (e.g. thread IDs) yield unrelated keys. `melty2_gen` stores the outputs for counters `ctr`, `ctr + 1`, ..., `ctr + len - 1` to `out`; the counter wraps around modulo 2^64. `melty2_rawblkgen` is the low-level function generating a block of `MELTY2_RAWBLKLEN` (32) outputs, where `ctr_lo` must not exceed `2^32 - MELTY2_RAWBLKLEN`.
+`melty2_init` derives a 192bit key from a 128bit seed by ChaCha8, so even similar seeds (e.g. thread IDs) yield unrelated keys. `melty2_gen` stores the outputs for counters `ctr`, `ctr + 1`, ..., `ctr + len - 1` to `out`; the counter wraps around modulo 2^64. `melty2_rawblkgen` is the low-level function generating a block of `MELTY2_RAWBLKLEN` (32) outputs, where `ctr_lo` must not exceed `2^32 - MELTY2_RAWBLKLEN`.
 
 ### C++
 
@@ -66,7 +66,7 @@ The counter can be read and set by `gen.ctr()` and `gen.ctr(new_ctr)`. Jumping a
 
 `melty2_gpu.h` is a header-only implementation for CUDA and HIP. It doesn't require linking the library, and its outputs are identical to those of the CPU library for the same seed and counter.
 
-The simplest way is that each thread derives its own key from a seed containing the thread ID. The key derivation costs three SipHash-2-4 evaluations once per thread, and then each number costs only 20 ARX steps.
+The simplest way is that each thread derives its own key from a seed containing the thread ID. The key derivation costs one ChaCha8 block once per thread, and then each number costs only 20 ARX steps.
 
 ```cpp
 #include "melty2_gpu.h"
@@ -135,7 +135,7 @@ The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (R
 * When generating numbers in a kernel and consuming them without memory access, melty2 is 1.3 times faster than Philox, even though Philox yields four 32bit numbers per call. This is because 32bit multiplications (especially for the upper half) have a lower throughput than additions, xors and rotations on this GPU, while melty2 uses only ARX operations.
 * When only one 32bit number is needed for each counter (e.g. random access, or a single draw per particle), the other three outputs of Philox are wasted, and melty2 is 5.2 times faster.
 * The latency to obtain a 32bit number, measured by a single thread whose next counter depends on the previous output, is 2.5 times shorter.
-* Deriving a key from a seed in each thread costs about as much as generating 20 numbers, so it is negligible when a thread uses hundreds of numbers or more.
+* Deriving a key from a seed in each thread costs about as much as generating 10 numbers, so it is negligible when a thread uses hundreds of numbers or more.
 
 <!-- TODO: CPU benchmark, comparison with Threefry and ARS -->
 
@@ -164,7 +164,7 @@ The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (R
 
 ### Key derivation
 
-The 128bit seed is used as the SipHash-2-4 key, and the 192bit melty2 key is the concatenation of SipHash-2-4 outputs for the messages 0, 1 and 2. As the outputs are uniform, keys of distinct seeds are independent, and keys related to each other (whose difference cancels with that of the counter) appear only with a negligible probability.
+The 192bit melty2 key is the words 4 to 9 of the ChaCha8 block, where the ChaCha key is zero and the 128bit seed is given as the counter and nonce (words 12 to 15). As the initial values of these output words are the zero key, the final addition of ChaCha is omitted. ChaCha8 uses only 32bit ARX operations like the kernel, so it is cheap on GPUs and processors without 64bit arithmetic. As the outputs are uniform, keys of distinct seeds are independent, and keys related to each other (whose difference cancels with that of the counter) appear only with a negligible probability.
 
 ### Kernel
 

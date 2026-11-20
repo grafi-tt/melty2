@@ -22,7 +22,7 @@ typedef struct melty2_key_ {
  * @param seed1    Part of 128bit seed.
  * @param seed2    Part of 128bit seed.
  * @param seed3    Part of 128bit seed.
- * @note  The 192bit key is derived from the seed by SipHash-2-4.
+ * @note  The 192bit key is derived from the seed by ChaCha8.
  */
 void melty2_init(melty2_key *key, uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3);
 
