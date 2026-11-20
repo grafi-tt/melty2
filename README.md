@@ -57,23 +57,114 @@ The counter is given by its lower and upper 32bit. As the carry from the lower t
 
 ### C++
 
-`melty2.hpp` provides `melty2::generator`, which satisfies the UniformRandomBitGenerator requirements, so it can be used with the distributions of `<random>`.
+`melty2.hpp` provides `melty2::generator`, which satisfies the UniformRandomBitGenerator requirements.
 
 ```cpp
+#include <cstdint>
 #include <iostream>
 #include <random>
 #include "melty2.hpp"
 
 int main() {
+    /* 128bit seed as four 32bit integers, lower ones first */
     melty2::generator gen{{3141592653u, 2718281828u, 123456789u, 42u}};
+
+    /* usable with the distributions of <random> */
     std::uniform_real_distribution<double> dist{0.0, 1.0};
     std::cout << dist(gen) << std::endl;
+
+    /* 64bit seed; the same as the 128bit seed {(uint32_t)seed, seed >> 32, 0, 0} */
+    melty2::generator gen64{UINT64_C(0x0123456789abcdef)};
+
+    /* 128bit seed as two 64bit integers, lower one first; the same as melty2_init_u64 */
+    auto gen128 = melty2::generator::from_u64_seeds(UINT64_C(0x0123456789abcdef), UINT64_C(0xfedcba9876543210));
+
+    /* the initial counter can be given as the last argument of any of the above (0 by default) */
+    melty2::generator gen_at{UINT64_C(42), 1000};
+
+    /* the counter can be read and set; jumping ahead costs nothing more than generating one block */
+    std::cout << gen_at.ctr() << std::endl;  /* prints 1000 */
+    gen_at.ctr(UINT64_C(1) << 40);
+
+    std::cout << gen64() << ' ' << gen128() << ' ' << gen_at() << std::endl;
 }
 ```
 
-A generator can also be constructed from a 64bit seed as `melty2::generator gen{seed}`, which is the same as the 128bit seed `{(uint32_t)seed, seed >> 32, 0, 0}`, or from two 64bit integers as `melty2::generator::from_u64_seeds(seed0, seed1)`, which is the same as `melty2_init_u64`. The counter is given as the optional last argument of them, and can be read and set by `gen.ctr()` and `gen.ctr(new_ctr)`. Jumping ahead costs nothing more than generating one block.
+### GPU (CUDA and HIP)
 
-### Independent generators for tests
+`melty2_gpu.h` is a header-only implementation for CUDA and HIP. It doesn't require linking the library, and its outputs are identical to those of the CPU library for the same seed and counter.
+
+To fill device memory with random numbers, use `fill`, which is the GPU counterpart of `melty2_gen`.
+
+```cpp
+#include "melty2_gpu.h"
+
+const melty2_key key = melty2::gpu::init(seed0, seed1, seed2, seed3);
+/* launch a kernel storing the numbers for counters 0, 1, ..., n - 1 to the device memory out */
+auto err = melty2::gpu::fill(key, 0, n, out);  /* cudaSuccess or hipSuccess if launched */
+```
+
+It runs asynchronously on the stream given as the optional last argument, and returns the error of the kernel launch. The types of the stream and the error are `cudaStream_t` and `cudaError_t` for CUDA, or `hipStream_t` and `hipError_t` for HIP.
+
+To generate numbers in your own kernel, the simplest way is that all threads share a key, and each thread uses its own range of counters, e.g. with the thread ID in the upper 32bit of the counter. Each number costs only 20 ARX steps.
+
+```cpp
+#include "melty2_gpu.h"
+
+__global__ void simulate(melty2_key key, float *out) {
+    const uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    /* the upper 32bit of the counter is the thread ID, and the lower 32bit counts the numbers of the thread */
+    melty2::gpu::generator gen(key, (uint64_t)tid << 32);
+    float sum = 0.0f;
+    for (int i = 0; i < 100; ++i) {
+        sum += (gen() >> 8) * (1.0f / 16777216.0f);  /* uniform in [0, 1) */
+    }
+    out[tid] = sum;
+}
+
+/* on the host: derive one key, and pass it to the kernel */
+const melty2_key key = melty2::gpu::init(seed0, seed1, seed2, seed3);
+simulate<<<blocks, threads>>>(key, out);
+```
+
+If the counter is given by the index of a work item instead of the thread ID, e.g. `melty2::gpu::gen(key, (uint64_t)item << 32 | i)` for the `i`-th number of the work item `item`, the result doesn't depend on how the work items are assigned to threads.
+
+Alternatively, each thread can derive its own key from a seed containing the thread ID, e.g. `melty2::gpu::generator gen(seed, tid, 0, 0)`. This is useful when it is hard to assign counter ranges in advance, e.g. when the work is divided among threads irregularly, or the division changes during the program. In such cases, a seed containing the ID of a logical unit (such as a particle or a task) instead of the thread ID gives each unit its own stream regardless of the division, and the whole 64bit counter remains available for the numbers of the unit. The key derivation costs one ChaCha8 block once per thread, which is about as much as generating 10 numbers.
+
+It provides the following functions and class in the namespace `melty2::gpu`, all of which are callable from both host and device code except `fill`.
+
+```cpp
+melty2_key init(uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3);  /* same as melty2_init */
+melty2_key init_u64(uint64_t seed0, uint64_t seed1);  /* same as melty2_init_u64 */
+uint32_t gen(const melty2_key &key, uint64_t ctr);  /* the number for the counter */
+class generator;  /* holds a key and a counter; constructed from a key, four 32bit seeds or a 64bit seed */
+error_t fill(const melty2_key &key, uint64_t ctr, size_t len, uint32_t *out, stream_t stream = 0);
+```
+
+In a CMake project, link the `melty2_gpu` target, which only adds the include directory.
+
+### Build
+
+```sh
+git clone --recursive https://github.com/grafi-tt/melty2.git
+cd melty2
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build
+cmake --install build --prefix /usr/local
+```
+
+Then use it from another CMake project by `find_package(melty2)` and `target_link_libraries(your_target PRIVATE melty2)` (or `melty2_gpu` for the GPU header), or add this repository by `add_subdirectory`.
+
+The following options are available.
+
+* `BUILD_SHARED_LIBS` (default `OFF`): build a shared library.
+* `MELTY2_ENABLE_CPU_FEATURES` (default `ON`): select the SIMD implementation at runtime by [cpu_features](https://github.com/google/cpu_features). If disabled, only the generic implementation is built.
+* `MELTY2_ENABLE_TEST` (default `ON`): build tests.
+* `MELTY2_ENABLE_BIGCRUSH` (default `OFF`): build the BigCrush runner, which requires TestU01.
+* `MELTY2_GPU_TEST` (default empty): build the GPU test by `CUDA` or `HIP`, which requires CMake 3.21. Set `CMAKE_CUDA_ARCHITECTURES` or `CMAKE_HIP_ARCHITECTURES` as needed.
+
+### TIPS: Independent generators for tests
 
 A counter-based generator makes it easy to give every test its own independent random numbers while keeping them reproducible. Hash the test name into a part of the 128bit seed, and put a global seed into the rest.
 
@@ -103,63 +194,6 @@ auto rng = test_rng(global_seed, "sort/random_ints");
 * Each test gets numbers unrelated to those of the other tests. It avoids the common pitfall of initializing a generator with the same seed at the beginning of every test, where all tests silently consume the same random sequence.
 * The numbers of a test don't depend on which tests run before it, or on the order or the parallelism of the test runner. So a failed test can be reproduced alone.
 * Changing the global seed (e.g. by an environment variable or a command line option) runs all the tests with different random inputs, and the seed printed on failure reproduces it.
-
-### GPU (CUDA and HIP)
-
-`melty2_gpu.h` is a header-only implementation for CUDA and HIP. It doesn't require linking the library, and its outputs are identical to those of the CPU library for the same seed and counter.
-
-The simplest way is that each thread derives its own key from a seed containing the thread ID. The key derivation costs one ChaCha8 block once per thread, and then each number costs only 20 ARX steps.
-
-```cpp
-#include "melty2_gpu.h"
-
-__global__ void simulate(uint32_t seed, float *out) {
-    const uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-    melty2::gpu::generator gen(seed, tid, 0, 0);  /* 128bit seed (seed, tid, 0, 0) */
-    float sum = 0.0f;
-    for (int i = 0; i < 100; ++i) {
-        sum += (gen() >> 8) * (1.0f / 16777216.0f);  /* uniform in [0, 1) */
-    }
-    out[tid] = sum;
-}
-```
-
-Alternatively, threads can share a key and use disjoint counters, e.g. `melty2::gpu::gen(key, (uint64_t)item << 32 | i)` for the `i`-th number of the work item `item`. This avoids the key derivation in each thread, and the result doesn't depend on how the work items are assigned to threads.
-
-It provides the following functions and class in the namespace `melty2::gpu`, all of which are callable from both host and device code except `fill`.
-
-```cpp
-melty2_key init(uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3);  /* same as melty2_init */
-melty2_key init_u64(uint64_t seed0, uint64_t seed1);  /* same as melty2_init_u64 */
-uint32_t gen(const melty2_key &key, uint64_t ctr);  /* the number for the counter */
-class generator;  /* holds a key and a counter; constructed from a key, four 32bit seeds or a 64bit seed */
-error_t fill(const melty2_key &key, uint64_t ctr, size_t len, uint32_t *out, stream_t stream = 0);
-```
-
-`fill` launches a kernel that stores the numbers for counters `ctr`, ..., `ctr + len - 1` to the device memory `out`, which is the GPU counterpart of `melty2_gen`. `error_t` and `stream_t` are `cudaError_t` and `cudaStream_t` for CUDA, or `hipError_t` and `hipStream_t` for HIP.
-
-In a CMake project, link the `melty2_gpu` target, which only adds the include directory.
-
-### Build
-
-```sh
-git clone --recursive https://github.com/grafi-tt/melty2.git
-cd melty2
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-ctest --test-dir build
-cmake --install build --prefix /usr/local
-```
-
-Then use it from another CMake project by `find_package(melty2)` and `target_link_libraries(your_target PRIVATE melty2)` (or `melty2_gpu` for the GPU header), or add this repository by `add_subdirectory`.
-
-The following options are available.
-
-* `BUILD_SHARED_LIBS` (default `OFF`): build a shared library.
-* `MELTY2_ENABLE_CPU_FEATURES` (default `ON`): select the SIMD implementation at runtime by [cpu_features](https://github.com/google/cpu_features). If disabled, only the generic implementation is built.
-* `MELTY2_ENABLE_TEST` (default `ON`): build tests.
-* `MELTY2_ENABLE_BIGCRUSH` (default `OFF`): build the BigCrush runner, which requires TestU01.
-* `MELTY2_GPU_TEST` (default empty): build the GPU test by `CUDA` or `HIP`, which requires CMake 3.21. Set `CMAKE_CUDA_ARCHITECTURES` or `CMAKE_HIP_ARCHITECTURES` as needed.
 
 ## Benchmark
 
