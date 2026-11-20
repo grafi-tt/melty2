@@ -93,10 +93,10 @@ void test_ctor_ctr() {
     test_assert(result == expected);
     test_assert(gen.ctr() == c0 + N);
 
-    auto gen_key = melty2::generator::from_key(key, c0);
-    test_assert(gen_key.ctr() == c0);
+    auto gen_u64 = melty2::generator::from_u64_seeds(UINT64_C(2) << 32 | 1, UINT64_C(4) << 32 | 3, c0);
+    test_assert(gen_u64.ctr() == c0);
     for (size_t i = 0; i < N; ++i) {
-        result[i] = gen_key();
+        result[i] = gen_u64();
     }
     test_assert(result == expected);
 }
@@ -127,7 +127,7 @@ void test_init_u64() {
     melty2_init(&key_u32, 0x76543210u, 0xfedcba98u, 0x4b5a6978u, 0x0f1e2d3cu);
     test_assert(std::equal(key.v_, key.v_ + 6, key_u32.v_));
 
-    auto gen = melty2::generator::from_key(key, 3);
+    auto gen = melty2::generator::from_u64_seeds(s0, s1, 3);
     melty2::generator gen_u32{{0x76543210u, 0xfedcba98u, 0x4b5a6978u, 0x0f1e2d3cu}, 3};
     test_assert(gen() == gen_u32());
 }

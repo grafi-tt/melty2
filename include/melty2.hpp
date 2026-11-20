@@ -22,9 +22,10 @@ public:
     }
     generator() noexcept : generator{uint64_t{0}, 0} {}
 
-    /* generator from a derived key (e.g. by melty2_init_u64), which avoids deriving it again */
-    static generator from_key(const melty2_key &key, uint64_t ctr = 0) noexcept {
-        return generator{from_key_tag_{}, key, ctr};
+    /* the 128bit seed is seed0 | seed1 << 64, as melty2_init_u64 */
+    static generator from_u64_seeds(uint64_t seed0, uint64_t seed1, uint64_t ctr = 0) noexcept {
+        return generator{{static_cast<uint32_t>(seed0), static_cast<uint32_t>(seed0 >> 32),
+                          static_cast<uint32_t>(seed1), static_cast<uint32_t>(seed1 >> 32)}, ctr};
     }
 
     uint32_t operator()() noexcept {
@@ -50,12 +51,6 @@ public:
     }
 
 private:
-    /* a tag, so that the constructor doesn't make generator{{...}} ambiguous */
-    struct from_key_tag_ {};
-    generator(from_key_tag_, const melty2_key &key, uint64_t ctr) noexcept : key_(key) {
-        this->ctr(ctr);
-    }
-
     melty2_key key_;
     uint64_t ctr_;
     uint32_t idx_;

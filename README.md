@@ -61,7 +61,7 @@ int main() {
 }
 ```
 
-A generator can also be constructed from a 64bit seed as `melty2::generator gen{seed}`, which is the same as the 128bit seed `{seed & 0xffffffff, seed >> 32, 0, 0}`, or from a key derived by `melty2_init_u64` as `melty2::generator::from_key(key)`. The counter is given as the optional last argument of them, and can be read and set by `gen.ctr()` and `gen.ctr(new_ctr)`. Jumping ahead costs nothing more than generating one block.
+A generator can also be constructed from a 64bit seed as `melty2::generator gen{seed}`, which is the same as the 128bit seed `{seed & 0xffffffff, seed >> 32, 0, 0}`, or from two 64bit integers as `melty2::generator::from_u64_seeds(seed0, seed1)`, which is the same as `melty2_init_u64`. The counter is given as the optional last argument of them, and can be read and set by `gen.ctr()` and `gen.ctr(new_ctr)`. Jumping ahead costs nothing more than generating one block.
 
 ### Independent generators for tests
 
@@ -83,9 +83,7 @@ constexpr uint64_t fnv1a64(std::string_view s) {
 }
 
 melty2::generator test_rng(uint64_t global_seed, std::string_view test_name) {
-    melty2_key key;
-    melty2_init_u64(&key, global_seed, fnv1a64(test_name));
-    return melty2::generator::from_key(key);
+    return melty2::generator::from_u64_seeds(global_seed, fnv1a64(test_name));
 }
 
 /* in each test */
