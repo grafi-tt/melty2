@@ -195,6 +195,29 @@ auto rng = test_rng(global_seed, "sort/random_ints");
 * The numbers of a test don't depend on which tests run before it, or on the order or the parallelism of the test runner. So a failed test can be reproduced alone.
 * Changing the global seed (e.g. by an environment variable or a command line option) runs all the tests with different random inputs, and the seed printed on failure reproduces it.
 
+## Output stability
+
+The outputs for a given seed and counter are a part of the specification. They don't change within a major version, so a result can be reproduced by any build of the same major version on any platform. Any change of the outputs, e.g. by a change of the kernel or the key derivation (including rejecting weak keys in the future), is made only in a new major version. The development versions before 1.0.0 produce different outputs.
+
+The following known-answer vectors are for checking other implementations and ports. Seeds are given as the arguments of `melty2_init`, and keys are the six 32bit words `v[0..5]` described in [Algorithm detail](#algorithm-detail).
+
+```
+seed 00000000 00000000 00000000 00000000
+key  c30e842c 3b7f9ace 88e11b18 1e1a71ef 72e14c98 416f21b9
+  counter 0, 1, ..., 7          008ae4d0 ca526536 795aec72 ae2f853d 0efca306 d9ddd678 4e83cc9f d53cc98f
+  counter 0xffffffff            0ae8a21f
+  counter 0x100000000           d5ecaa16
+  counter 0xffffffffffffffff    f82ad70e
+
+seed 00000001 00000002 00000003 00000004
+key  1e444cd1 fbc46f8f b288d91b 665b68cf 26d92a11 f1beebf6
+  counter 0, 1, 2, 3            4072f684 02971477 fddc8798 d376f585
+
+seed 89abcdef 01234567 fedcba98 76543210   (melty2_init_u64 with 0x0123456789abcdef, 0x76543210fedcba98)
+key  2a333ca4 8f796a69 04a1065b 8458d96d 329e894d 9387f08e
+  counter 0, 1, 2, 3            4b0d0558 5663812d 79a140c2 c6e3bf39
+```
+
 ## Benchmark
 
 ### GPU
