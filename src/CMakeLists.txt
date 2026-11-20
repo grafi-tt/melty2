@@ -86,6 +86,13 @@ endif()
 get_target_property(melty2_use_pic_ melty2 POSITION_INDEPENDENT_CODE)
 set_target_properties(${MELTY2_RAWBLKGEN_LIBS} PROPERTIES POSITION_INDEPENDENT_CODE ${melty2_use_pic_})
 
-install(TARGETS melty2 EXPORT melty2-config)
+# Header-only GPU implementation (melty2_gpu.h) for CUDA and HIP
+add_library(melty2_gpu INTERFACE)
+target_include_directories(melty2_gpu INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+  $<INSTALL_INTERFACE:include>
+)
+
+install(TARGETS melty2 melty2_gpu EXPORT melty2-config)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/ DESTINATION include)
 install(EXPORT melty2-config DESTINATION lib/cmake/melty2)
