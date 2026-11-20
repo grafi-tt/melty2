@@ -10,7 +10,7 @@
 * **Tiny footprint.** Only the 192bit key and the counter have to be held, and the counter is often derived from indices already at hand (e.g. particle ID and time step). Taking a snapshot or a checkpoint of the generator is just saving the counter.
 * **No warm-up.** A fresh key yields good outputs from the first counter.
 
-**It uses only 32bit additions, xors and rotations (ARX), and no multiplication.** One output costs only 20 ARX steps, so it runs efficiently on GPUs and on processors without an integer multiplier. The steps are almost sequential, and multiple outputs are computed in parallel by SIMD lanes or GPU threads, which also suits accelerators whose cores are not superscalar. The C library dispatches SIMD implementations (AVX-512, AVX2, SSE2, SVE and NEON) at runtime, and a header-only implementation for CUDA and HIP is also provided. The statistical quality is checked by PractRand, TestU01 BigCrush and the Hamming-weight dependency test, including keys with structure (see [Algorithm detail](#algorithm-detail)).
+**It uses only 32bit additions, xors and rotations (ARX), and no multiplication.** One output costs only 20 ARX steps, so it runs efficiently on GPUs and on processors without an integer multiplier. The C library dispatches SIMD implementations (AVX-512, AVX2, SSE2, SVE and NEON) at runtime, and a header-only implementation for CUDA and HIP is also provided. The statistical quality is checked by PractRand, TestU01 BigCrush and the Hamming-weight dependency test, including keys with structure (see [Algorithm detail](#algorithm-detail)).
 
 Its name derives from *melting* in Isaac Asimov's novel *The Gods Themselves*, where three beings of the para-universe merge into one. Melty2 merges six 32bit words, twice as many as the three beings.
 
@@ -176,14 +176,23 @@ The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (R
 
 ### Counter-based generators
 
-* [Random123](https://www.deshawresearch.com/resources_random123.html) (Philox, Threefry, ARS)
+* [Random123](https://dl.acm.org/doi/10.1145/2063384.2063405) (Philox, Threefry, ARS)
 
   Philox is excellent, but it relies on 32x32→64bit multiplications, and produces 128bit per call while the latency to obtain a 32bit output is long. Threefry is ARX-based, derived from the Threefish block cipher used in the Skein hash function, but has a 256bit or 128bit state and more rounds. ARS uses 5 rounds of AES with a simplified key schedule, which is very fast with AES instructions (AES-NI, ARMv8 Crypto Extension), but they are unavailable on GPUs and many accelerators.
 
+  Philox and Threefry are widely used, e.g. Philox in cuRAND, PyTorch and NumPy, and Threefry as the default of JAX.
+
+* Weyl sequence based generators: [SplitMix64](https://dl.acm.org/doi/10.1145/2660193.2660195), [rapidrand](https://docs.rs/rapidrand/latest/rapidrand/)
+
+  They compute the `n`-th number as `mix(seed + n * gamma)`, so they allow random access like counter-based generators, and they are very fast on CPUs. However, the mixing relies on 64bit (or 64x64→128bit for rapidrand) multiplications. Moreover, when streams differ only by the seed, they are offsets on a single cycle of length 2^64, so the streams of many threads may overlap.
+
 * [Squares](https://arxiv.org/abs/2004.06278)
+
+  A counter-based generator based on the middle-square method, which relies on 64bit multiplications.
+
 * ChaCha (as used by e.g. [rand_chacha](https://crates.io/crates/rand_chacha))
 
-<!-- TODO: more -->
+  ChaCha with 8, 12 or 20 rounds is a cryptographically strong counter-based generator. As one block yields 512bit, it is efficient for bulk generation, but costly when only a single 32bit number is needed.
 
 ### Other fast generators
 
@@ -193,11 +202,17 @@ The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (R
 
 ## Algorithm detail
 
-<!-- TODO: elaborate -->
+### What is a counter-based generator
+
+Most generators, such as Mersenne Twister, xoshiro and PCG, hold a state, and produce each number by updating the state and applying an output function to it. The update is cheap, but the numbers must be produced in sequence. To use them in parallel, the stream has to be split, for example by jump-ahead functions, and each thread has to hold its own state.
+
+A counter-based generator (Salmon et al., [*Parallel random numbers: as easy as 1, 2, 3*](https://dl.acm.org/doi/10.1145/2063384.2063405), SC'11) instead computes the `n`-th number directly as `f(key, n)`, where `f` is a fixed mixing function like a reduced-round block cipher. The key selects a stream, and the counter selects a position in it. Nothing is updated, so an arbitrary number of threads can compute any of the numbers independently.
+
+The price is that every number has to go through the whole mixing function, while a state-based generator mixes its state only a little per number. So the mixing function must be designed to be both cheap and strong enough: the outputs for counters close to each other (differing in a few bits, or by a small integer) must look unrelated. Melty2 achieves this with 20 ARX steps for each 32bit number, and the counter-differential metric described below measures exactly this property.
 
 ### Key derivation
 
-The 192bit melty2 key is the words 4 to 9 of the ChaCha8 block, where the ChaCha key is zero and the 128bit seed is given as the counter and nonce (words 12 to 15). As the initial values of these output words are the zero key, the final addition of ChaCha is omitted. ChaCha8 uses only 32bit ARX operations like the kernel, so it is cheap on GPUs and processors without 64bit arithmetic. As the outputs are uniform, keys of distinct seeds are independent, and keys related to each other (whose difference cancels with that of the counter) appear only with a negligible probability.
+The 192bit melty2 key consists of the words 4 to 9 of the ChaCha8 block, where the ChaCha key is zero and the 128bit seed is given as the counter and nonce. ChaCha8 uses only 32bit ARX operations, so its implementation is straightforward on GPUs and processors without 64bit arithmetic. As ChaCha8 is a well-trusted cipher, its outputs can be regarded as uniform. Thus keys of distinct seeds are independent, and keys related to each other appear only with a negligible probability.
 
 ### Kernel
 
@@ -211,20 +226,22 @@ and then 20 ARX steps (7 additions, 3 xors and 10 xor-rotations) are applied, wh
 
 The kernel consists of two phases.
 
-* In the first half (steps 1 to 11), all the six words are mixed together. The counter-injected words `v[0..3]` are mixed first, and then `v[5]` and `v[4]` are absorbed by additions, so that every key word affects the remaining state.
+* In the first half (steps 1 to 11), all the six words are mixed together. The words `v[0..3]`, into which the counter is injected, are mixed first. Then `v[5]` and `v[4]` are absorbed by additions, so that every key word affects the remaining state.
 * In the second half (steps 12 to 20), the state is narrowed down to the four words `v[0]`, `v[1]`, `v[3]` and `v[5]` (`v[2]` is only read once, and `v[4]` is no longer used). As each step updates one of the four words, every word is updated more frequently than in a six-word state, which yields stronger diffusion per step toward the output.
 
-The steps are almost sequential: with rotation instructions, the kernel including the counter injection consists of 34 instructions, and its critical path is 31 instructions. This is intended, as a sequential dependency mixes the state more per step than independent operations do. Instruction-level parallelism is not needed, as the outputs for multiple counters are computed in parallel.
+These steps are almost sequential: with bitwise rotation instructions, the kernel including the counter injection consists of 34 instructions, and its critical path spans 31 of them. This is intended, as a sequential dependency mixes the state more thoroughly than independent operations do. Instruction-level parallelism is not essential, since the outputs for multiple counters can be computed in parallel by SIMD lanes or GPU threads. This also suits accelerators whose cores are not superscalar.
 
 The original kernel designed by the author had 22 steps. It was shortened to 20 steps by Claude Opus 5.5 (Anthropic) through a structure search, which minimizes a counter-differential bias metric at reduced depths, under the constraints that every operation affects the output and every key word passes through an addition. The metric compares outputs for counters `c` and `c + 2^j` at each intermediate step; the bias vanishes 4 steps before the output for random keys, while it does 2 to 3 steps before the output for the original 22-step kernel.
 
 ### Weak keys
 
-When each of a huge number of threads uses its own seed, a key with some structure, such as a zero word, appears with a probability that is not negligible. The following kinds of keys were tested by the differential metric, PractRand of the least significant bits, PractRand and BigCrush subsets.
+When each of a huge number of threads uses its own seed, a key with some structure, such as a zero word, appears with a non-negligible probability. Such keys were first tested by the differential metric on GPU, and then by PractRand on the least significant bits on CPU. After that, heavier tests were performed: PractRand on the full outputs, and a subset of BigCrush.
 
-* a zero, all-one or Hamming weight 1 word
-* equal, negated, MSB-flipped or rotated word pairs
-* zero half-words in multiple words, low Hamming weight word pairs, and near-equal word pairs
+The weak keys considered are as follows:
+
+* a zero, all-one or Hamming weight 1 word,
+* equal, negated, MSB-flipped or rotated word pairs,
+* zero half-words in multiple words, low Hamming weight word pairs, and near-equal word pairs.
 
 The most sensitive case is that `v[4]` and `v[5]`, which the counter is not injected to and which are absorbed only by a few steps of the first half, are sparse at the same time. Even then the bias vanishes 3 steps before the output. Relations between words (equal, rotated, negated or near-equal pairs) and sparse `v[0..2]` are as harmless as random keys.
 
