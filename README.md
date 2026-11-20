@@ -10,7 +10,7 @@
 * **Tiny footprint.** Only the 192bit key and the counter have to be held, and the counter is often derived from indices already at hand (e.g. particle ID and time step). Taking a snapshot or a checkpoint of the generator is just saving the counter.
 * **No warm-up.** A fresh key yields good outputs from the first counter.
 
-**It uses only 32bit additions, xors and rotations (ARX), and no multiplication.** One output costs 20 ARX steps with a short critical path, so it runs efficiently on GPUs and on processors without an integer multiplier. The C library dispatches SIMD implementations (AVX-512, AVX2, SSE2, SVE and NEON) at runtime, and a header-only implementation for CUDA and HIP is also provided. The statistical quality is checked by PractRand, TestU01 BigCrush and the Hamming-weight dependency test, including keys with structure (see [Algorithm detail](#algorithm-detail)).
+**It uses only 32bit additions, xors and rotations (ARX), and no multiplication.** One output costs only 20 ARX steps, so it runs efficiently on GPUs and on processors without an integer multiplier. The steps are almost sequential, and multiple outputs are computed in parallel by SIMD lanes or GPU threads, which also suits accelerators whose cores are not superscalar. The C library dispatches SIMD implementations (AVX-512, AVX2, SSE2, SVE and NEON) at runtime, and a header-only implementation for CUDA and HIP is also provided. The statistical quality is checked by PractRand, TestU01 BigCrush and the Hamming-weight dependency test, including keys with structure (see [Algorithm detail](#algorithm-detail)).
 
 Its name derives from *melting* in Isaac Asimov's novel *The Gods Themselves*, where three beings of the para-universe merge into one. Melty2 merges six 32bit words, twice as many as the three beings.
 
@@ -213,6 +213,8 @@ The kernel consists of two phases.
 
 * In the first half (steps 1 to 11), all the six words are mixed together. The counter-injected words `v[0..3]` are mixed first, and then `v[5]` and `v[4]` are absorbed by additions, so that every key word affects the remaining state.
 * In the second half (steps 12 to 20), the state is narrowed down to the four words `v[0]`, `v[1]`, `v[3]` and `v[5]` (`v[2]` is only read once, and `v[4]` is no longer used). As each step updates one of the four words, every word is updated more frequently than in a six-word state, which yields stronger diffusion per step toward the output.
+
+The steps are almost sequential: with rotation instructions, the kernel including the counter injection consists of 34 instructions, and its critical path is 31 instructions. This is intended, as a sequential dependency mixes the state more per step than independent operations do. Instruction-level parallelism is not needed, as the outputs for multiple counters are computed in parallel.
 
 The original kernel designed by the author had 22 steps. It was shortened to 20 steps by Claude Opus 5.5 (Anthropic) through a structure search, which minimizes a counter-differential bias metric at reduced depths, under the constraints that every operation affects the output and every key word passes through an addition. The metric compares outputs for counters `c` and `c + 2^j` at each intermediate step; the bias vanishes 4 steps before the output for random keys, while it does 2 to 3 steps before the output for the original 22-step kernel.
 
