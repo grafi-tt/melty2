@@ -10,10 +10,22 @@ namespace melty2 {
 
 class generator {
 public:
-    explicit generator(std::array<uint32_t, 4> seed, uint64_t ctr = 0) noexcept : ctr_{ctr}, idx_{MELTY2_RAWBLKLEN} {
+    /* the 128bit seed is seed[0] | seed[1] << 32 | seed[2] << 64 | seed[3] << 96 */
+    explicit generator(std::array<uint32_t, 4> seed, uint64_t ctr = 0) noexcept {
         melty2_init(&key_, seed[0], seed[1], seed[2], seed[3]);
+        this->ctr(ctr);
     }
-    generator() noexcept : generator{{}, 0} {}
+    /* the 128bit seed is the zero extension of seed; same as generator{{lower 32bit, upper 32bit, 0, 0}, ctr} */
+    explicit generator(uint64_t seed, uint64_t ctr = 0) noexcept {
+        melty2_init_u64(&key_, seed, 0);
+        this->ctr(ctr);
+    }
+    generator() noexcept : generator{uint64_t{0}, 0} {}
+
+    /* generator from a derived key (e.g. by melty2_init_u64), which avoids deriving it again */
+    static generator from_key(const melty2_key &key, uint64_t ctr = 0) noexcept {
+        return generator{from_key_tag_{}, key, ctr};
+    }
 
     uint32_t operator()() noexcept {
         if (idx_ >= MELTY2_RAWBLKLEN) {
@@ -38,6 +50,12 @@ public:
     }
 
 private:
+    /* a tag, so that the constructor doesn't make generator{{...}} ambiguous */
+    struct from_key_tag_ {};
+    generator(from_key_tag_, const melty2_key &key, uint64_t ctr) noexcept : key_(key) {
+        this->ctr(ctr);
+    }
+
     melty2_key key_;
     uint64_t ctr_;
     uint32_t idx_;

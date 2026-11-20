@@ -38,11 +38,12 @@ It provides the following functions.
 
 ```c
 void melty2_init(melty2_key *key, uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3);
+void melty2_init_u64(melty2_key *key, uint64_t seed0, uint64_t seed1);
 void melty2_gen(const melty2_key *key, uint64_t ctr, size_t len, uint32_t *out);
 void melty2_rawblkgen(const melty2_key *key, uint32_t ctr_lo, uint32_t ctr_hi, uint32_t *out);
 ```
 
-`melty2_init` derives a 192bit key from a 128bit seed by ChaCha8, so even similar seeds (e.g. thread IDs) yield unrelated keys. `melty2_gen` stores the outputs for counters `ctr`, `ctr + 1`, ..., `ctr + len - 1` to `out`; the counter wraps around modulo 2^64. `melty2_rawblkgen` is the low-level function generating a block of `MELTY2_RAWBLKLEN` (32) outputs, where `ctr_lo` must not exceed `2^32 - MELTY2_RAWBLKLEN`.
+`melty2_init` derives a 192bit key from a 128bit seed by ChaCha8, so even similar seeds (e.g. thread IDs) yield unrelated keys. The seed is `seed0 | seed1 << 32 | seed2 << 64 | seed3 << 96`, and `melty2_init_u64` takes it as `seed0 | seed1 << 64`; for example, `melty2_init_u64(&key, 42, 0)` is the same as `melty2_init(&key, 42, 0, 0, 0)`. `melty2_gen` stores the outputs for counters `ctr`, `ctr + 1`, ..., `ctr + len - 1` to `out`; the counter wraps around modulo 2^64. `melty2_rawblkgen` is the low-level function generating a block of `MELTY2_RAWBLKLEN` (32) outputs, where `ctr_lo` must not exceed `2^32 - MELTY2_RAWBLKLEN`.
 
 ### C++
 
@@ -60,7 +61,7 @@ int main() {
 }
 ```
 
-The counter can be read and set by `gen.ctr()` and `gen.ctr(new_ctr)`. Jumping ahead costs nothing more than generating one block.
+A generator can also be constructed from a 64bit seed as `melty2::generator gen{seed}`, which is the same as the 128bit seed `{seed & 0xffffffff, seed >> 32, 0, 0}`, or from a key derived by `melty2_init_u64` as `melty2::generator::from_key(key)`. The counter is given as the optional last argument of them, and can be read and set by `gen.ctr()` and `gen.ctr(new_ctr)`. Jumping ahead costs nothing more than generating one block.
 
 ### Independent generators for tests
 
@@ -82,9 +83,9 @@ constexpr uint64_t fnv1a64(std::string_view s) {
 }
 
 melty2::generator test_rng(uint64_t global_seed, std::string_view test_name) {
-    const uint64_t h = fnv1a64(test_name);
-    return melty2::generator{{static_cast<uint32_t>(global_seed), static_cast<uint32_t>(global_seed >> 32),
-                              static_cast<uint32_t>(h), static_cast<uint32_t>(h >> 32)}};
+    melty2_key key;
+    melty2_init_u64(&key, global_seed, fnv1a64(test_name));
+    return melty2::generator::from_key(key);
 }
 
 /* in each test */
@@ -121,8 +122,9 @@ It provides the following functions and class in the namespace `melty2::gpu`, al
 
 ```cpp
 melty2_key init(uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3);  /* same as melty2_init */
+melty2_key init_u64(uint64_t seed0, uint64_t seed1);  /* same as melty2_init_u64 */
 uint32_t gen(const melty2_key &key, uint64_t ctr);  /* the number for the counter */
-class generator;  /* holds a key and a counter; operator() and ctr() as in melty2::generator */
+class generator;  /* holds a key and a counter; constructed from a key, four 32bit seeds or a 64bit seed */
 error_t fill(const melty2_key &key, uint64_t ctr, size_t len, uint32_t *out, stream_t stream = 0);
 ```
 

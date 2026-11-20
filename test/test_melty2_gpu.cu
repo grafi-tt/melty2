@@ -126,6 +126,46 @@ static int test_per_thread() {
     return 0;
 }
 
+/* Each thread uses the generator from a 64bit seed */
+__global__ void u64_seed_kernel(uint64_t ctr, unsigned per_thread, uint32_t *out) {
+    const unsigned t = blockIdx.x * blockDim.x + threadIdx.x;
+    melty2::gpu::generator g((uint64_t)t << 40 | 0x123456789u, ctr);
+    for (unsigned k = 0; k < per_thread; ++k) {
+        out[(size_t)t * per_thread + k] = g();
+    }
+}
+
+static int test_u64_seed() {
+    const uint64_t s0 = UINT64_C(0xfedcba9876543210), s1 = UINT64_C(0x0f1e2d3c4b5a6978);
+    melty2_key key;
+    melty2_init_u64(&key, s0, s1);
+    const melty2_key key_gpu = melty2::gpu::init_u64(s0, s1);
+    for (int i = 0; i < 6; ++i) {
+        if (key_gpu.v_[i] != key.v_[i]) {
+            std::fprintf(stderr, "init_u64 -- key mismatch at %d\n", i);
+            ++err;
+        }
+    }
+
+    const unsigned blocks = 16, threads = 128, n = blocks * threads, per_thread = 9;
+    const uint64_t ctr = UINT64_C(0x1fffffffd);
+    std::vector<uint32_t> expected((size_t)n * per_thread);
+    for (unsigned t = 0; t < n; ++t) {
+        melty2_init_u64(&key, (uint64_t)t << 40 | 0x123456789u, 0);
+        melty2_gen(&key, ctr, per_thread, expected.data() + (size_t)t * per_thread);
+    }
+    uint32_t *d_out;
+    CHECK_GPU(gpuMalloc(&d_out, expected.size() * sizeof(uint32_t)));
+    u64_seed_kernel<<<blocks, threads>>>(ctr, per_thread, d_out);
+    CHECK_GPU(gpuGetLastError());
+    CHECK_GPU(gpuDeviceSynchronize());
+    std::vector<uint32_t> result(expected.size());
+    CHECK_GPU(gpuMemcpy(result.data(), d_out, result.size() * sizeof(uint32_t), gpuMemcpyDeviceToHost));
+    CHECK_GPU(gpuFree(d_out));
+    check_equal("u64 seed generator", result, expected);
+    return 0;
+}
+
 int main() {
     int fail = 0;
     fail |= test_fill("seed 0, ctr 0", 0, 0, 0, 0, 0, 1000);
@@ -145,5 +185,6 @@ int main() {
         fail |= test_fill(title, 9, 8, 7, 6, UINT64_C(0xfffffff0), 1000003, offset);
     }
     fail |= test_per_thread();
+    fail |= test_u64_seed();
     return fail || err;
 }

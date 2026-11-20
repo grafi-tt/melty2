@@ -27,6 +27,15 @@ typedef struct melty2_key_ {
 void melty2_init(melty2_key *key, uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3);
 
 /**
+ * @brief Initialize melty2 key by 64bit integers.
+ * @param key[out] Non-null pointer to key.
+ * @param seed0    Lower 64bit of 128bit seed.
+ * @param seed1    Upper 64bit of 128bit seed.
+ * @note  Same as melty2_init(key, (uint32_t)seed0, (uint32_t)(seed0 >> 32), (uint32_t)seed1, (uint32_t)(seed1 >> 32)).
+ */
+void melty2_init_u64(melty2_key *key, uint64_t seed0, uint64_t seed1);
+
+/**
  * @brief Generate random numbers.
  * @param key      Pointer to key.
  * @param ctr      Counter.

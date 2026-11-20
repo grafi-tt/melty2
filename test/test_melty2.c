@@ -37,6 +37,21 @@ int test_init(const TestCase* test_case) {
     return 0;
 }
 
+int test_init_u64(const TestCase* test_case) {
+    const uint32_t *seed = test_case->seed;
+    char title[64];
+    sprintf(title, "init_u64 seed={0x%08"PRIx32",0x%08"PRIx32",0x%08"PRIx32",0x%08"PRIx32"}", seed[0], seed[1], seed[2], seed[3]);
+
+    melty2_key key;
+    melty2_init_u64(&key, (uint64_t)seed[0] | (uint64_t)seed[1] << 32, (uint64_t)seed[2] | (uint64_t)seed[3] << 32);
+    for (int i = 0; i < 6; ++i) {
+        if (check_number32(title, key.v_[i], test_case->key[i])) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int main(void) {
     int n_err = 0;
 
@@ -55,6 +70,7 @@ int main(void) {
 
     for (size_t t = 0; t < sizeof(test_cases) / sizeof(TestCase); ++t) {
         n_err += test_init(&test_cases[t]);
+        n_err += test_init_u64(&test_cases[t]);
     }
 
     return !!n_err;

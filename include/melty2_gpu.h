@@ -47,6 +47,13 @@ __host__ __device__ inline melty2_key init(uint32_t seed0, uint32_t seed1, uint3
 }
 
 /**
+ * @brief Derive a key from a 128bit seed given by 64bit integers. Same as melty2_init_u64.
+ */
+__host__ __device__ inline melty2_key init_u64(uint64_t seed0, uint64_t seed1) {
+    return init((uint32_t)seed0, (uint32_t)(seed0 >> 32), (uint32_t)seed1, (uint32_t)(seed1 >> 32));
+}
+
+/**
  * @brief Return the random number for the counter.
  */
 __host__ __device__ inline uint32_t gen(const melty2_key &key, uint64_t ctr) {
@@ -63,6 +70,8 @@ public:
     __host__ __device__ generator(const melty2_key &key, uint64_t ctr = 0) : key_(key), ctr_(ctr) {}
     __host__ __device__ generator(uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3, uint64_t ctr = 0)
         : key_(init(seed0, seed1, seed2, seed3)), ctr_(ctr) {}
+    /* the 128bit seed is the zero extension of seed, as melty2::generator */
+    __host__ __device__ explicit generator(uint64_t seed, uint64_t ctr = 0) : key_(init_u64(seed, 0)), ctr_(ctr) {}
 
     __host__ __device__ uint32_t operator()() { return gen(key_, ctr_++); }
 
