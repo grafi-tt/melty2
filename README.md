@@ -12,6 +12,8 @@
 
 **It uses only 32bit additions, xors and rotations (ARX), and no multiplication.** One output costs only 20 ARX steps, so it runs efficiently on GPUs and on processors without an integer multiplier. The C library dispatches SIMD implementations (AVX-512, AVX2, SSE2, SVE and NEON) at runtime, and a header-only implementation for CUDA and HIP is also provided. The statistical quality is checked by PractRand, TestU01 BigCrush and the Hamming-weight dependency test, including keys with structure (see [Algorithm detail](#algorithm-detail)).
 
+**Melty2 is not a cryptographically secure generator.** It is designed for simulations and tests, where statistical quality, speed and reproducibility matter, and its outputs may be predictable to an adversary. Don't use it for keys, nonces, tokens, passwords or anything security-sensitive; use the random source of the OS (e.g. `getrandom`) or a cryptographically secure generator instead.
+
 Its name derives from *melting* in Isaac Asimov's novel *The Gods Themselves*, where three beings of the para-universe merge into one. Melty2 merges six 32bit words, twice as many as the three beings.
 
 ## Usage
