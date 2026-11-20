@@ -10,7 +10,7 @@
 * **Tiny footprint.** Only the 192bit key and the counter have to be held, and the counter is often derived from indices already at hand (e.g. particle ID and time step). Taking a snapshot or a checkpoint of the generator is just saving the counter.
 * **No warm-up.** A fresh key yields good outputs from the first counter.
 
-**It uses only 32bit additions, xors and rotations (ARX), and no multiplication.** One output costs 20 ARX steps with a short critical path, so it runs efficiently on GPUs and on processors without an integer multiplier. The C library dispatches SIMD implementations (AVX-512, AVX2, SSE2, SVE and NEON) at runtime. The statistical quality is checked by PractRand, TestU01 BigCrush and the Hamming-weight dependency test, including keys with structure (see [Algorithm detail](#algorithm-detail)).
+**It uses only 32bit additions, xors and rotations (ARX), and no multiplication.** One output costs 20 ARX steps with a short critical path, so it runs efficiently on GPUs and on processors without an integer multiplier. The C library dispatches SIMD implementations (AVX-512, AVX2, SSE2, SVE and NEON) at runtime, and a header-only implementation for CUDA and HIP is also provided. The statistical quality is checked by PractRand, TestU01 BigCrush and the Hamming-weight dependency test, including keys with structure (see [Algorithm detail](#algorithm-detail)).
 
 Its name derives from *melting* in Isaac Asimov's novel *The Gods Themselves*, where three beings of the para-universe merge into one. Melty2 merges six 32bit words, twice as many as the three beings.
 
@@ -62,6 +62,41 @@ int main() {
 
 The counter can be read and set by `gen.ctr()` and `gen.ctr(new_ctr)`. Jumping ahead costs nothing more than generating one block.
 
+### GPU (CUDA and HIP)
+
+`melty2_gpu.h` is a header-only implementation for CUDA and HIP. It doesn't require linking the library, and its outputs are identical to those of the CPU library for the same seed and counter.
+
+The simplest way is that each thread derives its own key from a seed containing the thread ID. The key derivation costs three SipHash-2-4 evaluations once per thread, and then each number costs only 20 ARX steps.
+
+```cpp
+#include "melty2_gpu.h"
+
+__global__ void simulate(uint32_t seed, float *out) {
+    const uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    melty2::gpu::generator gen(seed, tid, 0, 0);  /* 128bit seed (seed, tid, 0, 0) */
+    float sum = 0.0f;
+    for (int i = 0; i < 100; ++i) {
+        sum += (gen() >> 8) * (1.0f / 16777216.0f);  /* uniform in [0, 1) */
+    }
+    out[tid] = sum;
+}
+```
+
+Alternatively, threads can share a key and use disjoint counters, e.g. `melty2::gpu::gen(key, (uint64_t)item << 32 | i)` for the `i`-th number of the work item `item`. This avoids the key derivation in each thread, and the result doesn't depend on how the work items are assigned to threads.
+
+It provides the following functions and class in the namespace `melty2::gpu`, all of which are callable from both host and device code except `fill`.
+
+```cpp
+melty2_key init(uint32_t seed0, uint32_t seed1, uint32_t seed2, uint32_t seed3);  /* same as melty2_init */
+uint32_t gen(const melty2_key &key, uint64_t ctr);  /* the number for the counter */
+class generator;  /* holds a key and a counter; operator() and ctr() as in melty2::generator */
+error_t fill(const melty2_key &key, uint64_t ctr, size_t len, uint32_t *out, stream_t stream = 0);
+```
+
+`fill` launches a kernel that stores the numbers for counters `ctr`, ..., `ctr + len - 1` to the device memory `out`, which is the GPU counterpart of `melty2_gen`. `error_t` and `stream_t` are `cudaError_t` and `cudaStream_t` for CUDA, or `hipError_t` and `hipStream_t` for HIP.
+
+In a CMake project, link the `melty2_gpu` target, which only adds the include directory.
+
 ### Build
 
 ```sh
@@ -73,7 +108,7 @@ ctest --test-dir build
 cmake --install build --prefix /usr/local
 ```
 
-Then use it from another CMake project by `find_package(melty2)` and `target_link_libraries(your_target PRIVATE melty2)`, or add this repository by `add_subdirectory`.
+Then use it from another CMake project by `find_package(melty2)` and `target_link_libraries(your_target PRIVATE melty2)` (or `melty2_gpu` for the GPU header), or add this repository by `add_subdirectory`.
 
 The following options are available.
 
@@ -81,6 +116,7 @@ The following options are available.
 * `MELTY2_ENABLE_CPU_FEATURES` (default `ON`): select the SIMD implementation at runtime by [cpu_features](https://github.com/google/cpu_features). If disabled, only the generic implementation is built.
 * `MELTY2_ENABLE_TEST` (default `ON`): build tests.
 * `MELTY2_ENABLE_BIGCRUSH` (default `OFF`): build the BigCrush runner, which requires TestU01.
+* `MELTY2_GPU_TEST` (default empty): build the GPU test by `CUDA` or `HIP`, which requires CMake 3.21. Set `CMAKE_CUDA_ARCHITECTURES` or `CMAKE_HIP_ARCHITECTURES` as needed.
 
 ## Benchmark
 
