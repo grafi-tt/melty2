@@ -64,11 +64,14 @@ __global__ void per_thread_kernel(const Seed *seeds, uint64_t ctr, unsigned per_
     }
 }
 
-static int test_fill(const char *title, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3, uint64_t ctr, size_t len) {
+/* fill out[offset .. offset + len) of a buffer with guard words on both sides, which must not be overwritten */
+static int test_fill(const char *title, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3, uint64_t ctr, size_t len, size_t offset = 0) {
     melty2_key key;
     melty2_init(&key, s0, s1, s2, s3);
-    std::vector<uint32_t> expected(len);
-    melty2_gen(&key, ctr, len, expected.data());
+    const size_t guard = 4, total = offset + len + guard;
+    const uint32_t guard_value = 0xdeadbeef;
+    std::vector<uint32_t> expected(total, guard_value);
+    melty2_gen(&key, ctr, len, expected.data() + offset);
 
     /* the key derived by the host side of the GPU header must be identical */
     const melty2_key key_gpu = melty2::gpu::init(s0, s1, s2, s3);
@@ -80,11 +83,13 @@ static int test_fill(const char *title, uint32_t s0, uint32_t s1, uint32_t s2, u
     }
 
     uint32_t *d_out;
-    CHECK_GPU(gpuMalloc(&d_out, len * sizeof(uint32_t)));
-    CHECK_GPU(melty2::gpu::fill(key_gpu, ctr, len, d_out));
+    CHECK_GPU(gpuMalloc(&d_out, total * sizeof(uint32_t)));
+    std::vector<uint32_t> init(total, guard_value);
+    CHECK_GPU(gpuMemcpy(d_out, init.data(), total * sizeof(uint32_t), gpuMemcpyHostToDevice));
+    CHECK_GPU(melty2::gpu::fill(key_gpu, ctr, len, d_out + offset));
     CHECK_GPU(gpuDeviceSynchronize());
-    std::vector<uint32_t> result(len);
-    CHECK_GPU(gpuMemcpy(result.data(), d_out, len * sizeof(uint32_t), gpuMemcpyDeviceToHost));
+    std::vector<uint32_t> result(total);
+    CHECK_GPU(gpuMemcpy(result.data(), d_out, total * sizeof(uint32_t), gpuMemcpyDeviceToHost));
     CHECK_GPU(gpuFree(d_out));
     check_equal(title, result, expected);
     return 0;
@@ -128,6 +133,17 @@ int main() {
     fail |= test_fill("2^64 wrap", 1, 2, 3, 4, UINT64_C(0xffffffffffffff00), 4096);
     fail |= test_fill("large", 5, 0, 0, 0, UINT64_C(0x123456789), (size_t)1 << 26);
     fail |= test_fill("empty", 0, 0, 0, 0, 0, 0);
+    /* unaligned output pointers and short lengths, for the head and tail handling of 128bit stores */
+    for (size_t offset = 0; offset < 4; ++offset) {
+        for (size_t len = 0; len <= 13; ++len) {
+            char title[64];
+            std::snprintf(title, sizeof title, "offset %zu, len %zu", offset, len);
+            fail |= test_fill(title, 9, 8, 7, 6, UINT64_C(0xfffffffffffffffa), len, offset);
+        }
+        char title[64];
+        std::snprintf(title, sizeof title, "offset %zu, large", offset);
+        fail |= test_fill(title, 9, 8, 7, 6, UINT64_C(0xfffffff0), 1000003, offset);
+    }
     fail |= test_per_thread();
     return fail || err;
 }

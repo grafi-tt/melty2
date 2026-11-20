@@ -79,14 +79,40 @@ private:
     uint64_t ctr_;
 };
 
+/* 4 numbers written by one 128bit store */
+struct alignas(16) u32x4_ {
+    uint32_t v[4];
+};
+
 /**
  * @brief Kernel storing the random numbers for counters ctr, ctr + 1, ..., ctr + len - 1 to out.
+ * @note  The 16 bytes aligned part of out is written by 128bit stores, each of which has 4 numbers.
+ *        The unaligned head and the tail (at most 3 numbers each) are written by 32bit stores.
  */
 template <typename Dummy = void>
 __global__ void fill_kernel(melty2_key key, uint64_t ctr, size_t len, uint32_t *out) {
+    size_t head = ((16 - (uintptr_t)out % 16) % 16) / 4;
+    if (head > len) {
+        head = len;
+    }
+    const size_t n4 = (len - head) / 4;
+    const size_t body_end = head + 4 * n4;
+
+    const size_t id = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (id < head) {
+        out[id] = gen(key, ctr + id);
+    }
+    if (id < len - body_end) {
+        out[body_end + id] = gen(key, ctr + body_end + id);
+    }
+
+    u32x4_ *const out4 = (u32x4_ *)(out + head);
+    const uint64_t ctr4 = ctr + head;
     const size_t stride = (size_t)gridDim.x * blockDim.x;
-    for (size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x; i < len; i += stride) {
-        out[i] = gen(key, ctr + i);
+    for (size_t i = id; i < n4; i += stride) {
+        const uint64_t c = ctr4 + 4 * (uint64_t)i;
+        const u32x4_ r = {{gen(key, c), gen(key, c + 1), gen(key, c + 2), gen(key, c + 3)}};
+        out4[i] = r;
     }
 }
 
@@ -97,11 +123,12 @@ __global__ void fill_kernel(melty2_key key, uint64_t ctr, size_t len, uint32_t *
 inline error_t fill(const melty2_key &key, uint64_t ctr, size_t len, uint32_t *out, stream_t stream = 0) {
     const unsigned block = 256;
     const size_t max_grid = 65536;
-    size_t grid = (len + block - 1) / block;
+    /* one thread for each 4 numbers (and at least one thread for the head and the tail) */
+    size_t grid = (len / 4 + 1 + block - 1) / block;
     if (grid > max_grid) {
         grid = max_grid;
     }
-    if (grid == 0) {
+    if (len == 0) {
 #if defined(__HIPCC__)
         return hipSuccess;
 #else
