@@ -33,7 +33,9 @@ void melty2_init(melty2_key *key, uint32_t seed0, uint32_t seed1, uint32_t seed2
  * @param seed1    Upper 64bit of 128bit seed.
  * @note  Same as melty2_init(key, (uint32_t)seed0, (uint32_t)(seed0 >> 32), (uint32_t)seed1, (uint32_t)(seed1 >> 32)).
  */
-void melty2_init_u64(melty2_key *key, uint64_t seed0, uint64_t seed1);
+static inline void melty2_init_u64(melty2_key *key, uint64_t seed0, uint64_t seed1) {
+    melty2_init(key, (uint32_t)seed0, (uint32_t)(seed0 >> 32), (uint32_t)seed1, (uint32_t)(seed1 >> 32));
+}
 
 /**
  * @brief Generate random numbers.
