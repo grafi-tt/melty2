@@ -2,13 +2,12 @@
 
 **Fast, portable and easy-to-use counter-based pseudo-random number generator** for accelerators and CPUs, written in C99 with a C++ wrapper. Each 32bit output is a pure function of a 192bit key and a 64bit counter: `out = f(key, ctr)`.
 
-**Being counter-based, it needs no mutable state.** This makes it far easier to use in parallel and on accelerators than generators with a sequential state.
+**Being counter-based, it needs no mutable state, so it is much easier to use in parallel than common generators.**
 
 * **Parallel streams without coordination.** Give each thread its own seed, or its own counter range under a shared seed. No jump-ahead tables nor stream splitting is required.
 * **Random access.** Any position of the stream is computed directly, so skipping, rewinding and partitioning work into chunks are trivial.
 * **Reproducibility independent of parallelism.** The value for a given (seed, counter) never depends on the number of threads, the scheduling, or the vector width, so a simulation gives bitwise identical results on different machines, e.g. on a CPU and on a GPU running the same kernel.
 * **Tiny footprint.** Only the 192bit key and the counter have to be held, and the counter is often derived from indices already at hand (e.g. particle ID and time step). Taking a snapshot or a checkpoint of the generator is just saving the counter.
-* **No warm-up.** A fresh key yields good outputs from the first counter.
 
 **It uses only 32bit additions, xors and rotations (ARX), and no multiplication.** One output costs only 20 ARX steps, so it runs efficiently on GPUs and on processors without an integer multiplier. The C library dispatches SIMD implementations (AVX-512, AVX2, SSE2, SVE and NEON) at runtime, and a header-only implementation for CUDA and HIP is also provided. The statistical quality is checked by PractRand, TestU01 BigCrush and the Hamming-weight dependency test, including keys with structure (see [Algorithm detail](#algorithm-detail)).
 
