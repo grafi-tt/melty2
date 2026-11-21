@@ -1,0 +1,887 @@
+mix3 extreme = 2.48841 (sig = 00100000) weight 1 (16), p-value = 0.187
+mix3 extreme = 2.53319 (sig = 22000000) weight 2 (112), p-value = 0.72
+mix3 extreme = 2.87539 (sig = 00002102) weight 3 (448), p-value = 0.837
+mix3 extreme = 3.44689 (sig = 11001010) weight 4 (1120), p-value = 0.47
+mix3 extreme = 3.73309 (sig = 10002111) weight >=5 (4864), p-value = 0.602
+bits per word = 32 (analyzing bits); min category p-value = 0.187
+
+processed 1.25e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.644
+------
+
+mix3 extreme = 3.06313 (sig = 00100000) weight 1 (16), p-value = 0.0345
+mix3 extreme = 2.49300 (sig = 00200001) weight 2 (112), p-value = 0.76
+mix3 extreme = 2.99354 (sig = 00202100) weight 3 (448), p-value = 0.71
+mix3 extreme = 3.45824 (sig = 02220200) weight 4 (1120), p-value = 0.456
+mix3 extreme = 4.42957 (sig = 10002111) weight >=5 (4864), p-value = 0.0449
+bits per word = 32 (analyzing bits); min category p-value = 0.0345
+
+processed 1.56e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.161
+------
+
+mix3 extreme = 3.01872 (sig = 00100000) weight 1 (16), p-value = 0.0399
+mix3 extreme = 3.16985 (sig = 00100001) weight 2 (112), p-value = 0.157
+mix3 extreme = 2.88558 (sig = 12000200) weight 3 (448), p-value = 0.827
+mix3 extreme = 4.11083 (sig = 02220200) weight 4 (1120), p-value = 0.0432
+mix3 extreme = 4.56179 (sig = 20210121) weight >=5 (4864), p-value = 0.0244
+bits per word = 32 (analyzing bits); min category p-value = 0.0244
+
+processed 1.88e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.116
+------
+
+mix3 extreme = 2.84524 (sig = 00100000) weight 1 (16), p-value = 0.0687
+mix3 extreme = 3.13050 (sig = 00200001) weight 2 (112), p-value = 0.178
+mix3 extreme = 3.07939 (sig = 10100200) weight 3 (448), p-value = 0.606
+mix3 extreme = 4.23418 (sig = 02220200) weight 4 (1120), p-value = 0.0254
+mix3 extreme = 4.41595 (sig = 20210121) weight >=5 (4864), p-value = 0.0477
+bits per word = 32 (analyzing bits); min category p-value = 0.0254
+
+processed 2.19e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.121
+------
+
+mix3 extreme = 2.52747 (sig = 00100000) weight 1 (16), p-value = 0.169
+mix3 extreme = 2.80502 (sig = 00200001) weight 2 (112), p-value = 0.432
+mix3 extreme = 3.18892 (sig = 00002102) weight 3 (448), p-value = 0.473
+mix3 extreme = 4.51183 (sig = 02220200) weight 4 (1120), p-value = 0.00717
+mix3 extreme = 3.76786 (sig = 21201020) weight >=5 (4864), p-value = 0.551
+bits per word = 32 (analyzing bits); min category p-value = 0.00717
+
+processed 2.5e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.0354
+------
+
+mix3 extreme = 2.59917 (sig = 00100000) weight 1 (16), p-value = 0.139
+mix3 extreme = 2.79207 (sig = 00100001) weight 2 (112), p-value = 0.445
+mix3 extreme = 3.17272 (sig = 10100200) weight 3 (448), p-value = 0.492
+mix3 extreme = 4.48768 (sig = 02220200) weight 4 (1120), p-value = 0.00803
+mix3 extreme = 3.69908 (sig = 21212020) weight >=5 (4864), p-value = 0.651
+bits per word = 32 (analyzing bits); min category p-value = 0.00803
+
+processed 2.81e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.0395
+------
+
+mix3 extreme = 1.95062 (sig = 00100000) weight 1 (16), p-value = 0.568
+mix3 extreme = 2.68822 (sig = 00100001) weight 2 (112), p-value = 0.554
+mix3 extreme = 3.38557 (sig = 00210100) weight 3 (448), p-value = 0.273
+mix3 extreme = 4.60507 (sig = 02220200) weight 4 (1120), p-value = 0.00461
+mix3 extreme = 3.57082 (sig = 21212020) weight >=5 (4864), p-value = 0.823
+bits per word = 32 (analyzing bits); min category p-value = 0.00461
+
+processed 3.13e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.0228
+------
+
+mix3 extreme = 1.76308 (sig = 00000200) weight 1 (16), p-value = 0.727
+mix3 extreme = 2.70284 (sig = 00100001) weight 2 (112), p-value = 0.538
+mix3 extreme = 2.89258 (sig = 00210100) weight 3 (448), p-value = 0.82
+mix3 extreme = 3.92156 (sig = 02220200) weight 4 (1120), p-value = 0.0938
+mix3 extreme = 3.94279 (sig = 20210121) weight >=5 (4864), p-value = 0.324
+bits per word = 32 (analyzing bits); min category p-value = 0.0938
+
+processed 4.06e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.389
+------
+
+mix3 extreme = 2.01949 (sig = 00000200) weight 1 (16), p-value = 0.509
+mix3 extreme = 2.81902 (sig = 00010010) weight 2 (112), p-value = 0.418
+mix3 extreme = 3.42139 (sig = 00022001) weight 3 (448), p-value = 0.244
+mix3 extreme = 3.54098 (sig = 02220200) weight 4 (1120), p-value = 0.36
+mix3 extreme = 3.82968 (sig = 20210121) weight >=5 (4864), p-value = 0.464
+bits per word = 32 (analyzing bits); min category p-value = 0.244
+
+processed 5e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.752
+------
+
+mix3 extreme = 1.46500 (sig = 00000200) weight 1 (16), p-value = 0.915
+mix3 extreme = 2.97865 (sig = 00010010) weight 2 (112), p-value = 0.277
+mix3 extreme = 2.84610 (sig = 00022001) weight 3 (448), p-value = 0.863
+mix3 extreme = 3.54023 (sig = 10110010) weight 4 (1120), p-value = 0.361
+mix3 extreme = 3.95947 (sig = 10211200) weight >=5 (4864), p-value = 0.306
+bits per word = 32 (analyzing bits); min category p-value = 0.277
+
+processed 6.25e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.803
+------
+
+mix3 extreme = 1.15326 (sig = 00000200) weight 1 (16), p-value = 0.99
+mix3 extreme = 2.82951 (sig = 00000110) weight 2 (112), p-value = 0.407
+mix3 extreme = 3.10293 (sig = 20201000) weight 3 (448), p-value = 0.577
+mix3 extreme = 3.63205 (sig = 10110010) weight 4 (1120), p-value = 0.27
+mix3 extreme = 3.69653 (sig = 10211200) weight >=5 (4864), p-value = 0.655
+bits per word = 32 (analyzing bits); min category p-value = 0.27
+
+processed 7.19e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.793
+------
+
+mix3 extreme = 1.76252 (sig = 10000000) weight 1 (16), p-value = 0.727
+mix3 extreme = 3.41704 (sig = 00100001) weight 2 (112), p-value = 0.0685
+mix3 extreme = 3.32102 (sig = 11010000) weight 3 (448), p-value = 0.331
+mix3 extreme = 3.75125 (sig = 22002020) weight 4 (1120), p-value = 0.179
+mix3 extreme = 3.67684 (sig = 02120101) weight >=5 (4864), p-value = 0.683
+bits per word = 32 (analyzing bits); min category p-value = 0.0685
+
+processed 8.75e+08 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.299
+------
+
+mix3 extreme = 2.07449 (sig = 10000000) weight 1 (16), p-value = 0.462
+mix3 extreme = 3.34464 (sig = 00100001) weight 2 (112), p-value = 0.0882
+mix3 extreme = 3.07646 (sig = 01010100) weight 3 (448), p-value = 0.609
+mix3 extreme = 3.69186 (sig = 22002020) weight 4 (1120), p-value = 0.221
+mix3 extreme = 3.95385 (sig = 20210121) weight >=5 (4864), p-value = 0.312
+bits per word = 32 (analyzing bits); min category p-value = 0.0882
+
+processed 1e+09 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.37
+------
+
+mix3 extreme = 1.70411 (sig = 01000000) weight 1 (16), p-value = 0.772
+mix3 extreme = 2.94001 (sig = 00100001) weight 2 (112), p-value = 0.308
+mix3 extreme = 2.76357 (sig = 00202001) weight 3 (448), p-value = 0.923
+mix3 extreme = 3.23761 (sig = 12101000) weight 4 (1120), p-value = 0.741
+mix3 extreme = 4.08545 (sig = 02120101) weight >=5 (4864), p-value = 0.193
+bits per word = 32 (analyzing bits); min category p-value = 0.193
+
+processed 1.25e+09 bytes in 0 seconds (inf GB/s, inf TB/h). Fri Nov 20 22:34:17 2026
+
+p = 0.657
+------
+
+mix3 extreme = 2.66259 (sig = 01000000) weight 1 (16), p-value = 0.117
+mix3 extreme = 2.61315 (sig = 00001001) weight 2 (112), p-value = 0.636
+mix3 extreme = 2.70742 (sig = 20201000) weight 3 (448), p-value = 0.953
+mix3 extreme = 3.28935 (sig = 20021002) weight 4 (1120), p-value = 0.675
+mix3 extreme = 4.04654 (sig = 20210121) weight >=5 (4864), p-value = 0.223
+bits per word = 32 (analyzing bits); min category p-value = 0.117
+
+processed 1.5e+09 bytes in 1 seconds (1.501 GB/s, 5.402 TB/h). Fri Nov 20 22:34:18 2026
+
+p = 0.464
+------
+
+mix3 extreme = 2.72737 (sig = 01000000) weight 1 (16), p-value = 0.0974
+mix3 extreme = 2.52938 (sig = 20000002) weight 2 (112), p-value = 0.724
+mix3 extreme = 2.87898 (sig = 00222000) weight 3 (448), p-value = 0.833
+mix3 extreme = 3.22164 (sig = 01002210) weight 4 (1120), p-value = 0.76
+mix3 extreme = 3.68834 (sig = 10221011) weight >=5 (4864), p-value = 0.666
+bits per word = 32 (analyzing bits); min category p-value = 0.0974
+
+processed 1.75e+09 bytes in 1 seconds (1.751 GB/s, 6.303 TB/h). Fri Nov 20 22:34:18 2026
+
+p = 0.401
+------
+
+mix3 extreme = 3.07121 (sig = 01000000) weight 1 (16), p-value = 0.0336
+mix3 extreme = 2.76582 (sig = 00001010) weight 2 (112), p-value = 0.472
+mix3 extreme = 3.08032 (sig = 00001220) weight 3 (448), p-value = 0.604
+mix3 extreme = 3.16438 (sig = 10022200) weight 4 (1120), p-value = 0.825
+mix3 extreme = 3.88488 (sig = 02120101) weight >=5 (4864), p-value = 0.392
+bits per word = 32 (analyzing bits); min category p-value = 0.0336
+
+processed 2e+09 bytes in 1 seconds (2.001 GB/s, 7.203 TB/h). Fri Nov 20 22:34:18 2026
+
+p = 0.157
+------
+
+mix3 extreme = 1.95495 (sig = 20000000) weight 1 (16), p-value = 0.564
+mix3 extreme = 2.88311 (sig = 00100001) weight 2 (112), p-value = 0.357
+mix3 extreme = 3.44544 (sig = 00001220) weight 3 (448), p-value = 0.225
+mix3 extreme = 3.35807 (sig = 01000212) weight 4 (1120), p-value = 0.585
+mix3 extreme = 4.61331 (sig = 10221011) weight >=5 (4864), p-value = 0.0191
+bits per word = 32 (analyzing bits); min category p-value = 0.0191
+
+processed 2.5e+09 bytes in 1 seconds (2.501 GB/s, 9.004 TB/h). Fri Nov 20 22:34:18 2026
+
+p = 0.0919
+------
+
+mix3 extreme = 1.93612 (sig = 20000000) weight 1 (16), p-value = 0.581
+mix3 extreme = 2.39278 (sig = 00001010) weight 2 (112), p-value = 0.849
+mix3 extreme = 3.61835 (sig = 00001220) weight 3 (448), p-value = 0.124
+mix3 extreme = 3.81271 (sig = 00200121) weight 4 (1120), p-value = 0.143
+mix3 extreme = 4.81187 (sig = 10221011) weight >=5 (4864), p-value = 0.00725
+bits per word = 32 (analyzing bits); min category p-value = 0.00725
+
+processed 3e+09 bytes in 1 seconds (3.001 GB/s, 10.8 TB/h). Fri Nov 20 22:34:18 2026
+
+p = 0.0357
+------
+
+mix3 extreme = 1.95641 (sig = 00020000) weight 1 (16), p-value = 0.563
+mix3 extreme = 2.40795 (sig = 01000010) weight 2 (112), p-value = 0.837
+mix3 extreme = 3.60762 (sig = 00001220) weight 3 (448), p-value = 0.129
+mix3 extreme = 3.64810 (sig = 01002210) weight 4 (1120), p-value = 0.256
+mix3 extreme = 4.53725 (sig = 10221011) weight >=5 (4864), p-value = 0.0273
+bits per word = 32 (analyzing bits); min category p-value = 0.0273
+
+processed 4e+09 bytes in 1 seconds (4.002 GB/s, 14.41 TB/h). Fri Nov 20 22:34:18 2026
+
+p = 0.129
+------
+
+mix3 extreme = 2.21828 (sig = 00000020) weight 1 (16), p-value = 0.35
+mix3 extreme = 2.52547 (sig = 01000010) weight 2 (112), p-value = 0.728
+mix3 extreme = 4.02706 (sig = 00001220) weight 3 (448), p-value = 0.025
+mix3 extreme = 3.75485 (sig = 01002210) weight 4 (1120), p-value = 0.177
+mix3 extreme = 3.79714 (sig = 10221011) weight >=5 (4864), p-value = 0.509
+bits per word = 32 (analyzing bits); min category p-value = 0.025
+
+processed 5e+09 bytes in 2 seconds (2.501 GB/s, 9.004 TB/h). Fri Nov 20 22:34:19 2026
+
+p = 0.119
+------
+
+mix3 extreme = 2.60849 (sig = 00000020) weight 1 (16), p-value = 0.136
+mix3 extreme = 2.76974 (sig = 01000010) weight 2 (112), p-value = 0.467
+mix3 extreme = 3.37849 (sig = 00001220) weight 3 (448), p-value = 0.279
+mix3 extreme = 3.55657 (sig = 01002210) weight 4 (1120), p-value = 0.344
+mix3 extreme = 3.28948 (sig = 11012201) weight >=5 (4864), p-value = 0.992
+bits per word = 32 (analyzing bits); min category p-value = 0.136
+
+processed 6e+09 bytes in 2 seconds (3.001 GB/s, 10.8 TB/h). Fri Nov 20 22:34:19 2026
+
+p = 0.519
+------
+
+mix3 extreme = 2.54612 (sig = 00000020) weight 1 (16), p-value = 0.161
+mix3 extreme = 2.97907 (sig = 01000010) weight 2 (112), p-value = 0.277
+mix3 extreme = 3.78325 (sig = 20000021) weight 3 (448), p-value = 0.067
+mix3 extreme = 3.32181 (sig = 01002210) weight 4 (1120), p-value = 0.633
+mix3 extreme = 3.84997 (sig = 21202102) weight >=5 (4864), p-value = 0.437
+bits per word = 32 (analyzing bits); min category p-value = 0.067
+
+processed 7e+09 bytes in 3 seconds (2.334 GB/s, 8.404 TB/h). Fri Nov 20 22:34:20 2026
+
+p = 0.293
+------
+
+mix3 extreme = 2.25701 (sig = 00000001) weight 1 (16), p-value = 0.322
+mix3 extreme = 3.01257 (sig = 01000010) weight 2 (112), p-value = 0.252
+mix3 extreme = 3.42588 (sig = 00101010) weight 3 (448), p-value = 0.24
+mix3 extreme = 3.29924 (sig = 01002210) weight 4 (1120), p-value = 0.663
+mix3 extreme = 3.87476 (sig = 10221011) weight >=5 (4864), p-value = 0.405
+bits per word = 32 (analyzing bits); min category p-value = 0.24
+
+processed 8.5e+09 bytes in 3 seconds (2.835 GB/s, 10.2 TB/h). Fri Nov 20 22:34:20 2026
+
+p = 0.747
+------
+
+mix3 extreme = 1.79965 (sig = 00100000) weight 1 (16), p-value = 0.697
+mix3 extreme = 2.85260 (sig = 00200200) weight 2 (112), p-value = 0.385
+mix3 extreme = 3.26113 (sig = 10120000) weight 3 (448), p-value = 0.392
+mix3 extreme = 3.63022 (sig = 02010202) weight 4 (1120), p-value = 0.272
+mix3 extreme = 4.05279 (sig = 22011012) weight >=5 (4864), p-value = 0.218
+bits per word = 32 (analyzing bits); min category p-value = 0.218
+
+processed 1e+10 bytes in 4 seconds (2.501 GB/s, 9.004 TB/h). Fri Nov 20 22:34:21 2026
+
+p = 0.708
+------
+
+mix3 extreme = 1.67471 (sig = 00000020) weight 1 (16), p-value = 0.794
+mix3 extreme = 2.59340 (sig = 01000001) weight 2 (112), p-value = 0.657
+mix3 extreme = 3.44120 (sig = 10120000) weight 3 (448), p-value = 0.229
+mix3 extreme = 3.51760 (sig = 12000202) weight 4 (1120), p-value = 0.386
+mix3 extreme = 3.79606 (sig = 11011202) weight >=5 (4864), p-value = 0.511
+bits per word = 32 (analyzing bits); min category p-value = 0.229
+
+processed 1.25e+10 bytes in 5 seconds (2.501 GB/s, 9.004 TB/h). Fri Nov 20 22:34:22 2026
+
+p = 0.727
+------
+
+mix3 extreme = 1.53938 (sig = 01000000) weight 1 (16), p-value = 0.879
+mix3 extreme = 2.77648 (sig = 10000001) weight 2 (112), p-value = 0.461
+mix3 extreme = 2.92969 (sig = 00202010) weight 3 (448), p-value = 0.782
+mix3 extreme = 2.97728 (sig = 12000202) weight 4 (1120), p-value = 0.962
+mix3 extreme = 3.67900 (sig = 21222220) weight >=5 (4864), p-value = 0.68
+bits per word = 32 (analyzing bits); min category p-value = 0.461
+
+processed 1.5e+10 bytes in 6 seconds (2.501 GB/s, 9.004 TB/h). Fri Nov 20 22:34:23 2026
+
+p = 0.954
+------
+
+mix3 extreme = 1.09721 (sig = 01000000) weight 1 (16), p-value = 0.994
+mix3 extreme = 2.88151 (sig = 00002001) weight 2 (112), p-value = 0.359
+mix3 extreme = 3.38240 (sig = 20200200) weight 3 (448), p-value = 0.275
+mix3 extreme = 3.08154 (sig = 00202021) weight 4 (1120), p-value = 0.901
+mix3 extreme = 3.44784 (sig = 02100222) weight >=5 (4864), p-value = 0.936
+bits per word = 32 (analyzing bits); min category p-value = 0.275
+
+processed 1.75e+10 bytes in 6 seconds (2.918 GB/s, 10.5 TB/h). Fri Nov 20 22:34:23 2026
+
+p = 0.8
+------
+
+mix3 extreme = 1.83517 (sig = 01000000) weight 1 (16), p-value = 0.667
+mix3 extreme = 2.80228 (sig = 02020000) weight 2 (112), p-value = 0.434
+mix3 extreme = 3.19559 (sig = 00110200) weight 3 (448), p-value = 0.465
+mix3 extreme = 3.18869 (sig = 02101010) weight 4 (1120), p-value = 0.798
+mix3 extreme = 3.51794 (sig = 20111220) weight >=5 (4864), p-value = 0.879
+bits per word = 32 (analyzing bits); min category p-value = 0.434
+
+processed 2e+10 bytes in 7 seconds (2.858 GB/s, 10.29 TB/h). Fri Nov 20 22:34:24 2026
+
+p = 0.942
+------
+
+mix3 extreme = 1.56938 (sig = 01000000) weight 1 (16), p-value = 0.862
+mix3 extreme = 3.24516 (sig = 02001000) weight 2 (112), p-value = 0.123
+mix3 extreme = 3.54018 (sig = 20001100) weight 3 (448), p-value = 0.164
+mix3 extreme = 3.18883 (sig = 02101010) weight 4 (1120), p-value = 0.798
+mix3 extreme = 3.72863 (sig = 20111220) weight >=5 (4864), p-value = 0.608
+bits per word = 32 (analyzing bits); min category p-value = 0.123
+
+processed 2.5e+10 bytes in 9 seconds (2.779 GB/s, 10 TB/h). Fri Nov 20 22:34:26 2026
+
+p = 0.482
+------
+
+mix3 extreme = 1.13480 (sig = 01000000) weight 1 (16), p-value = 0.991
+mix3 extreme = 3.18607 (sig = 02001000) weight 2 (112), p-value = 0.149
+mix3 extreme = 3.45340 (sig = 20001100) weight 3 (448), p-value = 0.22
+mix3 extreme = 3.75136 (sig = 10100202) weight 4 (1120), p-value = 0.179
+mix3 extreme = 3.72201 (sig = 20111220) weight >=5 (4864), p-value = 0.618
+bits per word = 32 (analyzing bits); min category p-value = 0.149
+
+processed 3e+10 bytes in 11 seconds (2.728 GB/s, 9.823 TB/h). Fri Nov 20 22:34:28 2026
+
+p = 0.554
+------
+
+mix3 extreme = 1.35582 (sig = 00002000) weight 1 (16), p-value = 0.954
+mix3 extreme = 2.66278 (sig = 02020000) weight 2 (112), p-value = 0.582
+mix3 extreme = 3.63284 (sig = 10001020) weight 3 (448), p-value = 0.118
+mix3 extreme = 4.04018 (sig = 10100202) weight 4 (1120), p-value = 0.0581
+mix3 extreme = 4.05968 (sig = 12201121) weight >=5 (4864), p-value = 0.213
+bits per word = 32 (analyzing bits); min category p-value = 0.0581
+
+processed 4e+10 bytes in 15 seconds (2.668 GB/s, 9.604 TB/h). Fri Nov 20 22:34:32 2026
+
+p = 0.259
+------
+
+mix3 extreme = 1.43426 (sig = 00000002) weight 1 (16), p-value = 0.928
+mix3 extreme = 2.47566 (sig = 02020000) weight 2 (112), p-value = 0.777
+mix3 extreme = 3.40568 (sig = 02002002) weight 3 (448), p-value = 0.256
+mix3 extreme = 3.52371 (sig = 01001102) weight 4 (1120), p-value = 0.379
+mix3 extreme = 4.17889 (sig = 12201121) weight >=5 (4864), p-value = 0.133
+bits per word = 32 (analyzing bits); min category p-value = 0.133
+
+processed 5e+10 bytes in 19 seconds (2.633 GB/s, 9.478 TB/h). Fri Nov 20 22:34:36 2026
+
+p = 0.51
+------
+
+mix3 extreme = 1.51761 (sig = 00000020) weight 1 (16), p-value = 0.891
+mix3 extreme = 2.79693 (sig = 02020000) weight 2 (112), p-value = 0.44
+mix3 extreme = 3.42445 (sig = 02002002) weight 3 (448), p-value = 0.241
+mix3 extreme = 3.54521 (sig = 10210002) weight 4 (1120), p-value = 0.356
+mix3 extreme = 3.82919 (sig = 12201121) weight >=5 (4864), p-value = 0.465
+bits per word = 32 (analyzing bits); min category p-value = 0.241
+
+processed 6e+10 bytes in 22 seconds (2.728 GB/s, 9.823 TB/h). Fri Nov 20 22:34:39 2026
+
+p = 0.749
+------
+
+mix3 extreme = 1.35312 (sig = 00010000) weight 1 (16), p-value = 0.955
+mix3 extreme = 2.55099 (sig = 02020000) weight 2 (112), p-value = 0.702
+mix3 extreme = 2.92535 (sig = 10100001) weight 3 (448), p-value = 0.786
+mix3 extreme = 3.85637 (sig = 10210002) weight 4 (1120), p-value = 0.121
+mix3 extreme = 4.00589 (sig = 20201012) weight >=5 (4864), p-value = 0.26
+bits per word = 32 (analyzing bits); min category p-value = 0.121
+
+processed 7e+10 bytes in 26 seconds (2.693 GB/s, 9.697 TB/h). Fri Nov 20 22:34:43 2026
+
+p = 0.475
+------
+
+mix3 extreme = 1.24998 (sig = 00000020) weight 1 (16), p-value = 0.978
+mix3 extreme = 3.07244 (sig = 02001000) weight 2 (112), p-value = 0.212
+mix3 extreme = 3.07617 (sig = 02002002) weight 3 (448), p-value = 0.61
+mix3 extreme = 3.90008 (sig = 10210002) weight 4 (1120), p-value = 0.102
+mix3 extreme = 3.82232 (sig = 20201012) weight >=5 (4864), p-value = 0.474
+bits per word = 32 (analyzing bits); min category p-value = 0.102
+
+processed 8.5e+10 bytes in 32 seconds (2.656 GB/s, 9.563 TB/h). Fri Nov 20 22:34:49 2026
+
+p = 0.416
+------
+
+mix3 extreme = 1.33160 (sig = 00000100) weight 1 (16), p-value = 0.961
+mix3 extreme = 2.91579 (sig = 02001000) weight 2 (112), p-value = 0.328
+mix3 extreme = 3.25549 (sig = 20000210) weight 3 (448), p-value = 0.398
+mix3 extreme = 4.01311 (sig = 10120010) weight 4 (1120), p-value = 0.0649
+mix3 extreme = 3.63523 (sig = 22202210) weight >=5 (4864), p-value = 0.741
+bits per word = 32 (analyzing bits); min category p-value = 0.0649
+
+processed 1e+11 bytes in 38 seconds (2.632 GB/s, 9.475 TB/h). Fri Nov 20 22:34:55 2026
+
+p = 0.285
+------
+
+mix3 extreme = 1.72478 (sig = 00000100) weight 1 (16), p-value = 0.757
+mix3 extreme = 2.88561 (sig = 00010100) weight 2 (112), p-value = 0.355
+mix3 extreme = 3.44560 (sig = 20000210) weight 3 (448), p-value = 0.225
+mix3 extreme = 3.99988 (sig = 00110022) weight 4 (1120), p-value = 0.0685
+mix3 extreme = 3.84144 (sig = 21001222) weight >=5 (4864), p-value = 0.448
+bits per word = 32 (analyzing bits); min category p-value = 0.0685
+
+processed 1.25e+11 bytes in 47 seconds (2.66 GB/s, 9.576 TB/h). Fri Nov 20 22:35:04 2026
+
+p = 0.299
+------
+
+mix3 extreme = 1.99122 (sig = 00000100) weight 1 (16), p-value = 0.533
+mix3 extreme = 3.16102 (sig = 00010100) weight 2 (112), p-value = 0.162
+mix3 extreme = 3.16725 (sig = 10100001) weight 3 (448), p-value = 0.498
+mix3 extreme = 4.13746 (sig = 00110022) weight 4 (1120), p-value = 0.0386
+mix3 extreme = 4.04667 (sig = 20022202) weight >=5 (4864), p-value = 0.223
+bits per word = 32 (analyzing bits); min category p-value = 0.0386
+
+processed 1.5e+11 bytes in 57 seconds (2.632 GB/s, 9.474 TB/h). Fri Nov 20 22:35:14 2026
+
+p = 0.179
+------
+
+mix3 extreme = 1.58049 (sig = 00000100) weight 1 (16), p-value = 0.856
+mix3 extreme = 2.76345 (sig = 00010100) weight 2 (112), p-value = 0.474
+mix3 extreme = 3.46402 (sig = 20000011) weight 3 (448), p-value = 0.212
+mix3 extreme = 3.35388 (sig = 00110022) weight 4 (1120), p-value = 0.591
+mix3 extreme = 3.88606 (sig = 20101112) weight >=5 (4864), p-value = 0.391
+bits per word = 32 (analyzing bits); min category p-value = 0.212
+
+processed 1.75e+11 bytes in 66 seconds (2.652 GB/s, 9.546 TB/h). Fri Nov 20 22:35:23 2026
+
+p = 0.697
+------
+
+mix3 extreme = 2.08603 (sig = 01000000) weight 1 (16), p-value = 0.453
+mix3 extreme = 2.71346 (sig = 00010100) weight 2 (112), p-value = 0.527
+mix3 extreme = 3.06110 (sig = 20000011) weight 3 (448), p-value = 0.628
+mix3 extreme = 3.10705 (sig = 00110022) weight 4 (1120), p-value = 0.88
+mix3 extreme = 3.58926 (sig = 21001222) weight >=5 (4864), p-value = 0.801
+bits per word = 32 (analyzing bits); min category p-value = 0.453
+
+processed 2e+11 bytes in 76 seconds (2.632 GB/s, 9.475 TB/h). Fri Nov 20 22:35:33 2026
+
+p = 0.951
+------
+
+mix3 extreme = 2.00220 (sig = 01000000) weight 1 (16), p-value = 0.523
+mix3 extreme = 2.36671 (sig = 00010100) weight 2 (112), p-value = 0.868
+mix3 extreme = 2.99416 (sig = 01100020) weight 3 (448), p-value = 0.709
+mix3 extreme = 3.46775 (sig = 01101200) weight 4 (1120), p-value = 0.445
+mix3 extreme = 3.69119 (sig = 21001222) weight >=5 (4864), p-value = 0.662
+bits per word = 32 (analyzing bits); min category p-value = 0.445
+
+processed 2.5e+11 bytes in 95 seconds (2.632 GB/s, 9.474 TB/h). Fri Nov 20 22:35:52 2026
+
+p = 0.947
+------
+
+mix3 extreme = 1.97011 (sig = 01000000) weight 1 (16), p-value = 0.551
+mix3 extreme = 3.02160 (sig = 00010100) weight 2 (112), p-value = 0.246
+mix3 extreme = 3.21130 (sig = 20000011) weight 3 (448), p-value = 0.447
+mix3 extreme = 3.82137 (sig = 00022201) weight 4 (1120), p-value = 0.138
+mix3 extreme = 3.77983 (sig = 22021212) weight >=5 (4864), p-value = 0.534
+bits per word = 32 (analyzing bits); min category p-value = 0.138
+
+processed 3e+11 bytes in 114 seconds (2.632 GB/s, 9.474 TB/h). Fri Nov 20 22:36:11 2026
+
+p = 0.524
+------
+
+mix3 extreme = 1.96960 (sig = 00000200) weight 1 (16), p-value = 0.552
+mix3 extreme = 2.58430 (sig = 00010100) weight 2 (112), p-value = 0.667
+mix3 extreme = 2.98214 (sig = 02002200) weight 3 (448), p-value = 0.723
+mix3 extreme = 3.40588 (sig = 21200100) weight 4 (1120), p-value = 0.522
+mix3 extreme = 3.76063 (sig = 22210002) weight >=5 (4864), p-value = 0.562
+bits per word = 32 (analyzing bits); min category p-value = 0.522
+
+processed 4e+11 bytes in 153 seconds (2.615 GB/s, 9.412 TB/h). Fri Nov 20 22:36:50 2026
+
+p = 0.975
+------
+
+mix3 extreme = 2.01013 (sig = 00000200) weight 1 (16), p-value = 0.517
+mix3 extreme = 2.43864 (sig = 00010100) weight 2 (112), p-value = 0.811
+mix3 extreme = 2.90652 (sig = 20000011) weight 3 (448), p-value = 0.806
+mix3 extreme = 3.38300 (sig = 00112010) weight 4 (1120), p-value = 0.552
+mix3 extreme = 3.95905 (sig = 22210002) weight >=5 (4864), p-value = 0.307
+bits per word = 32 (analyzing bits); min category p-value = 0.307
+
+processed 5e+11 bytes in 191 seconds (2.618 GB/s, 9.424 TB/h). Fri Nov 20 22:37:28 2026
+
+p = 0.84
+------
+
+mix3 extreme = 1.50016 (sig = 00000200) weight 1 (16), p-value = 0.899
+mix3 extreme = 2.43905 (sig = 22000000) weight 2 (112), p-value = 0.81
+mix3 extreme = 2.84763 (sig = 22002000) weight 3 (448), p-value = 0.862
+mix3 extreme = 3.48407 (sig = 00112010) weight 4 (1120), p-value = 0.425
+mix3 extreme = 3.87529 (sig = 22210002) weight >=5 (4864), p-value = 0.404
+bits per word = 32 (analyzing bits); min category p-value = 0.404
+
+processed 6e+11 bytes in 229 seconds (2.62 GB/s, 9.433 TB/h). Fri Nov 20 22:38:06 2026
+
+p = 0.925
+------
+
+mix3 extreme = 1.49716 (sig = 00000001) weight 1 (16), p-value = 0.901
+mix3 extreme = 2.45753 (sig = 22000000) weight 2 (112), p-value = 0.794
+mix3 extreme = 3.36592 (sig = 00010202) weight 3 (448), p-value = 0.29
+mix3 extreme = 3.21377 (sig = 01010022) weight 4 (1120), p-value = 0.77
+mix3 extreme = 3.86564 (sig = 12201201) weight >=5 (4864), p-value = 0.417
+bits per word = 32 (analyzing bits); min category p-value = 0.29
+
+processed 7e+11 bytes in 268 seconds (2.612 GB/s, 9.403 TB/h). Fri Nov 20 22:38:45 2026
+
+p = 0.819
+------
+
+mix3 extreme = 1.60542 (sig = 00000200) weight 1 (16), p-value = 0.841
+mix3 extreme = 2.25374 (sig = 10100000) weight 2 (112), p-value = 0.936
+mix3 extreme = 3.10304 (sig = 02001001) weight 3 (448), p-value = 0.576
+mix3 extreme = 3.05149 (sig = 01010022) weight 4 (1120), p-value = 0.922
+mix3 extreme = 3.86766 (sig = 22010122) weight >=5 (4864), p-value = 0.414
+bits per word = 32 (analyzing bits); min category p-value = 0.414
+
+processed 8.5e+11 bytes in 325 seconds (2.615 GB/s, 9.415 TB/h). Fri Nov 20 22:39:42 2026
+
+p = 0.931
+------
+
+mix3 extreme = 1.49436 (sig = 00000200) weight 1 (16), p-value = 0.902
+mix3 extreme = 2.36066 (sig = 01200000) weight 2 (112), p-value = 0.873
+mix3 extreme = 3.00284 (sig = 02100200) weight 3 (448), p-value = 0.699
+mix3 extreme = 3.14170 (sig = 21001002) weight 4 (1120), p-value = 0.848
+mix3 extreme = 3.71781 (sig = 21221101) weight >=5 (4864), p-value = 0.624
+bits per word = 32 (analyzing bits); min category p-value = 0.624
+
+processed 1e+12 bytes in 383 seconds (2.611 GB/s, 9.4 TB/h). Fri Nov 20 22:40:40 2026
+
+p = 0.992
+------
+
+mix3 extreme = 1.51177 (sig = 00000001) weight 1 (16), p-value = 0.893
+mix3 extreme = 2.68636 (sig = 00010100) weight 2 (112), p-value = 0.556
+mix3 extreme = 3.46388 (sig = 22002000) weight 3 (448), p-value = 0.212
+mix3 extreme = 3.14395 (sig = 00101201) weight 4 (1120), p-value = 0.846
+mix3 extreme = 3.89615 (sig = 21221101) weight >=5 (4864), p-value = 0.378
+bits per word = 32 (analyzing bits); min category p-value = 0.212
+
+processed 1.25e+12 bytes in 480 seconds (2.604 GB/s, 9.375 TB/h). Fri Nov 20 22:42:17 2026
+
+p = 0.697
+------
+
+mix3 extreme = 1.16228 (sig = 00000001) weight 1 (16), p-value = 0.989
+mix3 extreme = 2.82863 (sig = 00010100) weight 2 (112), p-value = 0.408
+mix3 extreme = 3.12104 (sig = 01001002) weight 3 (448), p-value = 0.554
+mix3 extreme = 3.27737 (sig = 00101201) weight 4 (1120), p-value = 0.691
+mix3 extreme = 3.85605 (sig = 12201201) weight >=5 (4864), p-value = 0.429
+bits per word = 32 (analyzing bits); min category p-value = 0.408
+
+processed 1.5e+12 bytes in 576 seconds (2.604 GB/s, 9.375 TB/h). Fri Nov 20 22:43:53 2026
+
+p = 0.927
+------
+
+mix3 extreme = 1.71118 (sig = 00000010) weight 1 (16), p-value = 0.767
+mix3 extreme = 2.69483 (sig = 10000100) weight 2 (112), p-value = 0.547
+mix3 extreme = 3.11610 (sig = 01020001) weight 3 (448), p-value = 0.56
+mix3 extreme = 2.99986 (sig = 00101201) weight 4 (1120), p-value = 0.952
+mix3 extreme = 3.94304 (sig = 11210122) weight >=5 (4864), p-value = 0.324
+bits per word = 32 (analyzing bits); min category p-value = 0.324
+
+processed 1.75e+12 bytes in 672 seconds (2.604 GB/s, 9.375 TB/h). Fri Nov 20 22:45:29 2026
+
+p = 0.859
+------
+
+mix3 extreme = 1.41609 (sig = 02000000) weight 1 (16), p-value = 0.935
+mix3 extreme = 3.63417 (sig = 10000100) weight 2 (112), p-value = 0.0308
+mix3 extreme = 3.11358 (sig = 10001020) weight 3 (448), p-value = 0.563
+mix3 extreme = 3.05503 (sig = 00112010) weight 4 (1120), p-value = 0.92
+mix3 extreme = 3.65960 (sig = 01202201) weight >=5 (4864), p-value = 0.707
+bits per word = 32 (analyzing bits); min category p-value = 0.0308
+
+processed 2e+12 bytes in 769 seconds (2.601 GB/s, 9.363 TB/h). Fri Nov 20 22:47:06 2026
+
+p = 0.145
+------
+
+mix3 extreme = 1.25867 (sig = 02000000) weight 1 (16), p-value = 0.976
+mix3 extreme = 2.86036 (sig = 10000100) weight 2 (112), p-value = 0.378
+mix3 extreme = 3.28356 (sig = 00012100) weight 3 (448), p-value = 0.368
+mix3 extreme = 3.17877 (sig = 00202011) weight 4 (1120), p-value = 0.809
+mix3 extreme = 3.64046 (sig = 22121120) weight >=5 (4864), p-value = 0.734
+bits per word = 32 (analyzing bits); min category p-value = 0.368
+
+processed 2.5e+12 bytes in 961 seconds (2.601 GB/s, 9.365 TB/h). Fri Nov 20 22:50:18 2026
+
+p = 0.899
+------
+
+mix3 extreme = 1.94131 (sig = 20000000) weight 1 (16), p-value = 0.576
+mix3 extreme = 2.81838 (sig = 10000100) weight 2 (112), p-value = 0.418
+mix3 extreme = 2.85888 (sig = 01200200) weight 3 (448), p-value = 0.852
+mix3 extreme = 3.04233 (sig = 20100102) weight 4 (1120), p-value = 0.928
+mix3 extreme = 3.93130 (sig = 21122002) weight >=5 (4864), p-value = 0.337
+bits per word = 32 (analyzing bits); min category p-value = 0.337
+
+processed 3e+12 bytes in 1.16e+03 seconds (2.591 GB/s, 9.326 TB/h). Fri Nov 20 22:53:35 2026
+
+p = 0.872
+------
+
+mix3 extreme = 1.62217 (sig = 20000000) weight 1 (16), p-value = 0.83
+mix3 extreme = 2.86683 (sig = 10000100) weight 2 (112), p-value = 0.372
+mix3 extreme = 3.58815 (sig = 00020012) weight 3 (448), p-value = 0.139
+mix3 extreme = 3.57458 (sig = 00202011) weight 4 (1120), p-value = 0.325
+mix3 extreme = 4.12949 (sig = 21122002) weight >=5 (4864), p-value = 0.162
+bits per word = 32 (analyzing bits); min category p-value = 0.139
+
+processed 4e+12 bytes in 1.55e+03 seconds (2.579 GB/s, 9.284 TB/h). Fri Nov 20 23:00:08 2026
+
+p = 0.526
+------
+
+mix3 extreme = 2.03328 (sig = 00000020) weight 1 (16), p-value = 0.497
+mix3 extreme = 2.77992 (sig = 00200200) weight 2 (112), p-value = 0.457
+mix3 extreme = 3.10976 (sig = 00020012) weight 3 (448), p-value = 0.568
+mix3 extreme = 3.54747 (sig = 01200220) weight 4 (1120), p-value = 0.353
+mix3 extreme = 3.70831 (sig = 00222202) weight >=5 (4864), p-value = 0.638
+bits per word = 32 (analyzing bits); min category p-value = 0.353
+
+processed 5e+12 bytes in 1.95e+03 seconds (2.565 GB/s, 9.236 TB/h). Fri Nov 20 23:06:46 2026
+
+p = 0.887
+------
+
+mix3 extreme = 2.20485 (sig = 20000000) weight 1 (16), p-value = 0.36
+mix3 extreme = 2.63130 (sig = 00100001) weight 2 (112), p-value = 0.616
+mix3 extreme = 2.79858 (sig = 22002000) weight 3 (448), p-value = 0.9
+mix3 extreme = 3.47558 (sig = 10120001) weight 4 (1120), p-value = 0.435
+mix3 extreme = 3.73359 (sig = 21122010) weight >=5 (4864), p-value = 0.601
+bits per word = 32 (analyzing bits); min category p-value = 0.36
+
+processed 6e+12 bytes in 2.34e+03 seconds (2.57 GB/s, 9.251 TB/h). Fri Nov 20 23:13:12 2026
+
+p = 0.892
+------
+
+mix3 extreme = 2.19335 (sig = 00000100) weight 1 (16), p-value = 0.368
+mix3 extreme = 2.54911 (sig = 00010200) weight 2 (112), p-value = 0.704
+mix3 extreme = 2.83002 (sig = 20002100) weight 3 (448), p-value = 0.876
+mix3 extreme = 3.70499 (sig = 10120001) weight 4 (1120), p-value = 0.211
+mix3 extreme = 3.76912 (sig = 21122010) weight >=5 (4864), p-value = 0.549
+bits per word = 32 (analyzing bits); min category p-value = 0.211
+
+processed 7e+12 bytes in 2.8e+03 seconds (2.498 GB/s, 8.994 TB/h). Fri Nov 20 23:20:59 2026
+
+p = 0.694
+------
+
+mix3 extreme = 2.23883 (sig = 02000000) weight 1 (16), p-value = 0.335
+mix3 extreme = 2.57660 (sig = 00001002) weight 2 (112), p-value = 0.675
+mix3 extreme = 2.92224 (sig = 00012100) weight 3 (448), p-value = 0.79
+mix3 extreme = 4.15370 (sig = 21120000) weight 4 (1120), p-value = 0.036
+mix3 extreme = 3.81230 (sig = 21122010) weight >=5 (4864), p-value = 0.488
+bits per word = 32 (analyzing bits); min category p-value = 0.036
+
+processed 8.5e+12 bytes in 3.58e+03 seconds (2.375 GB/s, 8.55 TB/h). Fri Nov 20 23:33:56 2026
+
+p = 0.167
+------
+
+mix3 extreme = 2.43579 (sig = 00200000) weight 1 (16), p-value = 0.213
+mix3 extreme = 2.45595 (sig = 00100001) weight 2 (112), p-value = 0.795
+mix3 extreme = 2.85995 (sig = 00102020) weight 3 (448), p-value = 0.851
+mix3 extreme = 3.62293 (sig = 21120000) weight 4 (1120), p-value = 0.278
+mix3 extreme = 3.91984 (sig = 21122010) weight >=5 (4864), p-value = 0.35
+bits per word = 32 (analyzing bits); min category p-value = 0.213
+
+processed 1e+13 bytes in 4.38e+03 seconds (2.281 GB/s, 8.212 TB/h). Fri Nov 20 23:47:21 2026
+
+p = 0.698
+------
+
+mix3 extreme = 2.56361 (sig = 00200000) weight 1 (16), p-value = 0.153
+mix3 extreme = 2.43298 (sig = 00100001) weight 2 (112), p-value = 0.815
+mix3 extreme = 3.20441 (sig = 10020020) weight 3 (448), p-value = 0.455
+mix3 extreme = 4.56316 (sig = 10120001) weight 4 (1120), p-value = 0.00563
+mix3 extreme = 4.01130 (sig = 21120221) weight >=5 (4864), p-value = 0.255
+bits per word = 32 (analyzing bits); min category p-value = 0.00563
+
+processed 1.25e+13 bytes in 5.66e+03 seconds (2.208 GB/s, 7.951 TB/h). Sat Nov 21 00:08:37 2026
+
+p = 0.0278
+------
+
+mix3 extreme = 2.38997 (sig = 00200000) weight 1 (16), p-value = 0.238
+mix3 extreme = 2.46900 (sig = 00100001) weight 2 (112), p-value = 0.783
+mix3 extreme = 2.72372 (sig = 00110002) weight 3 (448), p-value = 0.945
+mix3 extreme = 4.35972 (sig = 10120001) weight 4 (1120), p-value = 0.0145
+mix3 extreme = 4.18926 (sig = 21001210) weight >=5 (4864), p-value = 0.127
+bits per word = 32 (analyzing bits); min category p-value = 0.0145
+
+processed 1.5e+13 bytes in 6.82e+03 seconds (2.199 GB/s, 7.918 TB/h). Sat Nov 21 00:27:57 2026
+
+p = 0.0703
+------
+
+mix3 extreme = 2.15423 (sig = 00100000) weight 1 (16), p-value = 0.398
+mix3 extreme = 2.69160 (sig = 02100000) weight 2 (112), p-value = 0.55
+mix3 extreme = 2.78871 (sig = 20200010) weight 3 (448), p-value = 0.907
+mix3 extreme = 3.85651 (sig = 00220202) weight 4 (1120), p-value = 0.121
+mix3 extreme = 4.38233 (sig = 21001210) weight >=5 (4864), p-value = 0.0555
+bits per word = 32 (analyzing bits); min category p-value = 0.0555
+
+processed 1.75e+13 bytes in 7.91e+03 seconds (2.213 GB/s, 7.966 TB/h). Sat Nov 21 00:46:06 2026
+
+p = 0.248
+------
+
+mix3 extreme = 2.40949 (sig = 00200000) weight 1 (16), p-value = 0.227
+mix3 extreme = 2.56943 (sig = 10020000) weight 2 (112), p-value = 0.682
+mix3 extreme = 3.10766 (sig = 20200010) weight 3 (448), p-value = 0.571
+mix3 extreme = 3.58703 (sig = 21000220) weight 4 (1120), p-value = 0.312
+mix3 extreme = 4.54732 (sig = 21001210) weight >=5 (4864), p-value = 0.0261
+bits per word = 32 (analyzing bits); min category p-value = 0.0261
+
+processed 2e+13 bytes in 8.97e+03 seconds (2.23 GB/s, 8.028 TB/h). Sat Nov 21 01:03:46 2026
+
+p = 0.124
+------
+
+mix3 extreme = 2.01840 (sig = 00200000) weight 1 (16), p-value = 0.51
+mix3 extreme = 2.65792 (sig = 02100000) weight 2 (112), p-value = 0.587
+mix3 extreme = 3.21333 (sig = 20200010) weight 3 (448), p-value = 0.445
+mix3 extreme = 3.02972 (sig = 21120000) weight 4 (1120), p-value = 0.936
+mix3 extreme = 4.56215 (sig = 11001210) weight >=5 (4864), p-value = 0.0243
+bits per word = 32 (analyzing bits); min category p-value = 0.0243
+
+processed 2.5e+13 bytes in 1.15e+04 seconds (2.183 GB/s, 7.858 TB/h). Sat Nov 21 01:45:11 2026
+
+p = 0.116
+------
+
+mix3 extreme = 2.02922 (sig = 00000020) weight 1 (16), p-value = 0.5
+mix3 extreme = 3.12473 (sig = 02100000) weight 2 (112), p-value = 0.181
+mix3 extreme = 3.14440 (sig = 20200010) weight 3 (448), p-value = 0.526
+mix3 extreme = 3.50766 (sig = 00100112) weight 4 (1120), p-value = 0.397
+mix3 extreme = 4.00173 (sig = 21220021) weight >=5 (4864), p-value = 0.264
+bits per word = 32 (analyzing bits); min category p-value = 0.181
+
+processed 3e+13 bytes in 1.37e+04 seconds (2.183 GB/s, 7.86 TB/h). Sat Nov 21 02:23:18 2026
+
+p = 0.631
+------
+
+mix3 extreme = 2.34612 (sig = 00000100) weight 1 (16), p-value = 0.264
+mix3 extreme = 2.46514 (sig = 02100000) weight 2 (112), p-value = 0.787
+mix3 extreme = 2.92850 (sig = 00122000) weight 3 (448), p-value = 0.783
+mix3 extreme = 3.45307 (sig = 12010100) weight 4 (1120), p-value = 0.463
+mix3 extreme = 3.85683 (sig = 11220101) weight >=5 (4864), p-value = 0.428
+bits per word = 32 (analyzing bits); min category p-value = 0.264
+
+processed 4e+13 bytes in 1.83e+04 seconds (2.183 GB/s, 7.86 TB/h). Sat Nov 21 03:39:37 2026
+
+p = 0.784
+------
+
+mix3 extreme = 2.59592 (sig = 00002000) weight 1 (16), p-value = 0.141
+mix3 extreme = 2.79537 (sig = 02002000) weight 2 (112), p-value = 0.441
+mix3 extreme = 2.96585 (sig = 00110200) weight 3 (448), p-value = 0.742
+mix3 extreme = 3.48019 (sig = 12010100) weight 4 (1120), p-value = 0.43
+mix3 extreme = 3.71468 (sig = 10220110) weight >=5 (4864), p-value = 0.628
+bits per word = 32 (analyzing bits); min category p-value = 0.141
+
+processed 5e+13 bytes in 2.26e+04 seconds (2.208 GB/s, 7.95 TB/h). Sat Nov 21 04:51:38 2026
+
+p = 0.532
+------
+
+mix3 extreme = 2.66094 (sig = 00002000) weight 1 (16), p-value = 0.118
+mix3 extreme = 2.72916 (sig = 10001000) weight 2 (112), p-value = 0.51
+mix3 extreme = 3.04127 (sig = 00010110) weight 3 (448), p-value = 0.652
+mix3 extreme = 4.02962 (sig = 10200210) weight 4 (1120), p-value = 0.0607
+mix3 extreme = 3.79688 (sig = 00201122) weight >=5 (4864), p-value = 0.51
+bits per word = 32 (analyzing bits); min category p-value = 0.0607
+
+processed 6e+13 bytes in 2.73e+04 seconds (2.198 GB/s, 7.913 TB/h). Sat Nov 21 06:09:14 2026
+
+p = 0.269
+------
+
+mix3 extreme = 2.55163 (sig = 00002000) weight 1 (16), p-value = 0.158
+mix3 extreme = 2.83392 (sig = 20010000) weight 2 (112), p-value = 0.403
+mix3 extreme = 2.79941 (sig = 20120000) weight 3 (448), p-value = 0.9
+mix3 extreme = 3.51429 (sig = 00201022) weight 4 (1120), p-value = 0.39
+mix3 extreme = 3.72262 (sig = 10200211) weight >=5 (4864), p-value = 0.617
+bits per word = 32 (analyzing bits); min category p-value = 0.158
+
+processed 7e+13 bytes in 3.14e+04 seconds (2.23 GB/s, 8.026 TB/h). Sat Nov 21 07:17:34 2026
+
+p = 0.578
+------
+
+mix3 extreme = 1.86702 (sig = 00000001) weight 1 (16), p-value = 0.64
+mix3 extreme = 2.87482 (sig = 10001000) weight 2 (112), p-value = 0.365
+mix3 extreme = 2.92471 (sig = 02010010) weight 3 (448), p-value = 0.787
+mix3 extreme = 4.03793 (sig = 00201022) weight 4 (1120), p-value = 0.0586
+mix3 extreme = 3.56260 (sig = 20211202) weight >=5 (4864), p-value = 0.832
+bits per word = 32 (analyzing bits); min category p-value = 0.0586
+
+processed 8.5e+13 bytes in 3.72e+04 seconds (2.287 GB/s, 8.234 TB/h). Sat Nov 21 08:53:40 2026
+
+p = 0.261
+------
+
+mix3 extreme = 1.86832 (sig = 00002000) weight 1 (16), p-value = 0.639
+mix3 extreme = 2.89474 (sig = 20010000) weight 2 (112), p-value = 0.347
+mix3 extreme = 3.32444 (sig = 20120000) weight 3 (448), p-value = 0.328
+mix3 extreme = 3.47526 (sig = 12010100) weight 4 (1120), p-value = 0.435
+mix3 extreme = 3.67320 (sig = 21201120) weight >=5 (4864), p-value = 0.688
+bits per word = 32 (analyzing bits); min category p-value = 0.328
+
+processed 1e+14 bytes in 4.3e+04 seconds (2.327 GB/s, 8.376 TB/h). Sat Nov 21 10:30:35 2026
+
+p = 0.863
+------
+
+mix3 extreme = 1.86832 (sig = 00002000) weight 1 (16), p-value = 0.639
+mix3 extreme = 2.89474 (sig = 20010000) weight 2 (112), p-value = 0.347
+mix3 extreme = 3.32444 (sig = 20120000) weight 3 (448), p-value = 0.328
+mix3 extreme = 3.47526 (sig = 12010100) weight 4 (1120), p-value = 0.435
+mix3 extreme = 3.67320 (sig = 21201120) weight >=5 (4864), p-value = 0.688
+bits per word = 32 (analyzing bits); min category p-value = 0.328
+
+processed 1e+14 bytes in 4.3e+04 seconds (2.327 GB/s, 8.376 TB/h). Sat Nov 21 10:30:35 2026
+
+final
+p = 0.863

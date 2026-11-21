@@ -318,7 +318,7 @@ The most sensitive case is that `v[4]` and `v[5]`, which the counter is not inje
 
 * PractRand: passed up to 64GB for multiple seeds, both counter orders (lower or upper 32bit of the counter incrementing first) and weak keys.
 * TestU01 BigCrush: passed for the seeds 0 to 15 with both counter orders ([results](bigcrush_result); `run_bigcrush SEED`, built with `MELTY2_ENABLE_BIGCRUSH`, and also `MELTY2_INTERNAL_SWAP32_CTR` for the other counter order). 8 of the about 5000 p-values are outside [0.001, 0.999], as many as expected by chance, and the two smallest ones (1.1e-6 and 9.0e-6) were not reproduced by 10 reruns of the tests on the following outputs.
-* [Hamming-weight dependency test](https://prng.di.unimi.it/hwd.php): <!-- TODO -->
+* [Hamming-weight dependency test](https://prng.di.unimi.it/hwd.php): passed up to 10^14 bytes with both counter orders ([results](hwd_result)). Reduced to 17 steps, the kernel is detected at about 3 × 10^13 bytes in the default counter order.
 
 ## License
 
