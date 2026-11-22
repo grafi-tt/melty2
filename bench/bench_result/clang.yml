@@ -1,0 +1,18 @@
+Bulk generation into a buffer:
+  melty2:
+    ns_per_number: 0.1788
+  Philox4x32-10:
+    ns_per_number: 0.1879
+  Threefry4x32-20:
+    ns_per_number: 0.2589
+  ARS-7 (AES-NI):
+    ns_per_number: 0.1657
+One 32bit number per counter:
+  melty2:
+    ns_per_number: 0.1788
+  Philox4x32-10:
+    ns_per_number: 0.7517
+  Threefry4x32-20:
+    ns_per_number: 1.036
+  ARS-7 (AES-NI):
+    ns_per_number: 0.6629

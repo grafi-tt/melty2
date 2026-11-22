@@ -162,6 +162,7 @@ The following options are available.
 * `MELTY2_ENABLE_CPU_FEATURES` (default `ON`): select the SIMD implementation at runtime by [cpu_features](https://github.com/google/cpu_features). If disabled, only the generic implementation is built.
 * `MELTY2_ENABLE_TEST` (default `ON`): build tests.
 * `MELTY2_ENABLE_BIGCRUSH` (default `OFF`): build the BigCrush runner, which requires TestU01.
+* `MELTY2_ENABLE_BENCHMARK` (default `OFF`): build the CPU benchmark `bench_cpu`, compiled with `-march=native` for GCC and Clang.
 * `MELTY2_GPU_TEST` (default empty): build the GPU test by `CUDA` or `HIP`, which requires CMake 3.21. Set `CMAKE_CUDA_ARCHITECTURES` or `CMAKE_HIP_ARCHITECTURES` as needed.
 
 ### TIPS: Independent generators for tests
@@ -237,7 +238,19 @@ The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (R
 * The latency to obtain a 32bit number, measured by a single thread whose next counter depends on the previous output, is 2.5 times shorter.
 * Deriving a key from a seed in each thread costs about as much as generating 10 numbers, so it is negligible when a thread uses hundreds of numbers or more.
 
-<!-- TODO: CPU benchmark, comparison with Threefry and ARS -->
+### CPU
+
+The following results compare melty2 with Philox4x32-10, Threefry4x32-20 and ARS-7 (with AES-NI) on Ryzen 9 9950X (Zen 5, AVX-512) in a single thread, compiled by Clang 23.1.4 with `-O3 -march=native` ([results](bench/bench_result); `bench_cpu 42`, starting from the counter 42, built with `MELTY2_ENABLE_BENCHMARK`). The numbers of rounds are those proposed by Salmon et al. melty2 is measured by `melty2_gen` of the library. The other generators are implemented for the benchmark following their specifications, and verified by the known-answer test vectors of Random123. Like melty2, they compute 32 counters at a time by a plain loop, which the compiler vectorizes, except ARS, which computes each block by AES-NI. The time for one 32bit number per counter is that for a block, i.e. the time of the bulk generation multiplied by the number of 32bit words in a block (1 for melty2 and 4 for the others). This assumes that a whole block is computed for each number. When only one word of a block is used, the compiler may omit a part of the computation for the other words, so the actual time of Philox and Threefry may be considerably shorter; ARS computes the whole block by AES instructions in any case.
+
+![CPU benchmark](bench/bench_result/clang.png)
+
+| Benchmark (ns per 32bit number) | melty2 | Philox4x32-10 | Threefry4x32-20 | ARS-7 |
+|---|---|---|---|---|
+| Bulk generation into a buffer | 0.179 | 0.188 | 0.259 | 0.166 |
+| One 32bit number per counter | 0.179 | 0.752 | 1.036 | 0.663 |
+
+* In bulk generation, melty2, Philox and ARS are about as fast, as they use all outputs of each block, and Threefry is about 1.4 times slower. ARS is slightly faster with the dedicated AES instructions.
+* When only one 32bit number is needed for each counter, melty2 is 3.7 to 5.8 times faster than the others by this estimate, as they compute a block of 128bit and discard the rest.
 
 ## Similar projects
 
