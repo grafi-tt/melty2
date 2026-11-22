@@ -245,7 +245,7 @@ The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (R
 
 * [Random123](https://dl.acm.org/doi/10.1145/2063384.2063405) (Philox, Threefry, ARS)
 
-  Philox is excellent, but it relies on 32x32→64bit multiplications, and produces 128bit per call while the latency to obtain a 32bit output is long. Threefry is ARX-based, derived from the Threefish block cipher used in the Skein hash function, but has a 256bit or 128bit state and more rounds. ARS uses 5 rounds of AES with a simplified key schedule, which is very fast with AES instructions (AES-NI, ARMv8 Crypto Extension), but they are unavailable on GPUs and many accelerators.
+  Philox is excellent, but it relies on 32x32→64bit multiplications, and produces 128bit per call while the latency to obtain a 32bit output is long. Threefry is ARX-based, derived from the Threefish block cipher used in the Skein hash function, but has a 256bit or 128bit state and more rounds. ARS uses 7 rounds of AES with a simplified key schedule, which is very fast with AES instructions (AES-NI, ARMv8 Crypto Extension), but they are unavailable on GPUs and many accelerators.
 
   Philox and Threefry are widely used, e.g. Philox in cuRAND, PyTorch and NumPy, and Threefry as the default of JAX.
 
