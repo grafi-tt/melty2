@@ -12,6 +12,9 @@
 // - Generate in kernel: each of kThreads threads generates the numbers for its own range of counters and
 //   xors them, so the memory access is only one store per thread. All outputs of each block are used, or
 //   only the first 32bit word of each block (one 32bit number per counter, e.g. random access).
+// - Key derivation of melty2: as the generation in kernel, each thread derives the keys from the seeds for
+//   its own range, and xors their words. This is compared with the generation of numbers, for the case
+//   that each thread derives its own key from a seed.
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -266,6 +269,19 @@ __global__ void generate_kernel(BlockGen gen, uint64_t ctr, uint32_t *out) {
     out[t] = acc;
 }
 
+// Each thread xors the words of kPerThread keys of melty2, derived from the seeds (seed0, seed1, i) for
+// 64bit i, and stores it to out[thread]. The threads use consecutive ranges of i from first.
+__global__ void derive_key_kernel(uint32_t seed0, uint32_t seed1, uint64_t first, uint32_t *out) {
+    const uint32_t t = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t acc = 0;
+    for (uint32_t j = 0; j < kPerThread; ++j) {
+        const uint64_t i = first + static_cast<uint64_t>(t) * kPerThread + j;
+        const melty2_key key = melty2::gpu::init(seed0, seed1, static_cast<uint32_t>(i), static_cast<uint32_t>(i >> 32));
+        for (int w = 0; w < 6; ++w) acc ^= key.v_[w];
+    }
+    out[t] = acc;
+}
+
 //
 // Benchmark
 //
@@ -419,6 +435,13 @@ int main(int argc, char **argv) {
         libs.push_back(l);
     }
 
+    // key derivation of melty2, for kBulk keys
+    const double derive_ns = static_cast<double>(best_time_ns([&] {
+        derive_key_kernel<<<kThreads / kBlockDim, kBlockDim>>>(IV[0], IV[1], ctr, buf);
+        CHECK_GPU(gpuGetLastError());
+    })) / kBulk;
+    const uint32_t derive_checksum = xor_all(buf, kThreads);
+
     libs.push_back(bench_block_generator("Philox4x32-10", Philox4x32<kPhiloxRounds>{{IV[0], IV[1]}}, ctr, buf));
     libs.push_back(bench_block_generator("Threefry4x32-20", Threefry4x32<kThreefryRounds>{{IV[0], IV[1], IV[2], IV[3]}}, ctr, buf));
 
@@ -437,9 +460,11 @@ int main(int argc, char **argv) {
         for (const auto &l : libs) std::printf("  %s:\n    ns_per_number: %.4g\n", l.name, l.*(b.field));
     }
     std::printf("Memset of device memory (reference):\n  ns_per_number: %.4g\n", memset_ns);
+    std::printf("Key derivation of melty2 (reference):\n  ns_per_key: %.4g\n", derive_ns);
     for (const auto &l : libs) {
         std::fprintf(stderr, "checksums of %s: fill %08x, all outputs %08x, one per counter %08x\n", l.name,
                      l.fill_checksum, l.all_checksum, l.one_checksum);
     }
+    std::fprintf(stderr, "checksum of key derivation of melty2: %08x\n", derive_checksum);
     return 0;
 }

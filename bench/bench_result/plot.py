@@ -13,7 +13,7 @@ def load_result(f):
     table = []
     first = True
     for bench, d in y.items():
-        if "ns_per_number" in d:
+        if not all(isinstance(v, dict) for v in d.values()):
             # a reference without libs, e.g. memset
             continue
         benches.append(bench)
