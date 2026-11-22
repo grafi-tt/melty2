@@ -2,6 +2,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 import numpy as np
+import textwrap
 import yaml
 
 
@@ -12,6 +13,9 @@ def load_result(f):
     table = []
     first = True
     for bench, d in y.items():
+        if "ns_per_number" in d:
+            # a reference without libs, e.g. memset
+            continue
         benches.append(bench)
         keys = []
         vals = []
@@ -27,7 +31,9 @@ def load_result(f):
     return libs, benches, np.transpose(table)
 
 
-def plot_data(filename, libs, benches, table, title):
+def plot_data(filename, libs, benches, table, title, unit, xlim):
+    # unit is "ns" or "ps", and xlim is given in it
+    table = table * {"ns": 1, "ps": 1000}[unit]
     dpi = 144
     fig, ax = plt.subplots(figsize=(1280 / dpi, 800 / dpi))
     plt.rcParams["font.family"] = ["M PLUS 2"]
@@ -35,14 +41,15 @@ def plot_data(filename, libs, benches, table, title):
 
     ax.set_ymargin(0.02)
     ax.set_title(title, fontfamily="M PLUS 2")
-    ax.set_xlabel("Time per 32bit number (ns, log scale, shorter is better)", fontfamily="M PLUS 2")
+    ax.set_xlabel(f"Time per 32bit number ({unit}, log scale, shorter is better)", fontfamily="M PLUS 2")
     ax.set_xscale("log")
-    ax.set_xlim(0.1, 2)
+    ax.set_xlim(*xlim)
     ax.xaxis.set_major_formatter(FormatStrFormatter("%g"))
     ax.xaxis.set_minor_formatter(FormatStrFormatter("%g"))
 
     yticks = np.arange(len(benches))
-    ax.set_yticks(yticks, benches, fontfamily="M PLUS Code Latin 60")
+    labels = [textwrap.fill(b, 30) for b in benches]
+    ax.set_yticks(yticks, labels, fontfamily="M PLUS Code Latin 60")
     ax.invert_yaxis()
     ax.grid(True, axis="x", which="both", linestyle="dashed")
 
@@ -66,13 +73,13 @@ def main():
     mpl.use("Agg")
 
     here = Path(__file__).resolve().parent
-    for name, toolchain in [
-        ("clang", "Clang 23.1.4"),
+    for name, title, unit, xlim in [
+        ("clang", "Benchmark on Ryzen 9 9950X, single thread (Clang 23.1.4)", "ns", (0.1, 2)),
+        ("cuda", "Benchmark on GeForce RTX 4070 Laptop GPU (CUDA 12.9)", "ps", (1, 30)),
     ]:
         with open(here / f"{name}.yml") as f:
             libs, benches, table = load_result(f)
-        title = f"Benchmark on Ryzen 9 9950X, single thread ({toolchain})"
-        plot_data(here / f"{name}.png", libs, benches, table, title)
+        plot_data(here / f"{name}.png", libs, benches, table, title, unit, xlim)
 
 
 if __name__ == "__main__":

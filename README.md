@@ -224,7 +224,21 @@ key  2a333ca4 8f796a69 04a1065b 8458d96d 329e894d 9387f08e
 
 ### GPU
 
-The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (RDNA2, gfx1030), compiled by HIP 7.16 (Clang 23.1.4) with `-O3`. Philox is implemented for the benchmark following its specification, and verified by the known-answer test vectors of Random123.
+The following results compare melty2 with Philox4x32-10 and Threefry4x32-20 on GeForce RTX 4070 Laptop GPU (Ada, sm_89), compiled by CUDA 12.9 with `CMAKE_BUILD_TYPE=Release` ([results](bench/bench_result); `bench_gpu 42`, starting from the counter 42, built with `MELTY2_GPU_BENCHMARK=CUDA`). As in the CPU benchmark, Philox and Threefry are implemented for the benchmark following their specifications, and verified by the known-answer test vectors of Random123. Each benchmark generates 2^28 numbers. melty2 fills device memory by `melty2::gpu::fill`, and the others by a kernel with the same launch configuration, which writes each 128bit block by one store. When generating numbers in a kernel, each of 2^20 threads xors the numbers for its own range of counters, and writes only the result to memory. Unlike the CPU benchmark, the time for one 32bit number per counter is measured directly by a kernel using only the first word of each block.
+
+![GPU benchmark](bench/bench_result/cuda.png)
+
+| Benchmark | melty2 | Philox4x32-10 | Threefry4x32-20 |
+|---|---|---|---|
+| Fill device memory | 62.9 Gnum/s (251 GB/s) | 62.9 Gnum/s (251 GB/s) | 62.8 Gnum/s (251 GB/s) |
+| Generate in kernel, using all outputs | 179 Gnum/s | 470 Gnum/s | 190 Gnum/s |
+| Generate in kernel, one 32bit number per counter | 179 Gnum/s | 133 Gnum/s | 52.1 Gnum/s |
+
+* Filling memory is limited by the memory bandwidth for all of them (`memset` achieves 251 GB/s).
+* When all outputs are used, Philox is 2.6 times faster than melty2. The throughput roughly follows the number of instructions in the generated code: one 32bit number takes about 11.5 instructions for Philox, and about 37.5 and 35.5 for melty2 and Threefry respectively. On this GPU, 32bit multiplications run at a throughput comparable to additions, xors and rotations, unlike the AMD GPU below.
+* When only one 32bit number is needed for each counter (e.g. random access, or a single draw per particle), melty2 is 1.3 times faster than Philox and 3.4 times faster than Threefry, as the others compute most of a 128bit block for each number.
+
+The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (RDNA2, gfx1030), compiled by HIP 7.16 (Clang 23.1.4) with `-O3`, measured by an earlier version of the benchmark. Philox is implemented for the benchmark following its specification, and verified by the known-answer test vectors of Random123.
 
 | Benchmark | melty2 | Philox4x32-10 |
 |---|---|---|
