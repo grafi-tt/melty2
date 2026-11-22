@@ -164,6 +164,7 @@ The following options are available.
 * `MELTY2_ENABLE_BIGCRUSH` (default `OFF`): build the BigCrush runner, which requires TestU01.
 * `MELTY2_ENABLE_BENCHMARK` (default `OFF`): build the CPU benchmark `bench_cpu`, compiled with `-march=native` for GCC and Clang.
 * `MELTY2_GPU_TEST` (default empty): build the GPU test by `CUDA` or `HIP`, which requires CMake 3.21. Set `CMAKE_CUDA_ARCHITECTURES` or `CMAKE_HIP_ARCHITECTURES` as needed.
+* `MELTY2_GPU_BENCHMARK` (default empty): build the GPU benchmark `bench_gpu` by `CUDA` or `HIP`, which requires CMake 3.21.
 
 ### TIPS: Independent generators for tests
 
