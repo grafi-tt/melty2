@@ -129,7 +129,7 @@ simulate<<<blocks, threads>>>(key, out);
 
 If the counter is given by the index of a work item instead of the thread ID, e.g. `melty2::gpu::gen(key, (uint64_t)item << 32 | i)` for the `i`-th number of the work item `item`, the result doesn't depend on how the work items are assigned to threads.
 
-Alternatively, each thread can derive its own key from a seed containing the thread ID, e.g. `melty2::gpu::generator gen(seed, tid, 0, 0)`. This is useful when it is hard to assign counter ranges in advance, e.g. when the work is divided among threads irregularly, or the division changes during the program. In such cases, a seed containing the ID of a logical unit (such as a particle or a task) instead of the thread ID gives each unit its own stream regardless of the division, and the whole 64bit counter remains available for the numbers of the unit. The key derivation costs one ChaCha8 block once per thread, which is about as much as generating 10 numbers.
+Alternatively, each thread can derive its own key from a seed containing the thread ID, e.g. `melty2::gpu::generator gen(seed, tid, 0, 0)`. This is useful when it is hard to assign counter ranges in advance, e.g. when the work is divided among threads irregularly, or the division changes during the program. In such cases, a seed containing the ID of a logical unit (such as a particle or a task) instead of the thread ID gives each unit its own stream regardless of the division, and the whole 64bit counter remains available for the numbers of the unit. The key derivation computes one ChaCha8 block (384 ARX operations) once per thread, which takes about as long as generating 10 numbers (9.5 on GeForce RTX 4070 Laptop GPU).
 
 It provides the following functions and class in the namespace `melty2::gpu`, all of which are callable from both host and device code except `fill`.
 
@@ -251,7 +251,6 @@ The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (R
 * When generating numbers in a kernel and consuming them without memory access, melty2 is 1.3 times faster than Philox, even though Philox yields four 32bit numbers per call. This is because 32bit multiplications (especially for the upper half) have a lower throughput than additions, xors and rotations on this GPU, while melty2 uses only ARX operations.
 * When only one 32bit number is needed for each counter (e.g. random access, or a single draw per particle), the other three outputs of Philox are wasted, and melty2 is 5.2 times faster.
 * The latency to obtain a 32bit number, measured by a single thread whose next counter depends on the previous output, is 2.5 times shorter.
-* Deriving a key from a seed in each thread costs about as much as generating 10 numbers, so it is negligible when a thread uses hundreds of numbers or more.
 
 ### CPU
 
