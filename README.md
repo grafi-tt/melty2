@@ -92,7 +92,7 @@ int main() {
 
 ### GPU (CUDA and HIP)
 
-`melty2_gpu.h` is a header-only implementation for CUDA and HIP. It doesn't require linking the library, and its outputs are identical to those of the CPU library for the same seed and counter.
+`melty2_gpu.h` is a header-only implementation for CUDA and HIP. It doesn't require linking the library, and its outputs are identical to those of the CPU library for the same seed and counter. It is tested with C++14 or later, and probably works with C++11 as well.
 
 To fill device memory with random numbers, use `fill`, which is the GPU counterpart of `melty2_gen`.
 
