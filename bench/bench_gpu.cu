@@ -35,6 +35,7 @@
 #define gpuMemset hipMemset
 #define gpuMemcpy hipMemcpy
 #define gpuMemcpyDeviceToHost hipMemcpyDeviceToHost
+#define gpuMemcpyHostToDevice hipMemcpyHostToDevice
 #define gpuEventCreate hipEventCreate
 #define gpuEventDestroy hipEventDestroy
 #define gpuEventRecord hipEventRecord
@@ -54,6 +55,7 @@
 #define gpuMemset cudaMemset
 #define gpuMemcpy cudaMemcpy
 #define gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
+#define gpuMemcpyHostToDevice cudaMemcpyHostToDevice
 #define gpuEventCreate cudaEventCreate
 #define gpuEventDestroy cudaEventDestroy
 #define gpuEventRecord cudaEventRecord
@@ -182,9 +184,11 @@ struct Threefry4x32 {
     }
 };
 
-// Compute the known-answer tests into out[4 * i], ..., out[4 * i + 3] for the i-th test.
-__global__ void known_answer_kernel(uint32_t *out) {
-    const uint32_t pi[8] = {0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344, 0xa4093822, 0x299f31d0, 0x082efa98, 0xec4e6c89};
+// Compute the known-answer tests into out[4 * i], ..., out[4 * i + 3] for the i-th test, by one thread. The
+// input is given in device memory, and is indexed by the thread ID (0), so that the compiler computes the
+// tests neither at compile time nor by scalar instructions, but by vector instructions as the benchmarks.
+__global__ void known_answer_kernel(const uint32_t *in, uint32_t *out) {
+    const uint32_t *pi = in + threadIdx.x;
     for (int i = 0; i < 4; ++i) {
         for (int w = 0; w < 4; ++w) out[4 * i + w] = pi[w];
     }
@@ -205,12 +209,16 @@ bool random123_known_answer_test() {
         {"Threefry4x32-20", {0x59cd1dbb, 0xb8879579, 0x86b5d00c, 0xac8b6d84}},
         {"Threefry4x32-13", {0x4aa71d8f, 0x734738c2, 0x431fc6a8, 0xae6debf1}},
     };
-    uint32_t *out;
+    const uint32_t pi[8] = {0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344, 0xa4093822, 0x299f31d0, 0x082efa98, 0xec4e6c89};
+    uint32_t *in, *out;
+    CHECK_GPU(gpuMalloc(&in, sizeof(pi)));
     CHECK_GPU(gpuMalloc(&out, 16 * sizeof(uint32_t)));
-    known_answer_kernel<<<1, 1>>>(out);
+    CHECK_GPU(gpuMemcpy(in, pi, sizeof(pi), gpuMemcpyHostToDevice));
+    known_answer_kernel<<<1, 1>>>(in, out);
     CHECK_GPU(gpuGetLastError());
     uint32_t got[16];
     CHECK_GPU(gpuMemcpy(got, out, sizeof(got), gpuMemcpyDeviceToHost));
+    CHECK_GPU(gpuFree(in));
     CHECK_GPU(gpuFree(out));
 
     bool ok = true;
