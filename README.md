@@ -129,7 +129,7 @@ simulate<<<blocks, threads>>>(key, out);
 
 If the counter is given by the index of a work item instead of the thread ID, e.g. `melty2::gpu::gen(key, (uint64_t)item << 32 | i)` for the `i`-th number of the work item `item`, the result doesn't depend on how the work items are assigned to threads.
 
-Alternatively, each thread can derive its own key from a seed containing the thread ID, e.g. `melty2::gpu::generator gen(seed, tid, 0, 0)`. This is useful when it is hard to assign counter ranges in advance, e.g. when the work is divided among threads irregularly, or the division changes during the program. In such cases, a seed containing the ID of a logical unit (such as a particle or a task) instead of the thread ID gives each unit its own stream regardless of the division, and the whole 64bit counter remains available for the numbers of the unit. The key derivation computes one ChaCha8 block (384 ARX operations) once per thread, which takes about as long as generating 10 numbers (9.5 on GeForce RTX 4070 Laptop GPU).
+Alternatively, each thread can derive its own key from a seed containing the thread ID, e.g. `melty2::gpu::generator gen(seed, tid, 0, 0)`. This is useful when it is hard to assign counter ranges in advance, e.g. when the work is divided among threads irregularly, or the division changes during the program. In such cases, a seed containing the ID of a logical unit (such as a particle or a task) instead of the thread ID gives each unit its own stream regardless of the division, and the whole 64bit counter remains available for the numbers of the unit. The key derivation computes one ChaCha8 block (384 ARX operations) once per thread, which takes about as long as generating 10 numbers (9.7 on GeForce RTX 4070 Laptop GPU).
 
 It provides the following functions and class in the namespace `melty2::gpu`, all of which are callable from both host and device code except `fill`.
 
@@ -230,13 +230,14 @@ The following results compare melty2 with Philox4x32-10 and Threefry4x32-20 on G
 
 | Benchmark | melty2 | Philox4x32-10 | Threefry4x32-20 |
 |---|---|---|---|
-| Fill device memory | 62.9 Gnum/s (251 GB/s) | 62.9 Gnum/s (251 GB/s) | 62.8 Gnum/s (251 GB/s) |
-| Generate in kernel, using all outputs | 179 Gnum/s | 470 Gnum/s | 190 Gnum/s |
-| Generate in kernel, one 32bit number per counter | 179 Gnum/s | 133 Gnum/s | 52.1 Gnum/s |
+| Fill device memory | 62.9 Gnum/s (251 GB/s) | 62.8 Gnum/s (251 GB/s) | 62.8 Gnum/s (251 GB/s) |
+| Generate in kernel, using all outputs | 179 Gnum/s | 468 Gnum/s | 189 Gnum/s |
+| Generate in kernel, one 32bit number per counter | 179 Gnum/s | 133 Gnum/s | 52.0 Gnum/s |
 
 * Filling memory is limited by the memory bandwidth for all of them (`memset` achieves 251 GB/s).
 * When all outputs are used, Philox is 2.6 times faster than melty2. The throughput roughly follows the number of instructions in the generated code: one 32bit number takes about 11.5 instructions for Philox, and about 37.5 and 35.5 for melty2 and Threefry respectively. On this GPU, 32bit multiplications run at a throughput comparable to additions, xors and rotations, unlike the AMD GPU below.
-* When only one 32bit number is needed for each counter (e.g. random access, or a single draw per particle), melty2 is 1.3 times faster than Philox and 3.4 times faster than Threefry, as the others compute most of a 128bit block for each number.
+* When only one 32bit number is needed for each counter (e.g. random access, or a single draw per particle), melty2 is 1.4 times faster than Philox and 3.5 times faster than Threefry, as the others compute most of a 128bit block for each number.
+* Deriving keys from seeds runs at 18.5 Gkey/s, i.e. a key takes as long as 9.7 numbers to generate, so it is negligible when a thread uses hundreds of numbers or more.
 
 The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (RDNA2, gfx1030), compiled by HIP 7.16 (Clang 23.1.4) with `-O3`, measured by an earlier version of the benchmark. Philox is implemented for the benchmark following its specification, and verified by the known-answer test vectors of Random123.
 
