@@ -250,7 +250,7 @@ The following results are on AMD Radeon RX 6800 (RDNA2, gfx1030) by the same ben
 | Generate in kernel, one 32bit number per counter | 244 Gnum/s | 90.2 Gnum/s | 76.1 Gnum/s |
 
 * Filling memory is limited by the memory bandwidth for all of them (`memset` achieves 492 GB/s).
-* When all outputs are used, Philox and Threefry are 1.2 and 1.1 times faster than melty2 respectively. One 32bit number takes about 10.75 vector instructions for Philox, and about 34.5 and 30.75 for melty2 and Threefry respectively. Philox has 3.2 times fewer instructions than melty2 but is only 1.2 times faster, presumably because its 32bit multiplications (4.75 instructions, each giving both halves of a 32bit product) have a lower throughput than additions, xors and rotations on this GPU.
+* When all outputs are used, Philox and Threefry are 1.2 and 1.1 times faster than melty2 respectively. One 32bit number takes about 10.75 vector instructions for Philox, and about 34.5 and 30.75 for melty2 and Threefry respectively. Philox has 3.2 times fewer instructions than melty2 but is only 1.2 times faster, presumably because its 32bit multiplications (4.75 instructions, each giving both halves of a 64bit product) have a lower throughput than additions, xors and rotations on this GPU.
 * When only one 32bit number is needed for each counter, melty2 is 2.7 times faster than Philox and 3.2 times faster than Threefry.
 
 ### CPU
