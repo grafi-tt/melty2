@@ -1,0 +1,25 @@
+Fill device memory:
+  melty2:
+    ns_per_number: 0.009129
+  Philox4x32-10:
+    ns_per_number: 0.009132
+  Threefry4x32-20:
+    ns_per_number: 0.008993
+Generate in kernel, using all outputs:
+  melty2:
+    ns_per_number: 0.004093
+  Philox4x32-10:
+    ns_per_number: 0.003434
+  Threefry4x32-20:
+    ns_per_number: 0.003649
+Generate in kernel, one 32bit number per counter:
+  melty2:
+    ns_per_number: 0.004093
+  Philox4x32-10:
+    ns_per_number: 0.01109
+  Threefry4x32-20:
+    ns_per_number: 0.01314
+Memset of device memory (reference):
+  ns_per_number: 0.008135
+Key derivation of melty2 (reference):
+  ns_per_key: 0.04707

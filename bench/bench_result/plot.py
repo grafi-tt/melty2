@@ -76,6 +76,7 @@ def main():
     for name, title, unit, xlim in [
         ("clang", "Benchmark on Ryzen 9 9950X, single thread (Clang 23.1.4)", "ns", (0.1, 2)),
         ("cuda", "Benchmark on GeForce RTX 4070 Laptop GPU (CUDA 12.9)", "ps", (1, 30)),
+        ("hip", "Benchmark on Radeon RX 6800 (HIP 7.16)", "ps", (1, 30)),
     ]:
         with open(here / f"{name}.yml") as f:
             libs, benches, table = load_result(f)

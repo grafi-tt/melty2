@@ -235,23 +235,23 @@ The following results compare melty2 with Philox4x32-10 and Threefry4x32-20 on G
 | Generate in kernel, one 32bit number per counter | 179 Gnum/s | 133 Gnum/s | 52.0 Gnum/s |
 
 * Filling memory is limited by the memory bandwidth for all of them (`memset` achieves 251 GB/s).
-* When all outputs are used, Philox is 2.6 times faster than melty2. The throughput roughly follows the number of instructions in the generated code: one 32bit number takes about 11.5 instructions for Philox, and about 37.5 and 35.5 for melty2 and Threefry respectively. On this GPU, 32bit multiplications run at a throughput comparable to additions, xors and rotations, unlike the AMD GPU below.
+* When all outputs are used, Philox is 2.6 times faster than melty2. The throughput roughly follows the number of instructions in the generated code: one 32bit number takes about 11.5 instructions for Philox, and about 37.5 and 35.5 for melty2 and Threefry respectively. On this GPU, 32bit multiplications run at a throughput comparable to additions, xors and rotations.
 * When only one 32bit number is needed for each counter (e.g. random access, or a single draw per particle), melty2 is 1.4 times faster than Philox and 3.5 times faster than Threefry, as the others compute most of a 128bit block for each number.
 * Deriving keys from seeds runs at 18.5 Gkey/s, i.e. a key takes as long as 9.7 numbers to generate, so it is negligible when a thread uses hundreds of numbers or more.
 
-The following results compare melty2 with Philox4x32-10 on AMD Radeon RX 6800 (RDNA2, gfx1030), compiled by HIP 7.16 (Clang 23.1.4) with `-O3`, measured by an earlier version of the benchmark. Philox is implemented for the benchmark following its specification, and verified by the known-answer test vectors of Random123.
+The following results are on AMD Radeon RX 6800 (RDNA2, gfx1030) by the same benchmark, compiled by HIP 7.16 (Clang 23.1.4) with `CMAKE_BUILD_TYPE=Release` and `CMAKE_HIP_ARCHITECTURES=gfx1030` (`bench_gpu 42`, built with `MELTY2_GPU_BENCHMARK=HIP`).
 
-| Benchmark | melty2 | Philox4x32-10 |
-|---|---|---|
-| Fill device memory (2^28 numbers) | 110 Gnum/s (440 GB/s) | 110 Gnum/s (440 GB/s) |
-| Generate in kernel, using all outputs | 242 Gnum/s | 181 Gnum/s |
-| Generate in kernel, one 32bit number per call | 242 Gnum/s | 46.5 Gnum/s |
-| Latency of a dependent chain | 98 cycles | 248 cycles |
+![GPU benchmark on HIP](bench/bench_result/hip.png)
 
-* Filling memory is limited by the memory bandwidth for both (`memset` achieves 490 GB/s).
-* When generating numbers in a kernel and consuming them without memory access, melty2 is 1.3 times faster than Philox, even though Philox yields four 32bit numbers per call. This is because 32bit multiplications (especially for the upper half) have a lower throughput than additions, xors and rotations on this GPU, while melty2 uses only ARX operations.
-* When only one 32bit number is needed for each counter (e.g. random access, or a single draw per particle), the other three outputs of Philox are wasted, and melty2 is 5.2 times faster.
-* The latency to obtain a 32bit number, measured by a single thread whose next counter depends on the previous output, is 2.5 times shorter.
+| Benchmark | melty2 | Philox4x32-10 | Threefry4x32-20 |
+|---|---|---|---|
+| Fill device memory | 110 Gnum/s (438 GB/s) | 110 Gnum/s (438 GB/s) | 111 Gnum/s (445 GB/s) |
+| Generate in kernel, using all outputs | 244 Gnum/s | 291 Gnum/s | 274 Gnum/s |
+| Generate in kernel, one 32bit number per counter | 244 Gnum/s | 90.2 Gnum/s | 76.1 Gnum/s |
+
+* Filling memory is limited by the memory bandwidth for all of them (`memset` achieves 492 GB/s).
+* When all outputs are used, Philox and Threefry are 1.2 and 1.1 times faster than melty2 respectively. One 32bit number takes about 10.75 vector instructions for Philox, and about 34.5 and 30.75 for melty2 and Threefry respectively. Philox has 3.2 times fewer instructions than melty2 but is only 1.2 times faster, presumably because its 32bit multiplications (4.75 instructions, each giving both halves of a 32bit product) have a lower throughput than additions, xors and rotations on this GPU.
+* When only one 32bit number is needed for each counter, melty2 is 2.7 times faster than Philox and 3.2 times faster than Threefry.
 
 ### CPU
 
