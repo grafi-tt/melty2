@@ -1,19 +1,29 @@
-# SPDX-License-Identifier: MIT
-# gen_weak.py {weak32|weak48|sweep} : print a list of key modification specs (see keymod.h).
-#   weak32: structures appearing with a probability around 2^-32 (a zero, all-one or weight-1 word,
-#           equal, negated, MSB-flipped or rotated word pairs).
-#   weak48: structures with probabilities around 2^-48 to 2^-38 (zero runs over words, zero
-#           half-words in three words, low weight word pairs, near-equal pairs, small offsets, ...).
-#   sweep:  parameterized classes of a single word (weight, zero top or bottom bits, periodicity,
-#           runs) and of word pairs (xor with a low weight mask, rotation, offsets, negation,
-#           complement, both of low weight or with a zero half-word); with "sweep classes", the class
-#           of every spec is printed as tab-separated values.
+# SPDX-License-Identifier: Apache-2.0
+"""Print a list of key modification specs (see keymod.hpp), one per line.
+
+The lists are the input of weakkeys, which compares the bias of the modified keys with that of random
+keys. They are deterministic (seeded), and weak/*.lst in the repository are their outputs.
+
+  weak32: structures appearing with a probability around 2^-32 (a zero, all-one or weight-1 word,
+          equal, negated, MSB-flipped or rotated word pairs).
+  weak48: structures with probabilities around 2^-48 to 2^-38 (zero runs over words, zero
+          half-words in three words, low weight word pairs, near-equal pairs, small offsets, ...).
+  sweep:  parameterized classes of a single word (weight, zero top or bottom bits, periodicity,
+          runs) and of word pairs (xor with a low weight mask, rotation, offsets, negation,
+          complement, both of low weight or with a zero half-word); with --classes, the class of
+          every spec is printed as tab-separated values.
+"""
+import argparse
 import itertools
 import random
-import sys
 
 
 def weak32():
+    """Return the specs of single words and word pairs appearing with a probability around 2^-32.
+
+    For every word: zero, all-one and the 32 weight-1 values. For every pair of words (i, j):
+    k_i = k_j, -k_j, k_j with the MSB flipped, and rotl(k_j, r) for r in 1..31.
+    """
     out = []
     for i in range(6):
         out += [f"{i}=z", f"{i}=o"] + [f"{i}=b{b}" for b in range(32)]
@@ -23,6 +33,12 @@ def weak32():
 
 
 def weak48():
+    """Return the specs of structures appearing with a probability around 2^-48 to 2^-38.
+
+    They combine two or three weaker structures over different words (a zero word and a zero
+    half-word, zero half-words in three words, two low weight words, two near-equalities, two small
+    additive offsets, ...). The random choices are seeded by 48.
+    """
     R = random.Random(48)
     out = []
     H = ['0xffff0000', '0x0000ffff']  # and-masks: zero low or high half
@@ -42,6 +58,7 @@ def weak48():
 
     # two words of Hamming weight 2
     def w2():
+        """Return a random word of Hamming weight 2 as a hex literal."""
         x, y = R.sample(range(32), 2)
         return hex(1 << x | 1 << y)
     for _ in range(60):
@@ -80,16 +97,24 @@ def weak48():
 
 
 def sweep():
+    """Return (spec, class) pairs of parameterized structure classes, to see which features matter.
+
+    A class name is "feature@words", e.g. "pop2@4" for a word 4 of weight 2, or "xorw1@45" for
+    k_4 = k_5 xor a weight-1 mask. Every class has a few random instances (seeded by 2026), and the
+    same spec may appear in several classes (e.g. weight 0).
+    """
     R = random.Random(2026)
     out = []
 
     def wv(w):
+        """Return a random word of Hamming weight w."""
         v = 0
         for b in R.sample(range(32), w):
             v |= 1 << b
         return v
 
     def H(v):
+        """Return v as a hex literal of a 32bit word."""
         return hex(v & 0xffffffff)
     for i in range(6):
         for w in [0, 1, 2, 3, 4, 6, 8]:
@@ -140,19 +165,22 @@ def sweep():
 
 
 if __name__ == "__main__":
-    kind = sys.argv[1] if len(sys.argv) > 1 else ""
-    if kind == "weak32":
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("kind", choices=["weak32", "weak48", "sweep"], help="the list to print")
+    parser.add_argument("--classes", action="store_true",
+                        help="for sweep, print the class of every spec as tab-separated values")
+    args = parser.parse_args()
+    if args.classes and args.kind != "sweep":
+        parser.error("--classes is only for sweep")
+    if args.kind == "weak32":
         print("\n".join(weak32()))
-    elif kind == "weak48":
+    elif args.kind == "weak48":
         print("\n".join(weak48()))
-    elif kind == "sweep":
+    else:
         seen = set()
-        classes = len(sys.argv) > 2 and sys.argv[2] == "classes"
         for s, c in sweep():
-            if classes:
+            if args.classes:
                 print(f"{s}\t{c}")
             elif s not in seen:  # duplicates (e.g. weight 0 words) are evaluated once
                 seen.add(s)
                 print(s)
-    else:
-        sys.exit("usage: gen_weak.py {weak32|weak48|sweep [classes]}")

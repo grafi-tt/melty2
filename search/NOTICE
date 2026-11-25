@@ -1,0 +1,13 @@
+melty2 kernel search tools
+Copyright (c) 2026 Shunsuke Shimizu
+
+The code in this directory is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+testu01_stest uses the library testu01_gpu (../testu01_gpu), which reimplements the tests of BigCrush of
+TestU01 after the source code of TestU01 1.2.3, and links its probdist and mylib libraries. So the
+program testu01_stest is also subject to the license of TestU01 (see LICENSE.TestU01 and
+../testu01_gpu/NOTICE), which permits use for non-commercial purposes only:
+
+  TestU01
+  Copyright (c) 2002 Pierre L'Ecuyer, DIRO, Université de Montréal.
+  All rights reserved.

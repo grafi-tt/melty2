@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: Apache-2.0 */
 /* next() for the Hamming-weight dependency test of Blackman and Vigna, reading 32bit little-endian
  * words from stdin. hwd.c itself is distributed under the GPL at https://prng.di.unimi.it/hwd.php and
  * isn't included here; download it next to this file, and build as

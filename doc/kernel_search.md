@@ -1,6 +1,6 @@
 # Search of the melty2 kernel
 
-This document describes how the 20-step kernel of melty2 1.0 was derived from the original 22-step kernel, and how it was evaluated. The tools are in [search/](../search/) (MIT License).
+This document describes how the 20-step kernel of melty2 1.0 was derived from the original 22-step kernel, and how it was evaluated. The tools are in [search/](../search/) (Apache License 2.0; `testu01_stest` also under the license of TestU01).
 
 ## Goals and constraints
 
@@ -16,7 +16,7 @@ R1 0 7;A2 1;R3 2 9;A4 3;R5 4 13;A0 5;R2 0 18;A4 2;R1 4 16;A3 1;R3 5 12;A0 3;R1 0
 
 ## Counter-differential bias metric
 
-A counter-based generator must make the outputs for nearby counters look unrelated. The metric ([search/metric.h](../search/metric.h)) measures how far this property holds at every intermediate depth of a structure.
+A counter-based generator must make the outputs for nearby counters look unrelated. The metric ([search/metric.hpp](../search/metric.hpp)) measures how far this property holds at every intermediate depth of a structure.
 
 * For a key and random base counters `c`, the outputs at the depth `m` are compared between `c` and `c + delta`, where `delta = 2^j` for `j` in 0..7 (the lower word) and 32..39 (the upper word).
 * The top 8 bits of `rotl(diff, 4w)` are histogrammed, for the addition difference and the xor difference, and for the 8 windows `w = 0..7`, so every bit position of the difference is observed.
@@ -24,18 +24,18 @@ A counter-based generator must make the outputs for nearby counters look unrelat
 
 The **margin** of a structure is its length minus the last depth whose maximum bias over keys is clearly above the noise. The bias decreases roughly by one or two orders of magnitude per step, so a resolution of 2^22 to 2^28 pairs per delta identifies the depth within about one step.
 
-The metric has a blind spot: the least significant bits of ARX outputs mix slowly (an addition has no carry into bit 0), which a bias of the top 8 bits of differences doesn't capture well. So the stream of the lower bits of the outputs is tested separately by PractRand (`search/gen/genlow.c`).
+The metric has a blind spot: the least significant bits of ARX outputs mix slowly (an addition has no carry into bit 0), which a bias of the top 8 bits of differences doesn't capture well. So the stream of the lower bits of the outputs is tested separately by PractRand (`search/gen/genlow.cc`).
 
 ## Valid structures
 
-Early searches found structures with good metric values but with ops not affecting the output, or with a key word only xored into the output. Such structures are useless or weak, so the search accepts only structures satisfying the following (`arx_valid` in [search/arx.h](../search/arx.h)):
+Early searches found structures with good metric values but with ops not affecting the output, or with a key word only xored into the output. Such structures are useless or weak, so the search accepts only structures satisfying the following (`arx::valid` in [search/arx.hpp](../search/arx.hpp)):
 
 * every op affects the output, and all the six key words reach the output;
 * every key word passes through an addition (as either operand) before the output, so that no word only whitens the output by xor.
 
 ## Simulated annealing
 
-[search/sa.c](../search/sa.c) searches structures of a fixed length `L` and a fixed number of rotations.
+[search/sa.cc](../search/sa.cc) searches structures of a fixed length `L` and a fixed number of rotations.
 
 * A move changes the destination or the source of an op, the rotation amount (or flips an addition and an xor), swaps two ops, or moves a rotation to another op. One or two moves are applied per iteration, and invalid structures are rejected.
 * The objective is the sum of `log10(max(bias_max(m), T))` over the last 11 depths, where `T` is twice the noise level. Minimizing it pushes the biased depths earlier, rather than only reducing the bias of the output.
@@ -57,14 +57,14 @@ The finalists were evaluated in the following order, as each stage is more expen
 
 1. **Metric at a high resolution**: the margin over random keys at 2^26 pairs.
 2. **Lower bits**: PractRand on the stream of the least significant bit (and the lower bits) of the outputs, for both counter orders, to measure the margin of the blind spot of the metric.
-3. **Structured keys**: the metric per key ([search/weakkeys.c](../search/weakkeys.c)) for lists of key modifications ([search/weak/gen_weak.py](../search/weak/gen_weak.py)), compared with 64 control keys:
+3. **Structured keys**: the metric per key ([search/weakkeys.cc](../search/weakkeys.cc)) for lists of key modifications ([search/weak/gen_weak.py](../search/weak/gen_weak.py)), compared with 64 control keys:
    * `weak32` (714 specs): a zero, all-one or Hamming weight 1 word, and equal, negated, MSB-flipped or rotated word pairs, i.e. structures with probabilities around 2^-32;
    * `weak48` (570 specs): zero runs over words, zero half-words in three words, low weight word pairs, near-equal pairs and small offsets, with probabilities around 2^-48 to 2^-38;
    * `sweep` (834 specs): parameterized classes of a single word (weight, zero top or bottom bits, periodicity, runs) and of word pairs (xor with low weight masks, rotations, offsets, negation, complement), to see which features matter.
 4. **Pairs of keys sharing words**: PractRand on the xor, the interleaving and the difference of two streams whose keys share some words (`genpair`), as related keys appear when parts of seeds are shared.
 5. **Output tests**: PractRand up to 64GB, including structured keys, a subset of BigCrush for structured keys (`bcsub`), full BigCrush, and the Hamming-weight dependency test.
 
-Both counter orders are tested everywhere, as the lower and the upper word of the counter are injected into different words. This matters: an earlier 20-step candidate failed the permutation test of BigCrush only with the swapped counter order, for some keys (`search/gen/fperm.c` reproduces the statistic quickly).
+Both counter orders are tested everywhere, as the lower and the upper word of the counter are injected into different words. This matters: an earlier 20-step candidate failed the permutation test of BigCrush only with the swapped counter order, for some keys (`search/gen/fperm.cc` reproduces the statistic quickly).
 
 ## Results
 
