@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// testu01_stest [options] "structure" M : the tests of BigCrush but MatrixRank, AppearanceSpacings,
-// LinearComp and LempelZiv, implemented on GPU, for the outputs of the first M ops of the
-// structure.
+// testu01_stest [options] "structure" M : the tests of BigCrush, implemented on GPU (LinearComp and
+// LempelZiv on the host), for the outputs of the first M ops of the structure.
 //   -s, --seed N     the key is that of melty2_init(N, 0, 0, 0) (default 1), modified by MELTY2_KEYMOD
 //   -w, --swap       swap the halves of the counter (the other counter order)
 //   -t, --tests LIST comma-separated tests: poker, coupon, gap, maxoft, collision, birthday, closepairs,
 //                    permutation, run, serial, collpermut, weight, savir2, gcd, hamweight, hamcorr,
 //                    hamindep, bitrun, longhead, autocor, samplecorr, sampleprod, samplemean, walk,
-//                    periods, sumcoll, fourier (default all)
+//                    periods, sumcoll, fourier, linearcomp, matrixrank, appearance, lempelziv (default
+//                    all)
 //   -f, --scale X    multiply the sample sizes n of BigCrush by X (default 1)
 //   -l, --keylist F  run the tests for every key modification spec of the file F (one per line, "-" for
 //                    none; instead of MELTY2_KEYMOD) in one process; a spec "keymod@streams" takes the
@@ -23,13 +23,21 @@
 // After the tests of a key, a line "summary <TAB> M=.. <TAB> seed=.. <TAB> swap=.. <TAB> keymod=.. <TAB>
 // min_p=.. <TAB> max_p=.. <TAB> flagged=.. <TAB> streams=.." gives the smallest and the largest p-values and the number
 // of them outside [0.001, 0.999].
+//   -M, --memory MB  the device memory of the large tests in MiB (default 2048): beyond it, they make their
+//                    points again by parts (the results are the same)
+//   -L, --log-sum    (the score modes) the score is the sum of log(1 + z) of the largest z-scores of every key,
+//                    step count and counter order (logsum=), a test failing completely counting as z = 1e6
+//                    (instead of stopping the structure with z = inf), and the limit stops the tests once the
+//                    sum is above it: for comparing structures failing badly
+//   -F, --fast       faster computations whose results may differ from those of TestU01 in rounding (the
+//                    Anderson-Darling statistics of SampleProd and SampleMean summed on GPU)
 //   -p, --pidfile F  write the process ID to the file F (see pidfile.hpp)
 //
 // testu01_stest -S M[,M...] [-s seed] [-t tests] [-f scale] [-l keylist] [-m streams] [-o offset]
 // [-D deadline] : the score mode for searches. For every structure of stdin (one per line), the tests
 // run quietly for the outputs of its first M ops (or of each M of the list, e.g. 15,16), for every key
 // (as -l, or MELTY2_KEYMOD) in both counter orders, and a line "score <TAB> max_z=.. <TAB> min_p=..
-// <TAB> flagged=.. <TAB> valid=.. <TAB> propagated=.. <TAB> repeated=.. <TAB> stopped=.. <TAB> structure" gives the largest z-score of the statistics (the excess of a chi-square
+// <TAB> flagged=.. <TAB> valid=.. <TAB> propagated=.. <TAB> repeated=.. <TAB> stopped=.. <TAB> logsum=.. <TAB> structure" gives the largest z-score of the statistics (the excess of a chi-square
 // statistic over its degrees of freedom in standard deviations, or of a number of collisions over its
 // mean; not for ClosePairs), the smallest p-value, the number of flagged ones, and arx::valid,
 // arx::keys_propagated_by(deadline) (default 12) and arx::repeated of the whole structure. A line
@@ -140,7 +148,10 @@ std::unique_ptr<testu01_gpu::Generator> compile(const arx::Arx &a) { return std:
 struct Options {
     testu01_gpu::Options t;  // the tests, scale, first counter and limit
     bool quiet = false;      // no line per test (the score mode)
+    bool logsum = false;     // the score mode limits the sum of log(1 + z) over the keys (-L)
 };
+
+constexpr double kFailZ = 1e6;  // the z-score of a test failing completely, for the sum of log(1 + z)
 
 double seconds_since(std::chrono::steady_clock::time_point t0) {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
@@ -240,10 +251,10 @@ std::vector<int> parse_ms(const char *arg) {
 
 [[noreturn]] void usage() {
     std::fprintf(stderr,
-                 "usage: testu01_stest [-s seed] [-w] [-t tests] [-f scale] [-l keylist] [-m streams] [-o offset] [-p pidfile] structure M\n"
-                 "       testu01_stest -S M[,M...] [-s seed] [-t tests] [-f scale] [-l keylist] [-m streams] [-o offset] [-D deadline] [-v] [-p pidfile]"
+                 "usage: testu01_stest [-s seed] [-w] [-t tests] [-f scale] [-l keylist] [-m streams] [-o offset] [-M MB] [-F] [-p pidfile] structure M\n"
+                 "       testu01_stest -S M[,M...] [-s seed] [-t tests] [-f scale] [-l keylist] [-m streams] [-o offset] [-D deadline] [-v] [-L] [-M MB] [-F] [-p pidfile]"
                  " < structures\n"
-                 "       testu01_stest -P plan [-s seed] [-m streams] [-D deadline] [-v] [-p pidfile] < structures\n");
+                 "       testu01_stest -P plan [-s seed] [-m streams] [-D deadline] [-v] [-L] [-M MB] [-F] [-p pidfile] < structures\n");
     std::exit(1);
 }
 
@@ -261,6 +272,9 @@ int run_main(int argc, char **argv) {
         {"offset", required_argument, nullptr, 'o'},
         {"plan", required_argument, nullptr, 'P'},
         {"verbose", no_argument, nullptr, 'v'},
+        {"memory", required_argument, nullptr, 'M'},
+        {"fast", no_argument, nullptr, 'F'},
+        {"log-sum", no_argument, nullptr, 'L'},
         {nullptr, 0, nullptr, 0},
     };
     Options o;
@@ -270,7 +284,7 @@ int run_main(int argc, char **argv) {
     std::vector<int> score_ms;
     const char *pidfile = nullptr, *list = nullptr, *plan = nullptr;
     std::string streams = "-";
-    while ((opt = getopt_long(argc, argv, "s:wt:f:l:m:p:S:D:o:P:v", longopts, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "s:wt:f:l:m:p:S:D:o:P:vM:FL", longopts, nullptr)) != -1) {
         switch (opt) {
         case 's': seed = static_cast<uint32_t>(std::strtoul(optarg, nullptr, 0)); break;
         case 'w': swp = 1; break;
@@ -284,6 +298,9 @@ int run_main(int argc, char **argv) {
         case 'v': verbose = true; break;
         case 'D': deadline = std::atoi(optarg); break;
         case 'o': o.t.first = std::strtoull(optarg, nullptr, 0); break;
+        case 'F': o.t.fast = true; break;
+        case 'L': o.logsum = true; break;
+        case 'M': o.t.memory = static_cast<size_t>(std::strtoull(optarg, nullptr, 0)) << 20; break;
         default: usage();
         }
     }
@@ -327,13 +344,16 @@ int run_main(int argc, char **argv) {
             const double limit = tab == std::string::npos ? HUGE_VAL : std::strtod(line.c_str() + tab + 1, nullptr);
             const arx::Arx full = arx::parse(line.substr(0, tab));
             Summary s;
+            double lsum = 0;  // the sum of log(1 + z) over the keys, step counts and counter orders
+            const bool lm = o.logsum;
+            const auto over = [&] { return lm ? lsum > limit : s.max_z > limit; };
             std::map<int, std::unique_ptr<testu01_gpu::Generator>> kns;  // the kernels of each step count
             try {
                 for (Stage &st : stages) {
                     st.o.quiet = true;
                     st.o.t.limit = limit;
                     for (const int m : st.ms) {
-                        if (s.max_z > limit) break;
+                        if (over()) break;
                         if (m > static_cast<int>(full.size())) throw std::invalid_argument("M must satisfy M <= (ops)");
                         if (!kns.count(m)) {
                             arx::Arx a = full;
@@ -342,10 +362,20 @@ int run_main(int argc, char **argv) {
                         }
                         for (int w = 0; w < 2; ++w)
                             for (KeyRun k : st.keys) {
-                                if (s.max_z > limit) break;
+                                if (over()) break;
                                 k.g.swp = w;
-                                const Summary ks = run_tests(st.o, battery, *kns[m], k.g);
+                                // with -L, a key stops once its z-score alone takes the sum over the limit, and a
+                                // test failing completely counts as kFailZ
+                                if (lm) st.o.t.limit = std::expm1(std::min(limit - lsum, 700.0));
+                                Summary ks;
+                                try {
+                                    ks = run_tests(st.o, battery, *kns[m], k.g);
+                                } catch (const testu01_gpu::TestFailure &) {
+                                    if (!lm) throw;
+                                    ks.add(0, kFailZ);
+                                }
                                 s.add(ks);
+                                lsum += std::log1p(std::min(std::max(ks.max_z, 0.0), kFailZ));
                                 if (verbose)
                                     std::printf("key\tM=%d\tswap=%d\tkey=%s@%s#%u\ttests=%s\tscale=%g\tmax_z=%.3f\tmin_p=%.3g\tflagged=%d\n", m, w,
                                                 k.keymod.c_str(), k.streams.c_str(), k.seed, st.o.t.tests.c_str(), st.o.t.scale, ks.max_z, ks.min_p, ks.flagged);
@@ -355,8 +385,8 @@ int run_main(int argc, char **argv) {
             } catch (const testu01_gpu::TestFailure &) {  // a test failing completely, e.g. running out of its counters
                 s.add(0, HUGE_VAL);
             }
-            std::printf("score\tmax_z=%.3f\tmin_p=%.3g\tflagged=%d\tvalid=%d\tpropagated=%d\trepeated=%d\tstopped=%d\t%s\n", s.max_z, s.min_p, s.flagged,
-                        arx::valid(full), arx::keys_propagated_by(full, deadline), arx::repeated(full), s.max_z > limit,
+            std::printf("score\tmax_z=%.3f\tmin_p=%.3g\tflagged=%d\tvalid=%d\tpropagated=%d\trepeated=%d\tstopped=%d\tlogsum=%.4f\t%s\n", s.max_z, s.min_p,
+                        s.flagged, arx::valid(full), arx::keys_propagated_by(full, deadline), arx::repeated(full), over(), lsum,
                         arx::to_string(full).c_str());
             std::fflush(stdout);
         }

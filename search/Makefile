@@ -39,7 +39,7 @@ TU01G := $(ROOT)/testu01_gpu
 .PHONY: stest $(TU01G)/build/libtestu01_gpu.a
 stest: $(B)/testu01_stest
 $(TU01G)/build/libtestu01_gpu.a:
-	$(MAKE) -C $(TU01G) HIPCC=$(HIPCC) HIP_ARCH=$(HIP_ARCH) TESTU01=$(TESTU01) build/libtestu01_gpu.a
+	$(MAKE) -C $(TU01G) HIPCC=$(HIPCC) HIP_ARCH=$(HIP_ARCH) TESTU01=$(TESTU01) HOST_ARCH="$(HOST_ARCH)" build/libtestu01_gpu.a
 $(B)/testu01_stest.o: testu01_stest.hip $(TU01G)/include/testu01_gpu.hpp $(TU01G)/include/testu01_gpu_params.hpp arx.hpp keymod.hpp pidfile.hpp | $(B)
 	$(HIPCC) -std=c++17 --offload-arch=$(HIP_ARCH) -O3 -Wall $(INC) -I$(TU01G)/include -c $< -o $@
 $(B)/testu01_stest: $(B)/testu01_stest.o $(B)/melty2_init.o $(TU01G)/build/libtestu01_gpu.a
