@@ -24,7 +24,6 @@ namespace testu01_gpu {
 namespace detail {
 
 constexpr int kThreads = 256;                  // threads per block
-constexpr uint64_t kEmpty = ~UINT64_C(0);      // the empty slots of the hash table
 
 // floor(d * u) of u = (x << r) / 2^32
 __device__ inline uint32_t value(uint32_t x, int r, uint32_t d) {
@@ -250,6 +249,46 @@ struct Strip {
     __device__ int step(State &, uint32_t x) const { return static_cast<int>((x << r) >> (32 - s)); }
 };
 
+// MatrixRank of small matrices (l, k <= 32): the rank over GF(2) of l x k matrices, a row of every
+// c = k / s values of s bits (x << r) >> (32 - s) and one more value of b = k % s bits if b > 0 (the order of
+// the bits within a row doesn't change the rank, as long as it is the same for every row)
+struct MatRank {
+    int r, s, l, k;
+    struct State {
+        uint32_t row[32];
+        int i = 0, j = 0;
+        uint64_t cur = 0;
+    };
+    __device__ int step(State &st, uint32_t x) const {
+        const int c = k / s, b = k % s, bits = st.j < c ? s : b;
+        st.cur = st.cur << bits | (x << r) >> (32 - bits);
+        if (++st.j < c + (b > 0)) return -1;
+        st.row[st.i++] = static_cast<uint32_t>(st.cur);
+        st.j = 0;
+        st.cur = 0;
+        if (st.i < l) return -1;
+        st.i = 0;
+        int rank = 0;
+        for (int col = 0; col < k && rank < l; ++col) {  // Gaussian elimination
+            const uint32_t m = UINT32_C(1) << col;
+            int p = -1;
+            for (int i = rank; i < l; ++i)
+                if (st.row[i] & m) {
+                    p = i;
+                    break;
+                }
+            if (p < 0) continue;
+            const uint32_t t = st.row[p];
+            st.row[p] = st.row[rank];
+            st.row[rank] = t;
+            for (int i = rank + 1; i < l; ++i)
+                if (st.row[i] & m) st.row[i] ^= t;
+            ++rank;
+        }
+        return rank;
+    }
+};
+
 // The points of CollisionOver and BirthdaySpacings: t values of b bits (d = 2^b) of the outputs (after
 // dropping r bits), concatenated into a cell number of b * t <= 64 bits; overlapping (a point per value,
 // from the last t values) or not (a point per t values).
@@ -287,11 +326,25 @@ constexpr int kCpMaxGrid = 8;  // the most gridded coordinates
 // (the collisions). The key kEmpty, which marks the empty slots, is counted separately. The keys are
 // inserted in 2^pbits passes over the same keys, each taking those whose hash has the top pbits bits
 // equal to part, so that the table of a pass is small enough for the cache of the GPU.
+constexpr uint64_t kEmpty = ~UINT64_C(0);
 struct HashTable {
     unsigned long long *slots, *collisions, *empties;
     uint64_t mask;  // the slots - 1 (a power of 2)
     int pbits;
     uint64_t part;
+};
+
+// Where the keys (points) made by a kernel go: into the hash table h if h.slots (then counted there, see
+// insert, without being stored); with pbits = 0, all of them to out in their order; else only
+// those of the part `part` of 2^pbits by the top pbits bits of the key (of kbits bits), or of its hash
+// mix64(key) (64 bits; the hash, a bijection, is then stored instead of the key) if hash, appended at
+// out[*count] (up to cap keys; count counts all of them, so that the host sees an overflow).
+struct Sink {
+    unsigned long long *out, *count;
+    long long cap;
+    int pbits, kbits, hash;
+    uint64_t part;
+    HashTable h;
 };
 
 #ifdef __HIPCC_RTC__
@@ -302,9 +355,10 @@ __device__ inline uint64_t mix64(uint64_t z) {
     return z ^ (z >> 31);
 }
 
+
 __device__ inline void insert(const HashTable &h, uint64_t key) {
     if (key == kEmpty) {
-        if (h.part == 0) atomicAdd(h.empties, 1);
+        if (h.part == 0) atomicAdd(h.empties, 1ULL);
         return;
     }
     const uint64_t z = mix64(key);
@@ -313,10 +367,31 @@ __device__ inline void insert(const HashTable &h, uint64_t key) {
         const unsigned long long prev = atomicCAS(&h.slots[i], kEmpty, key);
         if (prev == kEmpty) return;
         if (prev == key) {
-            atomicAdd(h.collisions, 1);
+            atomicAdd(h.collisions, 1ULL);
             return;
         }
     }
+}
+
+// put the key of the position pos (the index of the key in the order of the keys) into the sink
+__device__ inline void put(const Sink &s, long long pos, uint64_t key) {
+    if (s.h.slots) {
+        insert(s.h, key);
+        return;
+    }
+    if (s.pbits == 0) {
+        s.out[pos] = key;
+        return;
+    }
+    const uint64_t h = s.hash ? mix64(key) : key;
+    if (h >> ((s.hash ? 64 : s.kbits) - s.pbits) != s.part) return;
+    const unsigned long long j = atomicAdd(s.count, 1ULL);
+    if (j < static_cast<unsigned long long>(s.cap)) s.out[j] = h;
+}
+
+// insert the keys a[0..n) into the hash table
+extern "C" __global__ void kinsert(const unsigned long long *a, long long n, HashTable h) {
+    for (long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x; i < n; i += static_cast<long long>(gridDim.x) * blockDim.x) insert(h, a[i]);
 }
 
 // Every thread makes its share of the n observations of the test from its consecutive counters from
@@ -380,6 +455,7 @@ TESTU01_GPU_TEST_KERNEL(ktest_gcd, Gcd)
 TESTU01_GPU_TEST_KERNEL(ktest_hamming, Hamming)
 TESTU01_GPU_TEST_KERNEL(ktest_strip, Strip)
 TESTU01_GPU_TEST_KERNEL(ktest_sumcoll, SumColl)
+TESTU01_GPU_TEST_KERNEL(ktest_matrank, MatRank)
 #undef TESTU01_GPU_TEST_KERNEL
 
 // RandomWalk1 (swalk_RandomWalk1, L0 = L1 = L even): n random walks of L steps, the bits of L / s values
@@ -448,7 +524,7 @@ extern "C" __global__ void __launch_bounds__(kThreads) kwalk(Params g, uint64_t 
 // values, of F the Irwin-Hall distribution by the cubic Hermite interpolation of the table tab of F and its
 // density at the points i * hstep (i < ntab).
 extern "C" __global__ void __launch_bounds__(kThreads) kuniform(int mode, int r, int t, Params g, uint64_t base, uint64_t stride, long long n, const double *tab,
-                                                                int ntab, double hstep, unsigned long long *out) {
+                                                                int ntab, double hstep, Sink sk) {
     const long long nthreads = static_cast<long long>(gridDim.x) * kThreads;
     const long long tid = static_cast<long long>(blockIdx.x) * kThreads + threadIdx.x;
     const long long quota = n / nthreads + (tid < n % nthreads);
@@ -488,7 +564,7 @@ extern "C" __global__ void __launch_bounds__(kThreads) kuniform(int mode, int r,
                 f = (2 * s3 - 3 * s2 + 1) * F0 + (s3 - 2 * s2 + s) * d0 + (-2 * s3 + 3 * s2) * F1 + (s3 - s2) * d1;
             }
             f = min(max(f, 0.0), 1.0);
-            out[pos++] = f >= 1.0 ? ~UINT64_C(0) : static_cast<unsigned long long>(f * 0x1p64);
+            put(sk, pos++, f >= 1.0 ? ~UINT64_C(0) : static_cast<unsigned long long>(f * 0x1p64));
             acc = mode ? 0.0 : 1.0;
             cnt = 0;
             ++done;
@@ -678,11 +754,12 @@ extern "C" __global__ void __launch_bounds__(kThreads) kserial(Params g, uint64_
 
 // CollisionOver of permutations (sknuth_CollisionPermut): the cell (in [0, t!), t <= 20) of the order of
 // t non-overlapping values u = (x << r) / 2^32, numbered as smultin_GenerCellPermut; the points of n cells
-// from the counters of every thread are inserted into the hash table
-extern "C" __global__ void __launch_bounds__(kThreads) kperm_points(int r, int t, Params g, uint64_t base, uint64_t stride, long long n, HashTable h) {
+// from the counters of every thread are put into the sink
+extern "C" __global__ void __launch_bounds__(kThreads) kperm_points(int r, int t, Params g, uint64_t base, uint64_t stride, long long n, Sink sk) {
     const long long nthreads = static_cast<long long>(gridDim.x) * kThreads;
     const long long tid = static_cast<long long>(blockIdx.x) * kThreads + threadIdx.x;
     const long long quota = n / nthreads + (tid < n % nthreads);
+    long long pos = tid * (n / nthreads) + min(tid, n % nthreads);
     uint64_t ctr = base + tid * stride;
     uint32_t u[20];
     int cnt = 0;
@@ -705,7 +782,7 @@ extern "C" __global__ void __launch_bounds__(kThreads) kperm_points(int r, int t
                 cell = cell * i + m;
                 u[m] = u[i - 1];
             }
-            insert(h, cell);
+            put(sk, pos++, cell);
             ++done;
         }
     }
@@ -745,9 +822,9 @@ extern "C" __global__ void __launch_bounds__(kThreads) krun(Params g, uint64_t s
 }
 
 // Every thread makes its share of the n points of the tuples from its consecutive counters from
-// base + tid * stride (the stride covers the values of its points), and inserts them into the hash
-// table (to (out == nullptr)), or writes them to out in the order of the threads.
-extern "C" __global__ void __launch_bounds__(kThreads) kpoints(Tuples tup, Params g, uint64_t base, uint64_t stride, long long n, HashTable h, unsigned long long *out) {
+// base + tid * stride (the stride covers the values of its points), and puts them into the sink (in the
+// order of the threads).
+extern "C" __global__ void __launch_bounds__(kThreads) kpoints(Tuples tup, Params g, uint64_t base, uint64_t stride, long long n, Sink sk) {
     const long long nthreads = static_cast<long long>(gridDim.x) * kThreads;
     const long long tid = static_cast<long long>(blockIdx.x) * kThreads + threadIdx.x;
     const long long quota = n / nthreads + (tid < n % nthreads);
@@ -763,18 +840,126 @@ extern "C" __global__ void __launch_bounds__(kThreads) kpoints(Tuples tup, Param
         for (int l = 0; l < kLanes; ++l) {
             uint64_t p;
             if (done < quota && tup.step(s, o[l], p)) {
-                if (out) out[pos++] = p;
-                else insert(h, p);
+                put(sk, pos++, p);
                 ++done;
             }
         }
     }
 }
 
-// insert the spacings y[i + 1] - y[i] of the sorted points into the hash table
-extern "C" __global__ void kspacings(const unsigned long long *y, long long n, HashTable h) {
-    for (long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x; i + 1 < n; i += static_cast<long long>(gridDim.x) * blockDim.x)
-        insert(h, y[i + 1] - y[i]);
+// MatrixRank of large matrices: the rows of nmat l x k matrices of W 64-bit words per row (the row j of all
+// of them in order takes vpr values from base + j vpr, c = k / s values of s bits (x << r) >> (32 - s) and
+// one more of b = k % s bits if b > 0), a thread per row
+extern "C" __global__ void __launch_bounds__(kThreads) kmat_fill(Params g, uint64_t base, long long rows, int r, int s, int k, int W,
+                                                                 unsigned long long *out) {
+    const int c = k / s, b = k % s, vpr = c + (b > 0);
+    for (long long j = static_cast<long long>(blockIdx.x) * kThreads + threadIdx.x; j < rows; j += static_cast<long long>(gridDim.x) * kThreads) {
+        unsigned long long *row = out + j * W;
+        for (int w = 0; w < W; ++w) row[w] = 0;
+        uint32_t o[kLanes];
+        uint64_t pos = base + static_cast<uint64_t>(j) * vpr;
+        int have = 0, at = 0, bit = 0;
+        for (int v = 0; v < vpr; ++v) {
+            if (at == have) {
+                testu01_gpu_generate(g, pos, o);
+                pos += kLanes;
+                have = kLanes;
+                at = 0;
+            }
+            const int bits = v < c ? s : b;
+            const uint64_t y = (o[at++] << r) >> (32 - bits);
+            row[bit >> 6] |= y << (bit & 63);
+            if ((bit & 63) + bits > 64) row[(bit >> 6) + 1] |= y >> (64 - (bit & 63));
+            bit += bits;
+        }
+    }
+}
+
+// MatrixRank of large matrices: the rank over GF(2) of every matrix (a block each) by the forward Gaussian
+// elimination of its rows in place; the rows at and below the rank are zero in the columns before the
+// current one, so that only their words from the column on are read and written.
+extern "C" __global__ void __launch_bounds__(kThreads) kmat_rank(unsigned long long *mats, int l, int k, int W, int *ranks) {
+    __shared__ int piv;
+    __shared__ unsigned flag[(5000 + 31) / 32 + 1];  // the rows with the bit of the column (l <= 5000)
+    __shared__ unsigned long long prow[128];           // the pivot row (W <= 128)
+    unsigned long long *M = mats + static_cast<long long>(blockIdx.x) * l * W;
+    int rank = 0;
+    for (int col = 0; col < k && rank < l; ++col) {
+        const int w = col >> 6;
+        const unsigned long long m = 1ULL << (col & 63);
+        if (threadIdx.x == 0) piv = l;
+        for (int i = threadIdx.x; i < (l + 31) / 32; i += kThreads) flag[i] = 0;
+        __syncthreads();
+        for (int i = rank + threadIdx.x; i < l; i += kThreads)
+            if (M[static_cast<long long>(i) * W + w] & m) {
+                atomicMin(&piv, i);
+                atomicOr(&flag[i >> 5], 1u << (i & 31));
+            }
+        __syncthreads();
+        const int p = piv;
+        __syncthreads();  // (every thread has read piv before it is reset)
+        if (p == l) continue;
+        // swap the rows p and rank (from the word w), keeping the pivot row in LDS
+        for (int x = w + threadIdx.x; x < W; x += kThreads) {
+            const unsigned long long a = M[static_cast<long long>(p) * W + x];
+            if (p != rank) M[static_cast<long long>(p) * W + x] = M[static_cast<long long>(rank) * W + x];
+            M[static_cast<long long>(rank) * W + x] = a;
+            prow[x] = a;
+        }
+        if (threadIdx.x == 0 && p != rank) {  // the flag of the row moved to p
+            const bool fr = (flag[rank >> 5] >> (rank & 31)) & 1;
+            if (fr) atomicOr(&flag[p >> 5], 1u << (p & 31));
+            else atomicAnd(&flag[p >> 5], ~(1u << (p & 31)));
+        }
+        __syncthreads();
+        // eliminate the column from the rows below the pivot
+        const int nw = W - w;
+        const long long cells = static_cast<long long>(l - rank - 1) * nw;
+        for (long long q = threadIdx.x; q < cells; q += kThreads) {
+            const int i = rank + 1 + static_cast<int>(q / nw), x = w + static_cast<int>(q % nw);
+            if ((flag[i >> 5] >> (i & 31)) & 1) M[static_cast<long long>(i) * W + x] ^= prow[x];
+        }
+        __syncthreads();
+        ++rank;
+    }
+    if (threadIdx.x == 0) ranks[blockIdx.x] = rank;
+}
+
+// AppearanceSpacings: the keys (block << ibits | i) of the n blocks i of L bits from base (vpb values each: L / s
+// values of s bits (x << r) >> (32 - s), and one of L % s bits if any), into the sink at their positions i; a
+// thread takes 16 consecutive blocks
+extern "C" __global__ void __launch_bounds__(kThreads) kappear(Params g, uint64_t base, long long n, int r, int s, int L, int ibits, Sink sk) {
+    const int c = L / s, b = L % s, vpb = c + (b > 0);
+    const long long groups = (n + 15) / 16;
+    for (long long q = static_cast<long long>(blockIdx.x) * kThreads + threadIdx.x; q < groups; q += static_cast<long long>(gridDim.x) * kThreads) {
+        uint32_t o[kLanes];
+        uint64_t pos = base + static_cast<uint64_t>(q) * 16 * vpb;
+        int have = 0, at = 0;
+        for (int j = 0; j < 16; ++j) {
+            const long long i = q * 16 + j;
+            uint64_t block = 0;
+            for (int v = 0; v < vpb; ++v) {
+                if (at == have) {
+                    testu01_gpu_generate(g, pos, o);
+                    pos += kLanes;
+                    have = kLanes;
+                    at = 0;
+                }
+                const int bits = v < c ? s : b;
+                block = block << bits | (o[at++] << r) >> (32 - bits);
+            }
+            if (i < n) put(sk, i, block << ibits | static_cast<uint64_t>(i));
+        }
+    }
+}
+
+// the spacings y[i + 1] - y[i] of the n sorted points y inserted into the hash table (h.slots), or written to
+// d[i] (n - 1 of them)
+extern "C" __global__ void kspacings(const unsigned long long *y, long long n, HashTable h, unsigned long long *d) {
+    for (long long i = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x; i + 1 < n; i += static_cast<long long>(gridDim.x) * blockDim.x) {
+        if (h.slots) insert(h, y[i + 1] - y[i]);
+        else d[i] = y[i + 1] - y[i];
+    }
 }
 
 // Fourier3: the bits of nseq sequences of n bits, each from kall consecutive values from base + q * kall
@@ -827,6 +1012,21 @@ extern "C" __global__ void __launch_bounds__(kThreads) kcp_outputs(Params g, uin
     }
 }
 
+// The points i < n of t <= kLanes coordinates (the outputs from the position base + i t) whose first
+// coordinate is in [lo, lo + span) of the torus, appended to out (up to cap points; count counts all).
+// ClosePairs takes the points by slabs of the first coordinate this way, when they don't fit in memory.
+extern "C" __global__ void __launch_bounds__(kThreads) kcp_slab(Params g, uint64_t base, long long n, int t, uint32_t lo, uint64_t span, uint32_t *out,
+                                                                unsigned long long *count, long long cap) {
+    for (long long i = static_cast<long long>(blockIdx.x) * kThreads + threadIdx.x; i < n; i += static_cast<long long>(gridDim.x) * kThreads) {
+        uint32_t o[kLanes];
+        testu01_gpu_generate(g, base + static_cast<uint64_t>(i) * t, o);
+        if (static_cast<uint32_t>(o[0] - lo) >= span) continue;
+        const unsigned long long j = atomicAdd(count, 1ULL);
+        if (j < static_cast<unsigned long long>(cap))
+            for (int d = 0; d < t; ++d) out[j * t + d] = o[d];
+    }
+}
+
 // the cell of a coordinate x along a gridded coordinate, and the cell of a point (along the first g)
 __device__ inline uint32_t cp_coord_cell(uint32_t x, const CpGrid &gr) { return static_cast<uint32_t>((static_cast<uint64_t>(x) * gr.c) >> 32); }
 __device__ inline uint32_t cp_cell(const uint32_t *x, const CpGrid &gr) {
@@ -853,14 +1053,16 @@ extern "C" __global__ void kcp_scatter(const uint32_t *pts, long long n, int t, 
 }
 
 // The distances below dlim of the pairs of the points sorted by the cells, to dist (the first cap of
-// them; ndist counts all). Every point i looks at the points j > i of its cell and all the points of
+// them; ndist counts all), but those of two points outside the core [core_lo, core_lo + core_w) of the
+// first coordinate (the points of a slab and of its margin below; core_w = 2^32 for all). Every point i looks at the points j > i of its cell and all the points of
 // the neighbouring cells of the offsets after the zero offset (in the order of the offsets in
 // {-1, 0, 1}^g), so that every pair is seen once (c >= 3 keeps the neighbours distinct). The
 // coordinates outside the grid are compared first, as the gridded ones are close already.
 extern "C" __global__ void __launch_bounds__(kThreads) kcp_pairs(const uint32_t *pts, long long n, CpGrid gr, const unsigned long long *start, const unsigned *count,
-                                                                 uint32_t *dist, unsigned *ndist, unsigned cap) {
+                                                                 uint32_t core_lo, uint64_t core_w, uint32_t *dist, unsigned *ndist, unsigned cap) {
     for (long long i = static_cast<long long>(blockIdx.x) * kThreads + threadIdx.x; i < n; i += static_cast<long long>(gridDim.x) * kThreads) {
         const uint32_t *p = pts + i * gr.t;
+        const bool pcore = static_cast<uint32_t>(p[0] - core_lo) < core_w;
         uint32_t cc[kCpMaxGrid];  // the cell along every gridded coordinate
         for (int d = 0; d < gr.g; ++d) cc[d] = cp_coord_cell(p[d], gr);
         int noff = 1;
@@ -876,6 +1078,7 @@ extern "C" __global__ void __launch_bounds__(kThreads) kcp_pairs(const uint32_t 
             const long long b = static_cast<long long>(start[id]), e = b + count[id];
             for (long long j = k == (noff - 1) / 2 ? i + 1 : b; j < e; ++j) {
                 const uint32_t *q = pts + j * gr.t;
+                if (!pcore && static_cast<uint32_t>(q[0] - core_lo) >= core_w) continue;  // a pair of the slab below
                 uint32_t m = 0;
                 for (int d = gr.g; d < gr.t + gr.g && m < gr.dlim; ++d) {  // the coordinates outside the grid first
                     const int dd = d < gr.t ? d : d - gr.t;

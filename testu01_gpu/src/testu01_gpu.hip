@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 AND LicenseRef-TestU01
 //
-// testu01_gpu: the tests of BigCrush but MatrixRank, AppearanceSpacings, LinearComp and LempelZiv,
-// implemented on GPU (see README.md for the tests and their differences from TestU01).
+// testu01_gpu: the tests of BigCrush, implemented on GPU (LinearComp and LempelZiv on the host) (see README.md for the tests and their differences from TestU01).
 //
 // The tests are those of BigCrush, reimplemented after the source code of TestU01 1.2.3 (so this file
 // is also subject to the license of TestU01; see NOTICE) with the same parameters as their instances in
@@ -10,7 +9,7 @@
 // sknuth_CollisionPermut, svaria_WeightDistrib, smarsa_Savir2, smarsa_GCD, sstring_HammingWeight2,
 // sstring_HammingCorr, sstring_HammingIndep, sstring_Run, sstring_LongestHeadRun, sstring_AutoCor,
 // svaria_SampleCorr, svaria_SampleProd, svaria_SampleMean, swalk_RandomWalk1, sstring_PeriodsInStrings and
-// svaria_SumCollector, sspectral_Fourier3 (in the order they were added, so that the positions of the earlier ones stay as
+// svaria_SumCollector, sspectral_Fourier3, scomp_LinearComp, smarsa_MatrixRank, svaria_AppearanceSpacings and scomp_LempelZiv (in the order they were added, so that the positions of the earlier ones stay as
 // before). SerialOver, Run, the runs of bits, AutoCor and SampleCorr see the single sequence exactly
 // (every thread from a few values before its share); the others make their observations from the
 // consecutive positions of every thread (the tests of blocks: an observation does not span threads).
@@ -25,8 +24,10 @@
 // the bits 28 and above, would compare outputs of related counters, which a single stream of TestU01
 // doesn't, and the low bits of weak counter-based generators fail such comparisons.) The collisions of
 // CollisionOver (overlapping t-tuples) and of the spacings of BirthdaySpacings (non-overlapping t-tuples,
-// sorted on GPU by rocThrust) are counted exactly by a hash table on
-// GPU, and compared with a Poisson distribution (fbar_Poisson1), as TestU01 does for these parameters.
+// sorted on GPU by rocThrust) are counted exactly by a hash table on GPU (in the cache of the GPU, in
+// passes over the points), and compared with a Poisson distribution
+// (fbar_Poisson1), as TestU01 does for these parameters. Beyond the memory budget, the points are made again
+// by parts (see count_equal, sorted_parts and close_pairs), with the same results.
 // ClosePairs finds the close pairs of the points in the torus (the maximum norm) in a grid of cells on
 // GPU (see close_pairs), and computes the six statistics of TestU01 on the host (NP, mNP, mNP1, mNP2,
 // NJumps and mNP2S). The streams differ from those of TestU01, so the p-values agree only statistically.
@@ -38,7 +39,13 @@
 #include <hip/hip_runtime.h>
 #include <hip/hiprtc.h>
 #include <rocfft/rocfft.h>
+#include <thrust/binary_search.h>
 #include <thrust/copy.h>
+#include <thrust/device_vector.h>
+#include <thrust/functional.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/transform.h>
+#include <thrust/transform_reduce.h>
 #include <thrust/device_ptr.h>
 #include <thrust/scan.h>
 #include <thrust/sort.h>
@@ -72,7 +79,8 @@ extern "C" {
 namespace testu01_gpu {
 
 const char kAllTests[] = "poker,coupon,gap,maxoft,collision,birthday,closepairs,permutation,run,serial,collpermut,weight,savir2,gcd,hamweight,hamcorr,"
-                         "hamindep,bitrun,longhead,autocor,samplecorr,sampleprod,samplemean,walk,periods,sumcoll,fourier";
+                         "hamindep,bitrun,longhead,autocor,samplecorr,sampleprod,samplemean,walk,periods,sumcoll,fourier,linearcomp,"
+                         "matrixrank,appearance,lempelziv";
 
 namespace {
 
@@ -80,6 +88,7 @@ using detail::Coupon;
 using detail::CpGrid;
 using detail::Gap;
 using detail::HashTable;
+using detail::Sink;
 using detail::kThreads;
 using detail::MaxOft;
 using detail::Permut;
@@ -136,11 +145,12 @@ struct Generator::Impl {
         hiprtcDestroyProgram(&prog);
         CK(hipModuleLoadData(&module_, code.data()));
         for (auto [f, fname] : {std::pair{&poker, "ktest_poker"}, {&coupon, "ktest_coupon"}, {&gap, "ktest_gap"}, {&maxoft, "ktest_maxoft"}, {&permut, "ktest_permut"},
-                                {&points, "kpoints"}, {&spacings, "kspacings"}, {&fourier_bits, "kfourier_bits"}, {&fourier_acc, "kfourier_acc"},
+                                {&points, "kpoints"}, {&spacings, "kspacings"}, {&insert, "kinsert"}, {&fourier_bits, "kfourier_bits"}, {&fourier_acc, "kfourier_acc"},
                                 {&cp_outputs, "kcp_outputs"}, {&cp_cells, "kcp_cells"}, {&cp_scatter, "kcp_scatter"}, {&cp_pairs, "kcp_pairs"}, {&krun, "krun"},
-                                {&weight, "ktest_weight"}, {&savir2, "ktest_savir2"}, {&gcd, "ktest_gcd"}, {&serial, "kserial"}, {&perm_points, "kperm_points"},
+                                {&weight, "ktest_weight"}, {&savir2, "ktest_savir2"}, {&gcd, "ktest_gcd"}, {&serial, "kserial"}, {&perm_points, "kperm_points"}, {&cp_slab, "kcp_slab"},
                                 {&hamming, "ktest_hamming"}, {&autocor, "kautocor"}, {&samplecorr, "ksamplecorr"}, {&bitrun, "kbitrun"}, {&longhead, "klonghead"},
-                                {&uniform, "kuniform"}, {&strip, "ktest_strip"}, {&walk, "kwalk"}, {&sumcoll, "ktest_sumcoll"}})
+                                {&uniform, "kuniform"}, {&strip, "ktest_strip"}, {&walk, "kwalk"}, {&sumcoll, "ktest_sumcoll"}, {&matrank, "ktest_matrank"}, {&mat_fill, "kmat_fill"},
+                                {&mat_rank, "kmat_rank"}, {&appear, "kappear"}})
             CK(hipModuleGetFunction(f, module_, fname));
     }
     ~Impl() { (void)hipModuleUnload(module_); }
@@ -159,10 +169,11 @@ struct Generator::Impl {
     hipFunction_t of(const detail::Hamming &) const { return hamming; }
     hipFunction_t of(const detail::Strip &) const { return strip; }
     hipFunction_t of(const detail::SumColl &) const { return sumcoll; }
+    hipFunction_t of(const detail::MatRank &) const { return matrank; }
 
-    hipFunction_t poker, coupon, gap, maxoft, permut, points, spacings, fourier_bits, fourier_acc, cp_outputs, cp_cells,
-        cp_scatter, cp_pairs, krun, weight, savir2, gcd, serial, perm_points, hamming, autocor, samplecorr, bitrun,
-        longhead, uniform, strip, walk, sumcoll;
+    hipFunction_t poker, coupon, gap, maxoft, permut, points, spacings, insert, fourier_bits, fourier_acc, cp_outputs, cp_cells,
+        cp_scatter, cp_pairs, cp_slab, krun, weight, savir2, gcd, serial, perm_points, hamming, autocor, samplecorr, bitrun,
+        longhead, uniform, strip, walk, sumcoll, matrank, mat_fill, mat_rank, appear;
 
   private:
     static void rtc(hiprtcResult r, const char *what) {
@@ -185,41 +196,32 @@ void launch(hipFunction_t f, unsigned grid, unsigned block, unsigned shmem, A...
     CK(hipModuleLaunchKernel(f, grid, 1, 1, block, 1, 1, shmem, nullptr, args, nullptr));
 }
 
-// The device memory for the points and the hash table, for up to nmax points. The table has at most
-// kTableSlots slots (64MB), which fits in the cache of the GPU (the 128MB Infinity Cache of RX 6800);
-// more keys are inserted in several passes (see HashTable), as the random accesses to a table in the
-// memory took most of the time of the tests on points.
-struct PointBuffers {
-    static constexpr uint64_t kTableSlots = UINT64_C(1) << 23;
-    static constexpr double kMaxLoad = 0.5;  // the largest number of keys per slot in a pass
-    unsigned long long *pts = nullptr, *slots = nullptr, *counters = nullptr;
-    uint64_t size = 1;  // the slots of the table (a power of 2)
-    explicit PointBuffers(long long nmax) {
-        while (static_cast<double>(size) * kMaxLoad < nmax && size < kTableSlots) size <<= 1;
-        CK(hipMalloc(reinterpret_cast<void **>(&slots), sizeof(unsigned long long) * size));
-        CK(hipMalloc(reinterpret_cast<void **>(&counters), sizeof(unsigned long long) * 2));
-        CK(hipMalloc(reinterpret_cast<void **>(&pts), sizeof(unsigned long long) * nmax));
+// The device memory of the tests on keys (the points of CollisionOver, BirthdaySpacings, CollisionPermut,
+// SampleProd and SampleMean): two arrays of cap keys and a counter.
+struct KeyBuffers {
+    unsigned long long *a = nullptr, *b = nullptr, *count = nullptr;
+    long long cap = 0;
+    void ensure(long long n) {
+        if (n <= cap) return;
+        release();
+        CK(hipMalloc(reinterpret_cast<void **>(&a), sizeof(unsigned long long) * n));
+        CK(hipMalloc(reinterpret_cast<void **>(&b), sizeof(unsigned long long) * n));
+        CK(hipMalloc(reinterpret_cast<void **>(&count), sizeof(unsigned long long)));
+        cap = n;
     }
-    ~PointBuffers() {
-        for (void *p : {static_cast<void *>(pts), static_cast<void *>(slots), static_cast<void *>(counters)}) (void)hipFree(p);
+    void release() {
+        for (void *p : {static_cast<void *>(a), static_cast<void *>(b), static_cast<void *>(count)}) (void)hipFree(p);
+        a = b = count = nullptr;
+        cap = 0;
     }
-    // the bits of the number of passes for n keys
-    int pass_bits(long long n) const {
-        int pb = 0;
-        while (static_cast<double>(n >> pb) > kMaxLoad * size) ++pb;
-        return pb;
-    }
-    // the empty hash table of the pass part of 2^pbits; the collisions are counted from the first pass
-    HashTable table(int pbits, uint64_t part) {
-        CK(hipMemset(slots, 0xff, sizeof(unsigned long long) * size));
-        if (part == 0) CK(hipMemset(counters, 0, sizeof(unsigned long long) * 2));
-        return {slots, counters, counters + 1, size - 1, pbits, part};
-    }
-    // the collisions in the table over the passes: the counted ones and those of the key kEmpty
-    long long collisions() {
-        unsigned long long c[2];
-        CK(hipMemcpy(c, counters, sizeof c, hipMemcpyDeviceToHost));
-        return static_cast<long long>(c[0] + (c[1] > 1 ? c[1] - 1 : 0));
+    KeyBuffers() = default;
+    KeyBuffers(const KeyBuffers &) = delete;
+    KeyBuffers &operator=(const KeyBuffers &) = delete;
+    ~KeyBuffers() { release(); }
+    long long read_count() const {
+        unsigned long long c;
+        CK(hipMemcpy(&c, count, sizeof c, hipMemcpyDeviceToHost));
+        return static_cast<long long>(c);
     }
 };
 
@@ -249,125 +251,6 @@ class Counters {
   private:
     uint64_t next_;
 };
-
-// CollisionOver: the number of collisions of n overlapping points in 2^(b * t) cells
-// (the points are generated again for every pass of the hash table, which is cheaper than storing them)
-long long collision_over(const Kernels &kn, PointBuffers &buf, const Tuples &tup, const Params &g, Counters &ctr, long long n) {
-    const uint64_t stride = Counters::stride(n, 1, 0, tup.t - 1), base = ctr.take(stride);
-    const int pb = buf.pass_bits(n);
-    for (uint64_t part = 0; part < UINT64_C(1) << pb; ++part)
-        launch(kn.points, kBlocks, kThreads, 0, tup, g, base, stride, n, buf.table(pb, part), static_cast<unsigned long long *>(nullptr));
-    return buf.collisions();
-}
-
-// sort the n points in buf.pts (by rocThrust, a radix sort)
-void sort_points(PointBuffers &buf, long long n) {
-    const thrust::device_ptr<unsigned long long> p(buf.pts);
-    thrust::sort(p, p + n);
-}
-
-// BirthdaySpacings: the number of collisions among the spacings of n sorted points of b * t bits.
-long long birthday_spacings(const Kernels &kn, PointBuffers &buf, const Tuples &tup, const Params &g, Counters &ctr, long long n) {
-    const uint64_t stride = Counters::stride(n, tup.t, 0);
-    launch(kn.points, kBlocks, kThreads, 0, tup, g, ctr.take(stride), stride, n, HashTable{}, buf.pts);
-    sort_points(buf, n);
-    const int pb = buf.pass_bits(n);
-    for (uint64_t part = 0; part < UINT64_C(1) << pb; ++part)
-        launch(kn.spacings, kBlocks, kThreads, 0, static_cast<const unsigned long long *>(buf.pts), n, buf.table(pb, part));
-    return buf.collisions();
-}
-
-// The device memory of ClosePairs for up to npoints points of t coordinates (ncoords in all).
-struct CpBuffers {
-    static constexpr uint32_t kMaxCells = UINT32_C(1) << 22;
-    static constexpr unsigned kCap = 50000;                    // the distances kept (NUM_JUMPS_LIM of TestU01)
-    uint32_t *pts = nullptr, *sorted = nullptr, *cell = nullptr, *dist = nullptr;
-    unsigned *count = nullptr, *ndist = nullptr;
-    unsigned long long *start = nullptr, *cursor = nullptr;
-    CpBuffers(long long ncoords, long long npoints) {
-        CK(hipMalloc(reinterpret_cast<void **>(&pts), sizeof(uint32_t) * ncoords));
-        CK(hipMalloc(reinterpret_cast<void **>(&sorted), sizeof(uint32_t) * ncoords));
-        CK(hipMalloc(reinterpret_cast<void **>(&cell), sizeof(uint32_t) * npoints));
-        CK(hipMalloc(reinterpret_cast<void **>(&dist), sizeof(uint32_t) * kCap));
-        CK(hipMalloc(reinterpret_cast<void **>(&count), sizeof(unsigned) * kMaxCells));
-        CK(hipMalloc(reinterpret_cast<void **>(&ndist), sizeof(unsigned)));
-        CK(hipMalloc(reinterpret_cast<void **>(&start), sizeof(unsigned long long) * kMaxCells));
-        CK(hipMalloc(reinterpret_cast<void **>(&cursor), sizeof(unsigned long long) * kMaxCells));
-    }
-    ~CpBuffers() {
-        for (void *p : {static_cast<void *>(pts), static_cast<void *>(sorted), static_cast<void *>(cell), static_cast<void *>(dist),
-                        static_cast<void *>(count), static_cast<void *>(ndist), static_cast<void *>(start), static_cast<void *>(cursor)})
-            (void)hipFree(p);
-    }
-    CpBuffers(const CpBuffers &) = delete;
-    CpBuffers &operator=(const CpBuffers &) = delete;
-};
-
-// The grid for the pairs of n points of t coordinates closer than dlim (in units of 2^-32): the number
-// g of gridded coordinates and the cells c per coordinate (at most 2^32 / dlim, so that a cell is at
-// least as wide as dlim, and c^g <= kMaxCells) of the least work, about the neighbouring cells visited
-// (3^g / 2 per point) plus the pairs compared (n (3 / c)^g / 2 per point); g = 0 compares all pairs.
-CpGrid cp_grid(long long n, int t, uint32_t dlim) {
-    CpGrid best{t, 0, 1, dlim, 1};
-    double best_cost = 0.5 * static_cast<double>(n);
-    const double cmax = std::floor(std::ldexp(1.0, 32) / dlim);
-    for (int g = 1; g <= std::min(t, detail::kCpMaxGrid); ++g) {
-        double c = std::min(cmax, std::floor(std::pow(static_cast<double>(CpBuffers::kMaxCells), 1.0 / g) + 1e-9));
-        while (std::pow(c, g) > CpBuffers::kMaxCells) --c;
-        if (c < 3) break;
-        const double cost = 0.5 * std::pow(3.0, g) + 0.5 * static_cast<double>(n) * std::pow(3 / c, g);
-        if (cost < best_cost) {
-            best_cost = cost;
-            best = {t, g, static_cast<uint32_t>(c), dlim, static_cast<uint32_t>(std::pow(c, g))};
-        }
-    }
-    return best;
-}
-
-// ClosePairs: the sorted distances (in units of 2^-32) of the close pairs of n points of t coordinates
-// (consecutive outputs from the next counters) in the torus, with the maximum norm. TestU01 collects
-// the pairs whose jump W = n (n - 1) / 2 * 2^t * d^t (the volume of the ball of the distance d, times
-// the pairs; an exponential of mean 1 for the closest pair) is at most max(m, the m-th smallest W).
-// They are those among the pairs closer than the distance of W = B, from B = 2m (about 2m pairs),
-// enlarged if fewer than m are found (or reduced if more than kCap are, for a very bad generator).
-std::vector<uint32_t> close_pairs(const Kernels &kn, CpBuffers &buf, const Params &g, Counters &ctr, long long n, int t, int m) {
-    const long long nc = n * t;
-    launch(kn.cp_outputs, kBlocks, kThreads, 0, g, ctr.take(Counters::stride(nc, 1, 0)), nc, buf.pts);
-    const double pairs_vol = 0.5 * static_cast<double>(n) * (n - 1.0) * std::ldexp(1.0, t);  // W = pairs_vol * d^t
-    const uint32_t all = (UINT32_C(1) << 31) + 1;  // above any distance
-    double B = 2.0 * m;
-    for (int iter = 0;; ++iter) {
-        const double d = std::pow(B / pairs_vol, 1.0 / t);
-        const uint32_t dlim = d >= 0.5 ? all : std::max(UINT32_C(1), static_cast<uint32_t>(std::ceil(std::ldexp(d, 32))));
-        const CpGrid gr = cp_grid(n, t, dlim);
-        CK(hipMemset(buf.count, 0, sizeof(unsigned) * gr.cells));
-        launch(kn.cp_cells, kBlocks, kThreads, 0, static_cast<const uint32_t *>(buf.pts), n, gr, buf.cell, buf.count);
-        // the start of every cell (the exclusive prefix sum of the counts), and the cursors of the scatter
-        const thrust::device_ptr<unsigned> cnt(buf.count);
-        const thrust::device_ptr<unsigned long long> st(buf.start), cur(buf.cursor);
-        thrust::exclusive_scan(cnt, cnt + gr.cells, st, 0ULL);
-        thrust::copy(st, st + gr.cells, cur);
-        launch(kn.cp_scatter, kBlocks, kThreads, 0, static_cast<const uint32_t *>(buf.pts), n, t, static_cast<const uint32_t *>(buf.cell), buf.cursor,
-               buf.sorted);
-        CK(hipMemset(buf.ndist, 0, sizeof(unsigned)));
-        launch(kn.cp_pairs, kBlocks, kThreads, 0, static_cast<const uint32_t *>(buf.sorted), n, gr, static_cast<const unsigned long long *>(buf.start),
-               static_cast<const unsigned *>(buf.count), buf.dist, buf.ndist, CpBuffers::kCap);
-        unsigned nd;
-        CK(hipMemcpy(&nd, buf.ndist, sizeof nd, hipMemcpyDeviceToHost));
-        if (iter < 40 && nd < static_cast<unsigned>(m) && dlim < all) {
-            B *= 4;
-            continue;
-        }
-        if (iter < 40 && nd > CpBuffers::kCap && dlim > 1) {
-            B /= 2;
-            continue;
-        }
-        std::vector<uint32_t> dist(std::min(nd, CpBuffers::kCap));
-        CK(hipMemcpy(dist.data(), buf.dist, sizeof(uint32_t) * dist.size(), hipMemcpyDeviceToHost));
-        std::sort(dist.begin(), dist.end());
-        return dist;
-    }
-}
 
 // The real FFTs of Fourier3 by rocFFT (in double): batch sequences of n doubles in a, transformed to n / 2 + 1 complex
 // coefficients each in f (unnormalized, as the FFT of TestU01), with the sums of their squares in b.
@@ -412,6 +295,524 @@ struct Fft {
         if (st != rocfft_status_success) throw std::runtime_error(std::string(what) + ": rocfft status " + std::to_string(static_cast<int>(st)));
     }
 };
+
+// a bijection of the 64-bit keys (SplitMix64's finalizer, as mix64 of the device code)
+struct Mix64 {
+    __host__ __device__ uint64_t operator()(uint64_t z) const {
+        z = (z ^ (z >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+        z = (z ^ (z >> 27)) * UINT64_C(0x94d049bb133111eb);
+        return z ^ (z >> 31);
+    }
+};
+
+void sort_keys(unsigned long long *a, long long n) {
+    const thrust::device_ptr<unsigned long long> p(a);
+    thrust::sort(p, p + n);
+}
+
+// The bits of the parts of n keys when they don't fit in cap (2^pb parts, of about n / 2^pb keys, with
+// room for their fluctuations).
+int part_bits(long long n, long long cap) {
+    int pb = 1;
+    for (;; ++pb) {
+        const double e = std::ldexp(static_cast<double>(n), -pb);
+        if (e * 1.05 + 8 * std::sqrt(e) + 1000 <= static_cast<double>(cap)) return pb;
+    }
+}
+
+// The terms of the Anderson-Darling statistic of TestU01 (gofs_AndersonDarling) of the sorted keys k[i] of
+// the ranks off + i + 1 among N, as u = (k + 1/2) / 2^64 (for the fast mode, which sums them on GPU).
+struct AdTerm {
+    const unsigned long long *k;
+    long long off, N;
+    __host__ __device__ double operator()(long long i) const {
+        const double eps = DBL_EPSILON / 2;  // gofs_EpsilonAD
+        double u = (static_cast<double>(k[i]) + 0.5) * 0x1p-64, u1 = u;
+        if (u <= eps) u1 = u = eps;
+        else if (u >= 1 - eps) u1 = 1 - eps;
+        const long long j = off + i + 1;
+        return (2.0 * j - 1) * log(u) + (1.0 + 2.0 * (N - j)) * log1p(-u1);
+    }
+};
+
+// a launch of a kernel putting its keys into the sink
+using Launch = std::function<void(const Sink &)>;
+
+// The device memory of the tests within the budget (bytes): the keys, ClosePairs and the FFTs.
+struct Mem;
+
+long long count_equal_part(const Kernels &kn, Mem &m, const Launch &f, int pb, uint64_t part);
+
+struct CpBuffers;
+
+// The device memory of a hash table of up to kTableSlots slots (64 MB), which fits in the cache of the GPU
+// (the 128 MB Infinity Cache of RX 6800); more keys are inserted in several passes (see HashTable), as the
+// random accesses to a table in the memory are slow.
+struct HashBuffers {
+    static constexpr uint64_t kTableSlots = UINT64_C(1) << 23;
+    static constexpr double kMaxLoad = 0.5;  // the largest number of keys per slot in a pass
+    unsigned long long *slots = nullptr, *counters = nullptr;
+    uint64_t size = 0;  // the slots (a power of 2)
+    HashBuffers() = default;
+    HashBuffers(const HashBuffers &) = delete;
+    HashBuffers &operator=(const HashBuffers &) = delete;
+    ~HashBuffers() {
+        (void)hipFree(slots);
+        (void)hipFree(counters);
+    }
+    // the slots for n keys (a table of a pass for at most kMaxLoad keys per slot), and the bits of the passes
+    int prepare(long long n) {
+        uint64_t want = 1;
+        while (static_cast<double>(want) * kMaxLoad < n && want < kTableSlots) want <<= 1;
+        if (want > size) {
+            (void)hipFree(slots);
+            CK(hipMalloc(reinterpret_cast<void **>(&slots), sizeof(unsigned long long) * want));
+            if (!counters) CK(hipMalloc(reinterpret_cast<void **>(&counters), sizeof(unsigned long long) * 2));
+            size = want;
+        }
+        int pb = 0;
+        while (static_cast<double>(n >> pb) > kMaxLoad * size) ++pb;
+        return pb;
+    }
+    // the empty table of the pass part of 2^pbits; the collisions are counted from the first pass
+    HashTable table(int pbits, uint64_t part) {
+        CK(hipMemset(slots, 0xff, sizeof(unsigned long long) * size));
+        if (part == 0) CK(hipMemset(counters, 0, sizeof(unsigned long long) * 2));
+        return {slots, counters, counters + 1, size - 1, pbits, part};
+    }
+    // the collisions in the table over the passes: the counted ones and those of the key kEmpty
+    long long collisions() {
+        unsigned long long c[2];
+        CK(hipMemcpy(c, counters, sizeof c, hipMemcpyDeviceToHost));
+        return static_cast<long long>(c[0] + (c[1] > 1 ? c[1] - 1 : 0));
+    }
+};
+
+struct Mem {
+    size_t budget = size_t(2) << 30;
+    KeyBuffers keys;
+    HashBuffers hash;
+    std::unique_ptr<CpBuffers> cp;
+    std::unique_ptr<Fft> fft;
+    // the keys of a pass: two arrays and the temporary memory of the sort
+    long long key_cap() const { return std::max<long long>(static_cast<long long>(budget / 24), 1 << 20); }
+};
+
+// The number of the keys a[0..n) equal to another one before them (the collisions): by the hash table, in
+// passes over the keys (faster than sorting them).
+long long count_equal_keys(const Kernels &kn, Mem &m, const unsigned long long *a, long long n) {
+    if (n < 2) return 0;
+    const int pb = m.hash.prepare(n);
+    for (uint64_t part = 0; part < UINT64_C(1) << pb; ++part) launch(kn.insert, kBlocks, kThreads, 0, a, n, m.hash.table(pb, part));
+    return m.hash.collisions();
+}
+
+// The number of the keys equal to an earlier one among the n keys of f (the collisions), by the hash table:
+// the keys stored once if they fit in the memory (for keys costly to make, as those of CollisionPermut),
+// else by the parts of their hashes (equal keys have equal hashes), the keys being made again for every
+// part. Either way the count is the same.
+long long count_equal(const Kernels &kn, Mem &m, long long n, const Launch &f) {
+    const long long cap = m.key_cap();
+    if (n <= cap) {
+        m.keys.ensure(n);
+        f(Sink{m.keys.a, m.keys.count, n, 0, 64, 0, 0});
+        return count_equal_keys(kn, m, m.keys.a, n);
+    }
+    m.keys.ensure(cap);
+    const int pb = part_bits(n, cap);
+    long long c = 0;
+    for (uint64_t part = 0; part < UINT64_C(1) << pb; ++part) c += count_equal_part(kn, m, f, pb, part);
+    return c;
+}
+
+// (a part too large, of many equal keys, is split further)
+long long count_equal_part(const Kernels &kn, Mem &m, const Launch &f, int pb, uint64_t part) {
+    CK(hipMemset(m.keys.count, 0, sizeof(unsigned long long)));
+    f(Sink{m.keys.a, m.keys.count, m.keys.cap, pb, 64, 1, part});
+    const long long c = m.keys.read_count();
+    if (c <= m.keys.cap) return count_equal_keys(kn, m, m.keys.a, c);
+    if (pb >= 40) throw TestFailure("too many equal keys for the memory budget");
+    return count_equal_part(kn, m, f, pb + 1, 2 * part) + count_equal_part(kn, m, f, pb + 1, 2 * part + 1);
+}
+
+using PartFn = std::function<void(unsigned long long *, long long)>;
+
+void sorted_part(const Kernels &kn, Mem &m, int kbits, const Launch &f, const PartFn &part_fn, int pb, uint64_t part) {
+    CK(hipMemset(m.keys.count, 0, sizeof(unsigned long long)));
+    f(Sink{m.keys.a, m.keys.count, m.keys.cap, pb, kbits, 0, part});
+    const long long c = m.keys.read_count();
+    if (c <= m.keys.cap) {
+        sort_keys(m.keys.a, c);
+        part_fn(m.keys.a, c);
+        return;
+    }
+    if (pb >= kbits) throw TestFailure("too many equal points for the memory budget");
+    sorted_part(kn, m, kbits, f, part_fn, pb + 1, 2 * part);
+    sorted_part(kn, m, kbits, f, part_fn, pb + 1, 2 * part + 1);
+}
+
+// The n keys of kbits bits of f, sorted, in increasing parts part_fn(keys, count) (the keys in m.keys.a):
+// all at once if they fit in the memory, else by the parts of their top bits, the keys being made again
+// for every part.
+void sorted_parts(const Kernels &kn, Mem &m, long long n, int kbits, const Launch &f, const PartFn &part_fn) {
+    const long long cap = m.key_cap();
+    if (n <= cap) {
+        m.keys.ensure(n);
+        f(Sink{m.keys.a, m.keys.count, n, 0, kbits, 0, 0});
+        sort_keys(m.keys.a, n);
+        part_fn(m.keys.a, n);
+        return;
+    }
+    m.keys.ensure(cap);
+    const int pb = std::min(part_bits(n, cap), kbits);
+    for (uint64_t part = 0; part < UINT64_C(1) << pb; ++part) sorted_part(kn, m, kbits, f, part_fn, pb, part);
+}
+
+// CollisionOver: the number of collisions of n overlapping points in 2^(b * t) cells
+// (the points are made again for every pass of the hash table, which is cheaper than storing them; no memory
+// grows with n)
+long long collision_over(const Kernels &kn, Mem &m, const Tuples &tup, const Params &g, Counters &ctr, long long n) {
+    const uint64_t stride = Counters::stride(n, 1, 0, tup.t - 1), base = ctr.take(stride);
+    const int pb = m.hash.prepare(n);
+    for (uint64_t part = 0; part < UINT64_C(1) << pb; ++part) {
+        Sink sk{};
+        sk.h = m.hash.table(pb, part);
+        launch(kn.points, kBlocks, kThreads, 0, tup, g, base, stride, n, sk);
+    }
+    return m.hash.collisions();
+}
+
+// BirthdaySpacings: the number of collisions among the spacings of n sorted points of b * t bits. If the
+// points don't fit in the memory, they are sorted by the parts of their top bits (made again for every
+// part), and their spacings (hashed) go to buckets on the host by the top bits of their hashes, whose
+// collisions are counted one bucket at a time.
+long long birthday_spacings(const Kernels &kn, Mem &m, const Tuples &tup, const Params &g, Counters &ctr, long long n) {
+    const uint64_t stride = Counters::stride(n, tup.t, 0), base = ctr.take(stride);
+    const Launch pts = [&](const Sink &sk) { launch(kn.points, kBlocks, kThreads, 0, tup, g, base, stride, n, sk); };
+    const long long cap = m.key_cap();
+    if (n <= cap) {  // the points sorted in a, their spacings inserted into the hash table
+        m.keys.ensure(n);
+        pts(Sink{m.keys.a, m.keys.count, n, 0, 64, 0, 0});
+        sort_keys(m.keys.a, n);
+        const int pb = m.hash.prepare(n - 1);
+        for (uint64_t part = 0; part < UINT64_C(1) << pb; ++part)
+            launch(kn.spacings, kBlocks, kThreads, 0, static_cast<const unsigned long long *>(m.keys.a), n, m.hash.table(pb, part),
+                   static_cast<unsigned long long *>(nullptr));
+        return m.hash.collisions();
+    }
+    const int hb = part_bits(n, cap);
+    std::vector<std::vector<unsigned long long>> bucket(size_t(1) << hb);
+    thrust::device_vector<unsigned long long> bounds(bucket.size());
+    for (size_t j = 0; j < bucket.size(); ++j) bounds[j] = static_cast<unsigned long long>(j) << (64 - hb);
+    thrust::device_vector<long long> at(bucket.size());
+    std::vector<long long> hat(bucket.size() + 1);
+    bool have_last = false;
+    unsigned long long last = 0;
+    sorted_parts(kn, m, n, tup.b * tup.t, pts, [&](unsigned long long *a, long long c) {
+        if (c == 0) return;
+        unsigned long long first;
+        CK(hipMemcpy(&first, a, sizeof first, hipMemcpyDeviceToHost));
+        if (have_last) {  // the spacing across the parts
+            const unsigned long long h = Mix64()(first - last);
+            bucket[h >> (64 - hb)].push_back(h);
+        }
+        CK(hipMemcpy(&last, a + c - 1, sizeof last, hipMemcpyDeviceToHost));
+        have_last = true;
+        if (c < 2) return;
+        launch(kn.spacings, kBlocks, kThreads, 0, static_cast<const unsigned long long *>(a), c, HashTable{}, m.keys.b);
+        const thrust::device_ptr<unsigned long long> sp(m.keys.b);
+        thrust::transform(sp, sp + c - 1, sp, Mix64());
+        thrust::sort(sp, sp + c - 1);
+        thrust::lower_bound(sp, sp + c - 1, bounds.begin(), bounds.end(), at.begin());
+        thrust::copy(at.begin(), at.end(), hat.begin());
+        hat.back() = c - 1;
+        for (size_t j = 0; j < bucket.size(); ++j) {
+            const size_t o = bucket[j].size(), k = static_cast<size_t>(hat[j + 1] - hat[j]);
+            bucket[j].resize(o + k);
+            if (k) CK(hipMemcpy(bucket[j].data() + o, m.keys.b + hat[j], sizeof(unsigned long long) * k, hipMemcpyDeviceToHost));
+        }
+    });
+    long long eq = 0;
+    for (auto &bk : bucket) {
+        const long long k = static_cast<long long>(bk.size());
+        if (k <= m.keys.cap) {
+            if (k) CK(hipMemcpy(m.keys.a, bk.data(), sizeof(unsigned long long) * k, hipMemcpyHostToDevice));
+            eq += count_equal_keys(kn, m, m.keys.a, k);
+        } else {  // a bucket too large (of many equal spacings): on the host
+            std::sort(bk.begin(), bk.end());
+            for (long long i = 1; i < k; ++i) eq += bk[i] == bk[i - 1];
+        }
+        std::vector<unsigned long long>().swap(bk);
+    }
+    return eq;
+}
+
+// The device memory of ClosePairs for up to ncoords coordinates (of points of at least 2 coordinates).
+struct CpBuffers {
+    static constexpr uint32_t kMaxCells = UINT32_C(1) << 22;
+    static constexpr unsigned kCap = 50000;  // the distances kept (NUM_JUMPS_LIM of TestU01)
+    static constexpr size_t kFixed = (sizeof(unsigned) + 2 * sizeof(unsigned long long)) * kMaxCells;  // the memory of the cells
+    long long ncoords;
+    uint32_t *pts = nullptr, *sorted = nullptr, *cell = nullptr, *dist = nullptr;
+    unsigned *count = nullptr, *ndist = nullptr;
+    unsigned long long *start = nullptr, *cursor = nullptr, *nslab = nullptr;
+    explicit CpBuffers(long long ncoords_) : ncoords(ncoords_) {
+        CK(hipMalloc(reinterpret_cast<void **>(&pts), sizeof(uint32_t) * ncoords));
+        CK(hipMalloc(reinterpret_cast<void **>(&sorted), sizeof(uint32_t) * ncoords));
+        CK(hipMalloc(reinterpret_cast<void **>(&cell), sizeof(uint32_t) * (ncoords / 2 + 1)));
+        CK(hipMalloc(reinterpret_cast<void **>(&dist), sizeof(uint32_t) * kCap));
+        CK(hipMalloc(reinterpret_cast<void **>(&count), sizeof(unsigned) * kMaxCells));
+        CK(hipMalloc(reinterpret_cast<void **>(&ndist), sizeof(unsigned)));
+        CK(hipMalloc(reinterpret_cast<void **>(&start), sizeof(unsigned long long) * kMaxCells));
+        CK(hipMalloc(reinterpret_cast<void **>(&cursor), sizeof(unsigned long long) * kMaxCells));
+        CK(hipMalloc(reinterpret_cast<void **>(&nslab), sizeof(unsigned long long)));
+    }
+    ~CpBuffers() {
+        for (void *p : {static_cast<void *>(pts), static_cast<void *>(sorted), static_cast<void *>(cell), static_cast<void *>(dist),
+                        static_cast<void *>(count), static_cast<void *>(ndist), static_cast<void *>(start), static_cast<void *>(cursor),
+                        static_cast<void *>(nslab)})
+            (void)hipFree(p);
+    }
+    CpBuffers(const CpBuffers &) = delete;
+    CpBuffers &operator=(const CpBuffers &) = delete;
+    // the coordinates for the budget (10 bytes per coordinate, the cells aside), or those of the need if less
+    static long long coords_for(size_t budget, long long need) {
+        const long long fit = static_cast<long long>((budget > kFixed + (size_t(64) << 20) ? budget - kFixed : size_t(64) << 20) / 10);
+        return std::min(fit, need);
+    }
+};
+
+// The grid for the pairs of n points of t coordinates closer than dlim (in units of 2^-32): the number
+// g of gridded coordinates and the cells c per coordinate (at most 2^32 / dlim, so that a cell is at
+// least as wide as dlim, and c^g <= kMaxCells) of the least work, about the neighbouring cells visited
+// (3^g / 2 per point) plus the pairs compared (n (3 / c)^g / 2 per point); g = 0 compares all pairs.
+CpGrid cp_grid(long long n, int t, uint32_t dlim) {
+    CpGrid best{t, 0, 1, dlim, 1};
+    double best_cost = 0.5 * static_cast<double>(n);
+    const double cmax = std::floor(std::ldexp(1.0, 32) / dlim);
+    for (int g = 1; g <= std::min(t, detail::kCpMaxGrid); ++g) {
+        double c = std::min(cmax, std::floor(std::pow(static_cast<double>(CpBuffers::kMaxCells), 1.0 / g) + 1e-9));
+        while (std::pow(c, g) > CpBuffers::kMaxCells) --c;
+        if (c < 3) break;
+        const double cost = 0.5 * std::pow(3.0, g) + 0.5 * static_cast<double>(n) * std::pow(3 / c, g);
+        if (cost < best_cost) {
+            best_cost = cost;
+            best = {t, g, static_cast<uint32_t>(c), dlim, static_cast<uint32_t>(std::pow(c, g))};
+        }
+    }
+    return best;
+}
+
+// The distances below gr.dlim of the pairs of the np points in buf.pts but those of two points outside the
+// core [core_lo, core_lo + core_w) of the first coordinate, added to buf.dist (counted by buf.ndist).
+void cp_find(const Kernels &kn, CpBuffers &buf, const CpGrid &gr, long long np, int t, uint32_t core_lo, uint64_t core_w) {
+    CK(hipMemset(buf.count, 0, sizeof(unsigned) * gr.cells));
+    launch(kn.cp_cells, kBlocks, kThreads, 0, static_cast<const uint32_t *>(buf.pts), np, gr, buf.cell, buf.count);
+    // the start of every cell (the exclusive prefix sum of the counts), and the cursors of the scatter
+    const thrust::device_ptr<unsigned> cnt(buf.count);
+    const thrust::device_ptr<unsigned long long> st(buf.start), cur(buf.cursor);
+    thrust::exclusive_scan(cnt, cnt + gr.cells, st, 0ULL);
+    thrust::copy(st, st + gr.cells, cur);
+    launch(kn.cp_scatter, kBlocks, kThreads, 0, static_cast<const uint32_t *>(buf.pts), np, t, static_cast<const uint32_t *>(buf.cell), buf.cursor,
+           buf.sorted);
+    launch(kn.cp_pairs, kBlocks, kThreads, 0, static_cast<const uint32_t *>(buf.sorted), np, gr, static_cast<const unsigned long long *>(buf.start),
+           static_cast<const unsigned *>(buf.count), core_lo, core_w, buf.dist, buf.ndist, CpBuffers::kCap);
+}
+
+// The close pairs of the slab [lo, lo + w) of the first coordinate: its points and those of the margin
+// [lo - dlim, lo) below it (made again from the positions), and the pairs of a point of the slab; a slab of
+// too many points (a very uneven generator) is split.
+void cp_slab(const Kernels &kn, CpBuffers &buf, const CpGrid &gr, const Params &g, uint64_t base, long long n, int t, uint64_t lo, uint64_t w) {
+    const uint64_t span = w + gr.dlim;
+    if (span > (UINT64_C(1) << 32) || w <= gr.dlim) throw TestFailure("ClosePairs: the memory budget is too small");
+    const long long pcap = buf.ncoords / t;
+    CK(hipMemset(buf.nslab, 0, sizeof(unsigned long long)));
+    launch(kn.cp_slab, kBlocks, kThreads, 0, g, base, n, t, static_cast<uint32_t>(lo - gr.dlim), span, buf.pts, buf.nslab, pcap);
+    unsigned long long c;
+    CK(hipMemcpy(&c, buf.nslab, sizeof c, hipMemcpyDeviceToHost));
+    if (static_cast<long long>(c) > pcap) {
+        cp_slab(kn, buf, gr, g, base, n, t, lo, w / 2);
+        cp_slab(kn, buf, gr, g, base, n, t, lo + w / 2, w - w / 2);
+        return;
+    }
+    cp_find(kn, buf, gr, static_cast<long long>(c), t, static_cast<uint32_t>(lo), w);
+}
+
+// ClosePairs: the sorted distances (in units of 2^-32) of the close pairs of n points of t coordinates
+// (consecutive outputs from the next counters) in the torus, with the maximum norm. TestU01 collects
+// the pairs whose jump W = n (n - 1) / 2 * 2^t * d^t (the volume of the ball of the distance d, times
+// the pairs; an exponential of mean 1 for the closest pair) is at most max(m, the m-th smallest W).
+// They are those among the pairs closer than the distance of W = B, from B = 2m (about 2m pairs),
+// enlarged if fewer than m are found (or reduced if more than kCap are, for a very bad generator). If the
+// points don't fit in the memory, they are taken by slabs of their first coordinate (see cp_slab); the
+// pairs found are the same.
+std::vector<uint32_t> close_pairs(const Kernels &kn, Mem &m, const Params &g, Counters &ctr, long long n, int t, int mm) {
+    const long long nc = n * t;
+    const uint64_t base = ctr.take(Counters::stride(nc, 1, 0));
+    const long long want = CpBuffers::coords_for(m.budget, nc);
+    if (!m.cp || m.cp->ncoords < want) {
+        m.cp.reset();
+        m.cp = std::make_unique<CpBuffers>(want);
+    }
+    CpBuffers &buf = *m.cp;
+    const bool slabs = nc > buf.ncoords;
+    if (slabs && t > kLanes) throw TestFailure("ClosePairs: too many coordinates for the slabs");
+    if (!slabs) launch(kn.cp_outputs, kBlocks, kThreads, 0, g, base, nc, buf.pts);
+    const double pairs_vol = 0.5 * static_cast<double>(n) * (n - 1.0) * std::ldexp(1.0, t);  // W = pairs_vol * d^t
+    const uint32_t all = (UINT32_C(1) << 31) + 1;  // above any distance
+    double B = 2.0 * mm;
+    for (int iter = 0;; ++iter) {
+        const double d = std::pow(B / pairs_vol, 1.0 / t);
+        const uint32_t dlim = d >= 0.5 ? all : std::max(UINT32_C(1), static_cast<uint32_t>(std::ceil(std::ldexp(d, 32))));
+        const CpGrid gr = cp_grid(n, t, dlim);
+        CK(hipMemset(buf.ndist, 0, sizeof(unsigned)));
+        if (!slabs) {
+            cp_find(kn, buf, gr, n, t, 0, UINT64_C(1) << 32);
+        } else {  // 2^sb slabs of about n (2^-sb + dlim 2^-32) points each
+            const long long pcap = buf.ncoords / t;
+            int sb = 1;
+            for (; sb < 24; ++sb) {
+                const double e = static_cast<double>(n) * (std::ldexp(1.0, -sb) + std::ldexp(static_cast<double>(dlim), -32));
+                if (e * 1.05 + 8 * std::sqrt(e) + 1000 <= static_cast<double>(pcap)) break;
+            }
+            for (uint64_t sl = 0; sl < UINT64_C(1) << sb; ++sl) cp_slab(kn, buf, gr, g, base, n, t, sl << (32 - sb), UINT64_C(1) << (32 - sb));
+        }
+        unsigned nd;
+        CK(hipMemcpy(&nd, buf.ndist, sizeof nd, hipMemcpyDeviceToHost));
+        if (iter < 40 && nd < static_cast<unsigned>(mm) && dlim < all) {
+            B *= 4;
+            continue;
+        }
+        if (iter < 40 && nd > CpBuffers::kCap && dlim > 1) {
+            B /= 2;
+            continue;
+        }
+        std::vector<uint32_t> dist(std::min(nd, CpBuffers::kCap));
+        CK(hipMemcpy(dist.data(), buf.dist, sizeof(uint32_t) * dist.size(), hipMemcpyDeviceToHost));
+        std::sort(dist.begin(), dist.end());
+        return dist;
+    }
+}
+
+// The Berlekamp-Massey algorithm on the bits s[0..n) (scomp_LinearComp of TestU01), on the host with the
+// polynomials and the reversed sequence packed in 64-bit words: the linear complexity L, the number of the
+// jumps of the complexity, and the numbers of the jumps of each size (cnt[1..jmax], those above jmax at jmax).
+// The loops over the words have no branches inside, so that the compiler vectorizes them (with the SIMD of
+// the host architecture, e.g. HOST_ARCH=-march=native of the Makefile).
+void berlekamp_massey(const std::vector<uint8_t> &s, int jmax, long &L, long &numj, std::vector<long> &cnt) {
+    const long n = static_cast<long>(s.size()), W = n / 64 + 4;
+    std::vector<uint64_t> R(W + 1, 0), C(W, 0), B(W, 0), T(W, 0);
+    for (long p = 0; p < n; ++p)  // R[p] = s[n - 1 - p], so that s[k - i] = R[n - 1 - k + i]
+        if (s[n - 1 - p]) R[p / 64] |= UINT64_C(1) << (p % 64);
+    cnt.assign(jmax + 1, 0);
+    C[0] = B[0] = 1;
+    L = numj = 0;
+    long m = -1, lenb = 0;  // B has the degree at most lenb
+    for (long k = 0; k < n; ++k) {
+        // the discrepancy: the parity of sum_{i=0..L} c_i s[k - i] (c_0 = 1)
+        const long off = n - 1 - k, q = off / 64, nw = L / 64 + 1;
+        const int sh = static_cast<int>(off % 64);
+        uint64_t acc = 0;
+        const uint64_t *Rq = R.data() + q, *Cp = C.data();
+        if (sh) {
+            for (long w = 0; w < nw - 1; ++w) acc ^= Cp[w] & ((Rq[w] >> sh) | (Rq[w + 1] << (64 - sh)));
+        } else {
+            for (long w = 0; w < nw - 1; ++w) acc ^= Cp[w] & Rq[w];
+        }
+        {  // the last word, of the coefficients up to L
+            uint64_t rw = Rq[nw - 1] >> sh;
+            if (sh) rw |= Rq[nw] << (64 - sh);
+            uint64_t cw = Cp[nw - 1];
+            if (L % 64 != 63) cw &= (UINT64_C(1) << (L % 64 + 1)) - 1;
+            acc ^= cw & rw;
+        }
+        if (!(__builtin_popcountll(acc) & 1)) continue;
+        const bool grow = 2 * L <= k;
+        if (grow) std::copy(C.begin(), C.begin() + nw, T.begin());
+        const long sft = k - m, ws = sft / 64, nb = lenb / 64 + 1;
+        const int bs = static_cast<int>(sft % 64);
+        uint64_t *Cw = C.data() + ws;
+        const uint64_t *Bp = B.data();
+        if (bs) {  // C ^= B x^(k - m): B << bs word by word, with the carry of the word before
+            Cw[0] ^= Bp[0] << bs;
+            for (long w = 1; w < nb; ++w) Cw[w] ^= (Bp[w] << bs) | (Bp[w - 1] >> (64 - bs));
+            Cw[nb] ^= Bp[nb - 1] >> (64 - bs);
+        } else {
+            for (long w = 0; w < nb; ++w) Cw[w] ^= Bp[w];
+        }
+        if (grow) {
+            const long Ln = k + 1 - L;
+            ++numj;
+            ++cnt[std::min<long>(std::labs(k + 1 - 2 * Ln), jmax)];
+            std::fill(B.begin(), B.begin() + nb, 0);
+            std::copy(T.begin(), T.begin() + nw, B.begin());
+            lenb = L;
+            L = Ln;
+            m = k;
+        }
+    }
+}
+
+// AppearanceSpacings: the term log(i - prev) of the key k[i] (block << ibits | index) of the sorted keys, prev
+// being the index of the key before it if it has the same block (the most recent occurrence of the block),
+// else 0 (TestU01 counts from 0 for a block not seen yet); 0 for the Q blocks of the initialization
+struct AppearTerm {
+    const unsigned long long *k;
+    int ibits;
+    long long Q;
+    __host__ __device__ double operator()(long long i) const {
+        const unsigned long long mask = (1ULL << ibits) - 1, idx = k[i] & mask;
+        if (static_cast<long long>(idx) < Q) return 0;
+        const unsigned long long prev = i > 0 && (k[i - 1] >> ibits) == (k[i] >> ibits) ? k[i - 1] & mask : 0;
+        return log(static_cast<double>(idx - prev));
+    }
+};
+
+// LempelZiv: the number of the words of the LZ78 parsing of the n bits of the values x (the s bits
+// (x << r) >> (32 - s) of every value, the most significant first), as scomp_LempelZiv of TestU01 (a word
+// left incomplete at the end counts if its node has children); the trie in arrays of the children
+long lz78(const std::vector<uint32_t> &x, long long n, int r, int s) {
+    std::vector<int32_t> ch(2, 0);  // the children (0 for none: the root is no child) of every node
+    ch.reserve(static_cast<size_t>(2.4 * static_cast<double>(n) / std::log2(static_cast<double>(n))) + 64);
+    long W = 0;
+    long long i = 0;
+    size_t vi = 0;
+    int k = s - 1;
+    uint32_t Y = (x[0] << r) >> (32 - s);
+    while (i < n) {
+        int32_t node = 0;
+        for (;;) {
+            const int bit = (Y >> k) & 1;
+            const int32_t next = ch[2 * node + bit];
+            if (next) {
+                node = next;
+                ++i;
+            } else {  // a new word
+                ++W;
+                const int32_t nn = static_cast<int32_t>(ch.size() / 2);
+                ch[2 * node + bit] = nn;
+                ch.push_back(0);
+                ch.push_back(0);
+                node = nn;
+                ++i;
+                if (i < n && --k < 0) {
+                    Y = (x[++vi] << r) >> (32 - s);
+                    k = s - 1;
+                }
+                break;
+            }
+            if (i >= n) {
+                if (ch[2 * node] || ch[2 * node + 1]) ++W;
+                break;
+            }
+            if (--k < 0) {
+                Y = (x[++vi] << r) >> (32 - s);
+                k = s - 1;
+            }
+        }
+    }
+    return W;
+}
 
 // the Anderson-Darling statistic of the values (sorted here) and its p-value
 std::pair<double, double> anderson_darling(std::vector<double> v) {
@@ -609,10 +1010,7 @@ std::string format(const Result &r) {
 
 // the device memory of the tests on points and of ClosePairs, allocated for the largest scale so far
 struct Battery::Impl {
-    std::unique_ptr<PointBuffers> buf;
-    std::unique_ptr<CpBuffers> cpbuf;
-    std::unique_ptr<Fft> fft;
-    double pscale = 0, cpscale = 0;
+    Mem mem;
 };
 
 Battery::Battery() : impl_(std::make_unique<Impl>()) {}
@@ -622,18 +1020,13 @@ Battery::~Battery() = default;
 // the next range of positions.
 Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     const Kernels &kn = gen.impl();
-    if ((wanted(o, "collision") || wanted(o, "birthday") || wanted(o, "collpermut") || wanted(o, "sampleprod") || wanted(o, "samplemean")) &&
-        o.scale > impl_->pscale) {
-        impl_->buf.reset();
-        impl_->buf = std::make_unique<PointBuffers>(static_cast<long long>(3e7 * o.scale));
-        impl_->pscale = o.scale;
+    Mem &mem = impl_->mem;
+    if (o.memory != mem.budget) {  // the memory of another budget
+        mem.keys.release();
+        mem.cp.reset();
+        mem.fft.reset();
+        mem.budget = o.memory;
     }
-    if (wanted(o, "closepairs") && o.scale > impl_->cpscale) {  // for the largest instance (2e6 points of 16 coordinates)
-        impl_->cpbuf.reset();
-        impl_->cpbuf = std::make_unique<CpBuffers>(static_cast<long long>(3.2e7 * o.scale), static_cast<long long>(6e6 * o.scale));
-        impl_->cpscale = o.scale;
-    }
-    PointBuffers *buf = impl_->buf.get();
     const auto scaled = [&](double n) { return static_cast<long long>(n * o.scale); };
     Counters ctr(o.first);
     Summary sum;
@@ -718,7 +1111,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     const auto tuples = [](int r, int b, int t, int overlap) {
         return Tuples{r, b, t, overlap, b * t == 64 ? ~UINT64_C(0) : (UINT64_C(1) << (b * t)) - 1};
     };
-    if (buf) {
+    {
         if (wanted(o, "collision")) {
             const int set[][3] = {{0, 21, 2}, {9, 21, 2}, {0, 14, 3}, {16, 14, 3}, {0, 6, 7}, {24, 6, 7}, {0, 3, 14}, {27, 3, 14}, {0, 2, 21}, {28, 2, 21}};  // r, b, t; N = 30, n = 2e7
             for (const auto &s : set) {
@@ -729,7 +1122,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 const auto t0 = std::chrono::steady_clock::now();
                 long long c = 0;
                 for (int rep = 0; rep < N; ++rep) {
-                    c += collision_over(kn, *buf, tuples(s[0], s[1], s[2], 1), g, ctr, n);
+                    c += collision_over(kn, mem, tuples(s[0], s[1], s[2], 1), g, ctr, n);
                     if ((c - (rep + 1) * mu) / std::sqrt((rep + 1) * mu) > o.limit) {  // already far above its mean
                         sum.add(0, (c - (rep + 1) * mu) / std::sqrt((rep + 1) * mu));
                         return sum;
@@ -751,7 +1144,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 const auto t0 = std::chrono::steady_clock::now();
                 long long c = 0;
                 for (int rep = 0; rep < s.N; ++rep) {
-                    c += birthday_spacings(kn, *buf, tuples(s.r, s.b, s.t, 0), g, ctr, n);
+                    c += birthday_spacings(kn, mem, tuples(s.r, s.b, s.t, 0), g, ctr, n);
                     if ((c - (rep + 1) * lambda) / std::sqrt((rep + 1) * lambda) > o.limit) {
                         sum.add(0, (c - (rep + 1) * lambda) / std::sqrt((rep + 1) * lambda));
                         return sum;
@@ -764,14 +1157,13 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         }
     }
     if (wanted(o, "closepairs")) {
-        CpBuffers *cpbuf = impl_->cpbuf.get();
         const struct { int N; double n; int t; } set[] = {{30, 6e6, 3}, {20, 4e6, 5}, {10, 3e6, 9}, {5, 2e6, 16}};  // r = 0, p = 0, m = 30
         for (const auto &s : set) {
             const int m = 30;
             const long long n = scaled(s.n);
             const auto t0 = std::chrono::steady_clock::now();
             std::vector<std::vector<uint32_t>> reps;
-            for (int rep = 0; rep < s.N; ++rep) reps.push_back(close_pairs(kn, *cpbuf, g, ctr, n, s.t, m));
+            for (int rep = 0; rep < s.N; ++rep) reps.push_back(close_pairs(kn, mem, g, ctr, n, s.t, m));
             const double sec = seconds_since(t0);
             for (const CpStats &c : close_pairs_stats(reps, n, s.t, m)) {
                 std::snprintf(params, sizeof params, "N=%d n=%lld t=%d m=%d %s", s.N, n, s.t, m, c.name);
@@ -861,7 +1253,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             if (sum.max_z > o.limit) return sum;
         }
     }
-    if (buf && wanted(o, "collpermut")) {
+    if (wanted(o, "collpermut")) {
         // CollisionPermut (N = 20, n = 2e7, t = 14): collisions of the orders of 14 values among 14! cells
         for (const int r : {0, 10}) {
             const int N = 20, t = 14;
@@ -873,9 +1265,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             long long c = 0;
             for (int rep = 0; rep < N; ++rep) {
                 const uint64_t stride = Counters::stride(n, t, 0), base = ctr.take(stride);
-                const int pb = buf->pass_bits(n);
-                for (uint64_t part = 0; part < UINT64_C(1) << pb; ++part) launch(kn.perm_points, kBlocks, kThreads, 0, r, t, g, base, stride, n, buf->table(pb, part));
-                c += buf->collisions();
+                c += count_equal(kn, mem, n, [&](const Sink &sk) { launch(kn.perm_points, kBlocks, kThreads, 0, r, t, g, base, stride, n, sk); });
                 if ((c - (rep + 1) * mu) / std::sqrt((rep + 1) * mu) > o.limit) {
                     sum.add(0, (c - (rep + 1) * mu) / std::sqrt((rep + 1) * mu));
                     return sum;
@@ -1190,10 +1580,27 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         CK(hipFree(d_sum));
     }
     // SampleProd and SampleMean: the Anderson-Darling test of n values transformed to U(0, 1) by their
-    // distribution function, sorted on GPU (see kuniform)
-    const auto ad_sorted = [&](long long n) {
-        std::vector<unsigned long long> keys(n);
-        CK(hipMemcpy(keys.data(), buf->pts, sizeof(unsigned long long) * n, hipMemcpyDeviceToHost));
+    // distribution function (as keys of 64 bits, see kuniform), sorted on GPU by parts if they don't fit in
+    // the memory, and collected on the host
+    const auto ad_sorted = [&](long long n, const Launch &f) {
+        if (o.fast) {  // the terms of the statistic summed on GPU, part by part
+            double a2 = 0;
+            long long off = 0;
+            sorted_parts(kn, mem, n, 64, f, [&](unsigned long long *a, long long c) {
+                a2 += thrust::transform_reduce(thrust::counting_iterator<long long>(0), thrust::counting_iterator<long long>(c), AdTerm{a, off, n}, 0.0,
+                                               thrust::plus<double>());
+                off += c;
+            });
+            a2 = -static_cast<double>(n) - a2 / static_cast<double>(n);
+            return std::pair<double, double>{a2, fbar_AndersonDarling(static_cast<long>(n), a2)};
+        }
+        std::vector<unsigned long long> keys;
+        keys.reserve(n);
+        sorted_parts(kn, mem, n, 64, f, [&](unsigned long long *a, long long c) {
+            const size_t at = keys.size();
+            keys.resize(at + c);
+            if (c) CK(hipMemcpy(keys.data() + at, a, sizeof(unsigned long long) * c, hipMemcpyDeviceToHost));
+        });
         std::vector<double> v(n + 1);  // the arrays of TestU01 start at 1
         for (long long i = 0; i < n; ++i) v[i + 1] = (static_cast<double>(keys[i]) + 0.5) * 0x1p-64;
         const double a2 = gofs_AndersonDarling(v.data(), static_cast<long>(n));
@@ -1202,7 +1609,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     const auto report_ad = [&](const char *name, const char *params, double a2, double p, double sec) {
         emit(name, params, Stat::kAndersonDarling, a2, p, p > 0 ? std::max(0.0, -finv_Normal1(std::max(p, 1e-300))) : HUGE_VAL, sec);
     };
-    if (buf && wanted(o, "sampleprod")) {
+    if (wanted(o, "sampleprod")) {
         // SampleProd (n = 1e7, r = 0): for each of N replications, the AD test of the products of t values
         // against FDistProd; then the AD test of the N p-values
         const int set[][2] = {{40, 8}, {20, 16}, {20, 24}};
@@ -1212,9 +1619,10 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             std::vector<double> ps;
             for (int rep = 0; rep < c[0]; ++rep) {
                 const uint64_t stride = Counters::stride(n, c[1], 0);
-                launch(kn.uniform, kBlocks, kThreads, 0, 0, 0, c[1], g, ctr.take(stride), stride, n, static_cast<const double *>(nullptr), 0, 0.0, buf->pts);
-                sort_points(*buf, n);
-                ps.push_back(ad_sorted(n).second);
+                const uint64_t base = ctr.take(stride);
+                ps.push_back(ad_sorted(n, [&](const Sink &sk) {
+                                 launch(kn.uniform, kBlocks, kThreads, 0, 0, 0, c[1], g, base, stride, n, static_cast<const double *>(nullptr), 0, 0.0, sk);
+                             }).second);
             }
             const auto ad = anderson_darling(ps);
             std::snprintf(params, sizeof params, "N=%d n=%lld r=0 t=%d", c[0], n, c[1]);
@@ -1222,7 +1630,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             if (sum.max_z > o.limit) return sum;
         }
     }
-    if (buf && wanted(o, "samplemean")) {
+    if (wanted(o, "samplemean")) {
         // SampleMean (N = 2e7 sums of n = 30 values, r = 0 and 10): the AD test of the N sums against the
         // Irwin-Hall distribution (by a table of it and its density, see kuniform)
         const int m = 30, ntab = 1 << 16;
@@ -1253,9 +1661,10 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const long long n = scaled(2e7);
             const auto t0 = std::chrono::steady_clock::now();
             const uint64_t stride = Counters::stride(n, m, 0);
-            launch(kn.uniform, kBlocks, kThreads, 0, 1, r, m, g, ctr.take(stride), stride, n, static_cast<const double *>(d_tab), ntab, hstep, buf->pts);
-            sort_points(*buf, n);
-            const auto ad = ad_sorted(n);
+            const uint64_t base = ctr.take(stride);
+            const auto ad = ad_sorted(n, [&](const Sink &sk) {
+                launch(kn.uniform, kBlocks, kThreads, 0, 1, r, m, g, base, stride, n, static_cast<const double *>(d_tab), ntab, hstep, sk);
+            });
             std::snprintf(params, sizeof params, "N=%lld n=%d r=%d", n, m, r);
             report_ad("smean", params, ad.first, ad.second, seconds_since(t0));
             if (sum.max_z > o.limit) {
@@ -1375,12 +1784,16 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         // the N sequences; the sums divided by n have the mean N and the variance N (1 - 2 / n) (Erdmann), and
         // the AD test of the n / 4 standardized sums against the standard normal distribution
         const int k = 14, sb = 3, n = 1 << k, kall = n / sb + 1;
-        const long long N = scaled(1e5), batch = 4096;
-        if (!impl_->fft || impl_->fft->n != n) {
-            impl_->fft.reset();
-            impl_->fft = std::make_unique<Fft>(n, batch);
+        const long long N = scaled(1e5);
+        // the batch of the FFTs within a quarter of the budget (about 24 n bytes per sequence: its bits,
+        // coefficients and the work buffer of rocFFT), a power of 2 in [64, 4096]
+        long long batch = 64;
+        while (batch < 4096 && static_cast<double>(batch) * 2 * 24 * n <= mem.budget / 4.0) batch *= 2;
+        if (!mem.fft || mem.fft->n != n || mem.fft->batch != batch) {
+            mem.fft.reset();
+            mem.fft = std::make_unique<Fft>(n, batch);
         }
-        Fft &ft = *impl_->fft;
+        Fft &ft = *mem.fft;
         for (const int r : {0, 27}) {
             const auto t0 = std::chrono::steady_clock::now();
             CK(hipMemset(ft.b, 0, sizeof(double) * (n / 4 + 1)));
@@ -1397,6 +1810,193 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const auto ad = anderson_darling(u);
             std::snprintf(params, sizeof params, "N=%lld n=2^%d r=%d s=%d", N, k, r, sb);
             report_ad("fourier", params, ad.first, ad.second, seconds_since(t0));
+            if (sum.max_z > o.limit) return sum;
+        }
+    }
+    if (wanted(o, "linearcomp")) {
+        // LinearComp (N = 1, n = 400020 bits, s = 1, r = 0 and 29): the linear complexity profile of n bits
+        // (the s bits (x << r) >> (32 - s) of n / s values, the most significant first) by the Berlekamp-
+        // Massey algorithm on the host: the number of its jumps against the normal distribution of the mean mu
+        // and the standard deviation sigma of TestU01, and the sizes of the jumps against 2^-k (k < M0, the
+        // last class lumped), a chi-square of M0 - 1 degrees of freedom; summed over the N sequences. (The
+        // chi-square of the linear complexity, for N > 20 in TestU01, is not computed.)
+        const int sb = 1;
+        const long long N = 1;
+        const long long K0 = scaled(400020) / sb, n = K0 * sb;
+        const int par = static_cast<int>(n & 1);
+        const double tmp = n >= DBL_MAX_EXP ? 0.0 : std::pow(2.0, -static_cast<double>(n));
+        const double mu = n / 4.0 + (4 + par) / 12.0 - tmp / 3.0;
+        const double sigma =
+            std::sqrt(n / 8.0 - (2 - par) / (9.0 - par) + n * tmp / 6.0 + (6 + par) * tmp / 18.0 - tmp * tmp / 9.0);
+        const int M0 = static_cast<int>(std::log2(mu / kMinExpected));
+        if (M0 < 2) throw TestFailure("linearcomp: too few bits");
+        // the bits of all the sequences from the GPU, then the Berlekamp-Massey algorithm of every sequence (its
+        // time grows as n^2)
+        const int rs[] = {0, 29};
+        struct Job {
+            std::vector<uint8_t> bits;
+            long L = 0, numj = 0;
+            std::vector<long> cnt;
+        };
+        std::vector<Job> jobs(2 * N);
+        uint32_t *d_out;
+        CK(hipMalloc(reinterpret_cast<void **>(&d_out), sizeof(uint32_t) * K0));
+        std::vector<uint32_t> x(K0);
+        const auto t0 = std::chrono::steady_clock::now();
+        for (int ri = 0; ri < 2; ++ri) {
+            const uint64_t start = ctr.take((N * K0 + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
+            for (long long q = 0; q < N; ++q) {
+                launch(kn.cp_outputs, kBlocks, kThreads, 0, g, start + static_cast<uint64_t>(q * K0), K0, d_out);
+                CK(hipMemcpy(x.data(), d_out, sizeof(uint32_t) * K0, hipMemcpyDeviceToHost));
+                std::vector<uint8_t> &bits = jobs[ri * N + q].bits;
+                bits.resize(n);
+                for (long long i = 0; i < K0; ++i) {
+                    const uint32_t v = (x[i] << rs[ri]) >> (32 - sb);
+                    for (int j = 0; j < sb; ++j) bits[i * sb + j] = (v >> (sb - 1 - j)) & 1;
+                }
+            }
+        }
+        CK(hipFree(d_out));
+        for (Job &jb : jobs) berlekamp_massey(jb.bits, M0, jb.L, jb.numj, jb.cnt);
+        const double sec = seconds_since(t0);
+        for (int ri = 0; ri < 2; ++ri) {
+            double zs = 0;
+            Chi2 jl{0, 0};
+            for (long long q = 0; q < N; ++q) {
+                const Job &jb = jobs[ri * N + q];
+                zs += (jb.numj - mu) / sigma;
+                for (int k = 1; k <= M0; ++k) {
+                    const double e = jb.numj / std::ldexp(1.0, k < M0 ? k : M0 - 1);
+                    jl.x += (jb.cnt[k] - e) * (jb.cnt[k] - e) / e;
+                }
+                jl.df += M0 - 1;
+            }
+            std::snprintf(params, sizeof params, "N=%lld n=%lld r=%d s=%d jumps", N, n, rs[ri], sb);
+            report_normal("lincomp", params, zs / std::sqrt(static_cast<double>(N)), sec);
+            std::snprintf(params, sizeof params, "N=%lld n=%lld r=%d s=%d sizes", N, n, rs[ri], sb);
+            report("lincomp", params, jl, sec);
+            if (sum.max_z > o.limit) return sum;
+        }
+    }
+    if (wanted(o, "matrixrank")) {
+        // MatrixRank (as BigCrush: N = 10, n = 1e6 matrices of 30 x 30 with s = 5, r = 0 and 25; N = 1, n = 5000 of
+        // 1000 x 1000 with s = 4, r = 0 and 26; N = 1, n = 80 of 5000 x 5000, r = 15 with s = 15 and r = 0 with
+        // s = 30): the ranks over GF(2) against their probabilities (TestU01, in log2), the chi-square summed
+        // over N. The small matrices are made from the counters of every thread; the large ones in global memory
+        // (a block each, batched within the memory budget) from consecutive values.
+        const struct { int N; double n; int r, s, l, k; } set[] = {{10, 1e6, 0, 5, 30, 30}, {10, 1e6, 25, 5, 30, 30}, {1, 5000, 0, 4, 1000, 1000},
+                                                                   {1, 5000, 26, 4, 1000, 1000}, {1, 80, 15, 15, 5000, 5000}, {1, 80, 0, 30, 5000, 5000}};
+        for (const auto &c : set) {
+            const long long n = std::max<long long>(scaled(c.n), 1);
+            const int mkl = std::min(c.l, c.k), vpr = c.k / c.s + (c.k % c.s > 0);
+            std::vector<double> prob(mkl + 1);
+            double t2 = -static_cast<double>(c.l) * c.k;
+            prob[0] = std::exp2(t2);
+            for (int j = 1; j <= mkl; ++j) {
+                t2 += c.l + c.k - 2 * j + 1 + std::log2(1 - std::exp2(-static_cast<double>(c.l - j + 1))) +
+                      std::log2(1 - std::exp2(-static_cast<double>(c.k - j + 1))) - std::log2(1 - std::exp2(-static_cast<double>(j)));
+                prob[j] = std::exp2(t2);
+            }
+            const auto t0 = std::chrono::steady_clock::now();
+            Chi2 all{0, 0};
+            for (int rep = 0; rep < c.N; ++rep) {
+                std::vector<unsigned long long> h(mkl + 1, 0);
+                if (c.l <= 32 && c.k <= 32) {
+                    h = histogram(kn, detail::MatRank{c.r, c.s, c.l, c.k}, g, ctr, n, mkl + 1, static_cast<double>(c.l) * vpr, 0);
+                } else {
+                    const int W = (c.k + 63) / 64;
+                    const long long per = static_cast<long long>(c.l) * W;  // words per matrix
+                    const long long batch = std::max<long long>(1, std::min<long long>(n, static_cast<long long>(mem.budget / 2 / 8 / per)));
+                    const uint64_t start = ctr.take((n * c.l * vpr + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
+                    unsigned long long *d_m;
+                    int *d_rank;
+                    CK(hipMalloc(reinterpret_cast<void **>(&d_m), sizeof(unsigned long long) * per * batch));
+                    CK(hipMalloc(reinterpret_cast<void **>(&d_rank), sizeof(int) * batch));
+                    std::vector<int> rk(batch);
+                    for (long long m0 = 0; m0 < n; m0 += batch) {
+                        const long long nb = std::min(batch, n - m0);
+                        launch(kn.mat_fill, kBlocks, kThreads, 0, g, start + static_cast<uint64_t>(m0 * c.l * vpr), nb * c.l, c.r, c.s, c.k, W, d_m);
+                        launch(kn.mat_rank, static_cast<unsigned>(nb), kThreads, 0, d_m, c.l, c.k, W, d_rank);
+                        CK(hipMemcpy(rk.data(), d_rank, sizeof(int) * nb, hipMemcpyDeviceToHost));
+                        for (long long i = 0; i < nb; ++i) ++h[rk[i]];
+                    }
+                    CK(hipFree(d_m));
+                    CK(hipFree(d_rank));
+                }
+                Chi2 x{0, 0};
+                try {
+                    x = chi2(h, prob, n);
+                } catch (const TestFailure &) {  // too few matrices for a class (a small scale): no statistic, as TestU01
+                }
+                all.x += x.x;
+                all.df += x.df;
+            }
+            std::snprintf(params, sizeof params, "N=%d n=%lld r=%d s=%d L=%d k=%d", c.N, n, c.r, c.s, c.l, c.k);
+            if (all.df >= 1) report("matrank", params, all, seconds_since(t0));  // (else too few matrices for two classes)
+            if (sum.max_z > o.limit) return sum;
+        }
+    }
+    if (wanted(o, "appearance")) {
+        // AppearanceSpacings (N = 1, Q = 1e7, K = 1e9, s = 3, L = 15, r = 0 and 27): the blocks of L bits, and for each
+        // of the K blocks after the Q of the initialization, log of the distance to the most recent occurrence of the
+        // same block (from 0 for a block not seen yet); the sum against the mean and the variance of Maurer, with the
+        // correction of Coron and Naccache (as TestU01). The keys (block, index) are sorted on GPU (by the parts of
+        // their top bits, i.e. of the blocks, beyond the memory budget), so that the occurrences of a block are in
+        // order; the terms are summed on GPU.
+        static const double E[17] = {0, 0.73264948, 1.53743829, 2.40160681, 3.31122472, 4.25342659, 5.21770525, 6.19625065, 7.18366555,
+                                     8.17642476, 9.17232431, 10.1700323, 11.1687649, 12.1680703, 13.1676926, 14.1674884, 15.1673788};
+        static const double KV[17] = {0,       0.68977, 1.33774, 1.90133, 2.35774, 2.70455, 2.95403, 3.12539, 3.23866,
+                                      3.31120, 3.35646, 3.38409, 3.40065, 3.41043, 3.41614, 3.41943, 3.42130};
+        static const double dCor[17] = {0, 0, 0, 0.2732725, 0.3045101, 0.3296587, 0.3489769, 0.3631815, 0.3732189,
+                                        0.3800637, 0.3845867, 0.3874942, 0.3893189, 0.3904405, 0.3911178, 0.3915202, 0.3917561};
+        static const double eCor[17] = {0, 0, 0, 0.4890883, 0.4435381, 0.4137196, 0.3941338, 0.3813210, 0.3730195,
+                                        0.3677118, 0.3643695, 0.3622979, 0.3610336, 0.3602731, 0.3598216, 0.3595571, 0.3594040};
+        const int sb = 3, L = 15, vpb = L / sb + (L % sb > 0), ibits = 64 - L;
+        const long long Q = 10000000, K = std::max<long long>(scaled(1e9), 1), n = Q + K;
+        const double sigma = std::sqrt((dCor[L] + eCor[L] * std::ldexp(1.0, L) / K) * KV[L] / K);
+        for (const int r : {0, 27}) {
+            const auto t0 = std::chrono::steady_clock::now();
+            const uint64_t base = ctr.take((n * vpb + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
+            double somme = 0;
+            sorted_parts(kn, mem, n, 64, [&](const Sink &sk) { launch(kn.appear, kBlocks, kThreads, 0, g, base, n, r, sb, L, ibits, sk); },
+                         [&](unsigned long long *a, long long c) {
+                             somme += thrust::transform_reduce(thrust::counting_iterator<long long>(0), thrust::counting_iterator<long long>(c),
+                                                               AppearTerm{a, ibits, Q}, 0.0, thrust::plus<double>());
+                         });
+            std::snprintf(params, sizeof params, "N=1 Q=%lld K=%lld r=%d s=%d L=%d", Q, K, r, sb, L);
+            report_normal("appear", params, (somme / (M_LN2 * K) - E[L]) / sigma, seconds_since(t0));
+            if (sum.max_z > o.limit) return sum;
+        }
+    }
+    if (wanted(o, "lempelziv")) {
+        // LempelZiv (N = 10, n = 2^27 bits, r = 0 with s = 30, and r = 15 with s = 15): the number of the words of
+        // the LZ78 parsing of every sequence (on the host; the values made on GPU), against the empirical mean
+        // and standard deviation of TestU01, summed over the N sequences. The tables of TestU01 end at 2^28 bits,
+        // so the scale multiplies N.
+        static const double LZMu[29] = {0, 0, 0, 4.44, 7.64, 12.5, 20.8, 34.8, 58.9, 101.1, 176.0, 310.0, 551.9, 992.3, 1799.,
+                                        3286.2, 6041.5, 11171.5, 20761.8, 38760.4, 72654., 136677., 257949., 488257., 926658.,
+                                        1762965., 3361490., 6422497., 12293930.};
+        static const double LZSigma[29] = {0, 0, 0, 0.49, 0.51, 0.62, 0.75, 0.78, 0.86, 0.94, 1.03, 1.19, 1.43, 1.68, 2.09,
+                                           2.46, 3.36, 4.2, 5.4, 6.8, 9.1, 10.9, 14.7, 19.1, 25.2, 33.5, 44.546, 58.194, 75.513};
+        const int t = 27;
+        const long long nbits = 1LL << t, N = std::max<long long>(1, std::llround(10 * o.scale));
+        for (const auto &c : {std::pair{0, 30}, std::pair{15, 15}}) {
+            const int r = c.first, sb = c.second;
+            const long long nv = (nbits + sb - 1) / sb;
+            const auto t0 = std::chrono::steady_clock::now();
+            const uint64_t start = ctr.take((N * nv + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
+            uint32_t *d_out;
+            CK(hipMalloc(reinterpret_cast<void **>(&d_out), sizeof(uint32_t) * nv));
+            std::vector<uint32_t> x(nv);
+            double zs = 0;
+            for (long long q = 0; q < N; ++q) {
+                launch(kn.cp_outputs, kBlocks, kThreads, 0, g, start + static_cast<uint64_t>(q * nv), nv, d_out);
+                CK(hipMemcpy(x.data(), d_out, sizeof(uint32_t) * nv, hipMemcpyDeviceToHost));
+                zs += (lz78(x, nbits, r, sb) - LZMu[t]) / LZSigma[t];
+            }
+            CK(hipFree(d_out));
+            std::snprintf(params, sizeof params, "N=%lld n=2^%d r=%d s=%d", N, t, r, sb);
+            report_normal("lempelziv", params, zs / std::sqrt(static_cast<double>(N)), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
     }

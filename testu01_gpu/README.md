@@ -2,7 +2,7 @@
 
 A library running the tests of the BigCrush battery of [TestU01](http://simul.iro.umontreal.ca/testu01/tu01.html) on an AMD GPU (HIP), for counter-based generators: a generator whose output at any position of its sequence can be computed directly. The tests are reimplemented after the source code of TestU01 1.2.3 with the parameters of their instances in BigCrush, and take tens of seconds of a Radeon RX 6800 instead of hours of a CPU core. Their p-values agree with those of TestU01 statistically (the outputs used differ), so they screen generators quickly, and sample sizes far beyond BigCrush are practical; the original BigCrush still judges the final generators.
 
-All the tests of BigCrush are implemented but MatrixRank, AppearanceSpacings, LinearComp and LempelZiv.
+All the tests of BigCrush are implemented.
 
 ## Build
 
@@ -11,9 +11,10 @@ Requirements: ROCm (HIP, hiprtc, rocFFT and rocThrust), and TestU01 installed (i
 ```sh
 make                          # build/libtestu01_gpu.a and the example build/splitmix_bigcrush
 make TESTU01=/opt/testu01 HIP_ARCH=gfx1100
+make HOST_ARCH=-march=native  # the SIMD of the host for the tests on the host (LinearComp), not portable
 ```
 
-A program includes `include/testu01_gpu.hpp` and links `build/libtestu01_gpu.a -lprobdist -lmylib -lhiprtc -lrocfft` with `hipcc`. The kernels of the tests are compiled at run time for the current device, but those of rocThrust (the sorts and prefix sums) are compiled by the build for `HIP_ARCH` (default gfx1030), which must include the GPU used.
+A program includes `include/testu01_gpu.hpp` and links `build/libtestu01_gpu.a -lprobdist -lmylib -lhiprtc -lrocfft` with `hipcc`. The kernels of the tests are compiled at run time for the current device, but those of rocThrust (the sorts and prefix sums) are compiled by the build for `HIP_ARCH` (default gfx1030), which must include the GPU used. `HOST_ARCH` adds flags to the host code: the default is portable, and `-march=native` lets the compiler vectorize the Berlekamp-Massey algorithm of LinearComp with the SIMD of the host (AVX-512 halved its time on a Ryzen 9 9950X); as the flags are not tracked by the dependencies, `make clean` first when changing them.
 
 ## Usage
 
@@ -41,6 +42,8 @@ const testu01_gpu::Summary s = battery.run(gen, params, o);  // min_p, max_p, ma
 * `Options::scale`: multiplies the sample sizes `n` of BigCrush (e.g. 16 for 16 times the samples).
 * `Options::first`: the first position used. Every test and replication takes the next range of consecutive positions, as TestU01 takes the outputs of a single stream in turn (so the positions of a test depend on the tests run before it).
 * `Options::limit`: stops the tests once a z-score is above it, for searches rejecting such a generator anyway.
+* `Options::memory`: the device memory of the large tests (2 GiB by default). The tests whose memory grows with the samples (CollisionOver, BirthdaySpacings, CollisionPermut, ClosePairs, SampleProd, SampleMean) make their points again by parts beyond it (see below), so any scale runs in a fixed memory; the results are the same for any budget.
+* `Options::fast`: faster computations whose results may differ from those of TestU01 in rounding (off by default): the Anderson-Darling statistics of SampleProd and SampleMean are summed on GPU instead of by `gofs_AndersonDarling` on the host.
 * `Options::report`: called for every statistic with a `Result` (the name, the parameters, the kind of statistic, its value, the p-value and a z-score); `format` gives the line printed above, marking a p-value outside [0.001, 0.999] with `*****` as TestU01 does.
 
 `run` throws `testu01_gpu::TestFailure` for a test failing completely (e.g. the observations of a test taking far more outputs than expected, for a very bad generator), and `std::runtime_error` for the errors of HIP and hiprtc.
@@ -78,13 +81,22 @@ const testu01_gpu::Summary s = battery.run(gen, params, o);  // min_p, max_p, ma
 | `periods` | sstring_PeriodsInStrings | r = 0, 20 |
 | `sumcoll` | svaria_SumCollector | 1 instance |
 | `fourier` | sspectral_Fourier3 | r = 0, 27 |
+| `linearcomp` | scomp_LinearComp | r = 0, 29 (the number and the sizes of the jumps) |
+| `matrixrank` | smarsa_MatrixRank | 30 x 30 (r = 0, 25), 1000 x 1000 (r = 0, 26), 5000 x 5000 (r = 15, 0) |
+| `appearance` | svaria_AppearanceSpacings | r = 0, 27 |
+| `lempelziv` | scomp_LempelZiv | r = 0 (s = 30), r = 15 (s = 15) |
 
 How they are computed on GPU:
 
 * Every test (and replication) takes the next range of consecutive positions, i.e. a single stream as in TestU01, and every thread runs the test on its own consecutive piece of it. (Pieces at positions far apart, e.g. differing only in the bits 28 and above, would compare outputs of related counters, which a single stream of TestU01 doesn't, and weak counter-based generators fail such comparisons in their low bits.)
 * SerialOver, Run, the runs of bits, AutoCor and SampleCorr see the single sequence exactly (every thread from a few values before its share). The others make their observations from the consecutive positions of every thread (an observation does not span threads), and count them in histograms.
-* The collisions of CollisionOver, CollisionPermut and of the spacings of BirthdaySpacings are counted exactly by a hash table on GPU (in passes small enough for the cache of the GPU), against a Poisson distribution as TestU01 does for these parameters. The points of BirthdaySpacings, SampleProd and SampleMean are sorted on GPU by rocThrust.
+* The collisions of CollisionOver, CollisionPermut and of the spacings of BirthdaySpacings are counted exactly by a hash table on GPU (small enough for the cache of the GPU, in passes over the points: those of CollisionOver are made again for every pass, those of CollisionPermut stored once), against a Poisson distribution as TestU01 does for these parameters. The points of BirthdaySpacings, SampleProd and SampleMean are sorted on GPU by rocThrust.
+* Beyond the memory budget, the points are made again for every part: the collisions of CollisionPermut are counted by the parts of the hashes of the points (equal points fall in the same part; CollisionOver needs no memory growing with the samples), and the sorted points are taken by the parts of their top bits in increasing order; the spacings of BirthdaySpacings then go to buckets on the host by their hashes, and their collisions are counted bucket by bucket. ClosePairs takes the points by slabs of their first coordinate, each with a margin of the distance searched below it, and counts the pairs of a point of the slab. The Fourier transforms are batched within the budget.
 * ClosePairs finds the close pairs of the points in the torus (the maximum norm) in a grid of cells on GPU, and computes the six statistics of TestU01 on the host.
+* LinearComp runs the Berlekamp-Massey algorithm on the host (the bits made on GPU), on 64-bit words in loops vectorized by the compiler; its time grows as the square of the bits (0.4 s at the scale 1, about 53 s at 16 with `HOST_ARCH=-march=native` on a Ryzen 9 9950X). The chi-square of the linear complexity, which TestU01 computes only for more than 20 sequences (not in BigCrush), is not computed.
+* MatrixRank computes the ranks over GF(2) on GPU: a matrix of 30 x 30 per thread (from the consecutive outputs of the thread), the larger ones in global memory by a block each (batched within the memory budget).
+* AppearanceSpacings sorts the keys (block, index) on GPU (by the parts of the blocks beyond the memory budget), so that the occurrences of a block are in order, and sums the logarithms of their distances on GPU.
+* LempelZiv parses the sequences by LZ78 on the host (the outputs made on GPU), with the trie in arrays; as the mean and the standard deviation of TestU01 are tabulated up to 2^28 bits, the scale multiplies the number of sequences N instead of their length (for the other tests, it multiplies n, the number of the matrices of MatrixRank and K of AppearanceSpacings).
 * Fourier3 transforms the sequences of bits by rocFFT, in batches of 4096, in double precision (in single precision, its statistic differed from that of TestU01 on the same outputs in the fifth digit).
 
 The differences from TestU01:
@@ -94,7 +106,7 @@ The differences from TestU01:
 * HammingWeight2 counts the weights within 12 standard deviations of the mean (the farther ones at the ends); LongestHeadRun starts every block afresh.
 * As in TestU01, a value in [0, d) is floor(d u) of u = (x << r) / 2^32 for the output x, i.e. the r most significant bits are dropped.
 
-The tests were checked against TestU01: SerialOver and Fourier3 give the same statistics as TestU01 on the same outputs, the p-values are uniform for good generators (Kolmogorov-Smirnov tests over seeds), and for weak generators the same tests and instances fail as in BigCrush, with failures of a similar strength.
+The tests were checked against TestU01: SerialOver, Fourier3, LinearComp, MatrixRank (of the large matrices), AppearanceSpacings and LempelZiv give the same statistics as TestU01 on the same outputs, the p-values are uniform for good generators (Kolmogorov-Smirnov tests over seeds), and for weak generators the same tests and instances fail as in BigCrush, with failures of a similar strength.
 
 ## License
 

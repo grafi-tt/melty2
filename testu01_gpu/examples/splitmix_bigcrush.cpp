@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// splitmix_bigcrush [seed] [scale] [tests] : run the tests of testu01_gpu on the upper 32 bits of
+// splitmix_bigcrush [seed] [scale] [tests] [fast] : run the tests of testu01_gpu on the upper 32 bits of
 // SplitMix64, as a counter-based generator: the output at the position i is that of the state
 // seed + (i + 1) * 0x9e3779b97f4a7c15. An example of the library, and a check of the tests on a good
 // generator (the p-values are uniform).
@@ -36,6 +36,7 @@ int main(int argc, char **argv) {
         testu01_gpu::Options o;
         if (argc > 2) o.scale = std::atof(argv[2]);
         if (argc > 3) o.tests = argv[3];
+        if (argc > 4) o.fast = std::atoi(argv[4]) != 0;
         o.report = [](const testu01_gpu::Result &r) {
             std::printf("%s\n", testu01_gpu::format(r).c_str());
             std::fflush(stdout);

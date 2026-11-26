@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 AND LicenseRef-TestU01
 //
-// testu01_gpu: the tests of the BigCrush battery of TestU01 (but MatrixRank, AppearanceSpacings,
-// LinearComp and LempelZiv) on an AMD GPU by HIP, for a counter-based generator (a generator
+// testu01_gpu: the tests of the BigCrush battery of TestU01 on an AMD GPU by HIP, for a counter-based generator (a generator
 // computing the output at any position of its sequence). See README.md.
 //
 // Usage:
@@ -103,6 +102,10 @@ struct Options {
     double scale = 1;               // multiplies the sample sizes n of BigCrush
     uint64_t first = 0;             // the first position of the sequence used by the tests
     double limit = HUGE_VAL;        // stop the tests once a z-score is above it (for searches)
+    size_t memory = size_t(2) << 30;  // the device memory of the large tests (bytes): beyond it, they make their
+                                      // points again by parts (the results are the same)
+    bool fast = false;  // faster computations whose results may differ from those of TestU01 in rounding: the
+                        // Anderson-Darling statistics of SampleProd and SampleMean summed on GPU
     std::function<void(const Result &)> report;  // called for every statistic (if set)
 };
 

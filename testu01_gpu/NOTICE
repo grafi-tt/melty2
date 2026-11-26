@@ -4,8 +4,7 @@ Copyright (c) 2026 Shunsuke Shimizu
 The code in this directory is licensed under the Apache License, Version 2.0 (see LICENSE).
 
 src/testu01_gpu.hip, src/device.hpp and include/testu01_gpu.hpp reimplement the tests of BigCrush of
-TestU01 (but smarsa_MatrixRank, svaria_AppearanceSpacings, scomp_LinearComp and scomp_LempelZiv, with
-the parameters of their instances in BigCrush) after the source code of
+TestU01 (with the parameters of their instances in BigCrush) after the source code of
 TestU01 1.2.3, and the library links its probdist and mylib libraries. These parts, and so the library,
 are also subject to the license of TestU01 (see LICENSE.TestU01), which permits use for non-commercial
 purposes only:
