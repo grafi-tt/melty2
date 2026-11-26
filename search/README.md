@@ -7,11 +7,18 @@ The code in this directory is distributed under the [Apache License 2.0](LICENSE
 ## Build
 
 ```sh
-make cpu          # build/{prof,sa,weakkeys}_cpu, build/check, build/state and build/sactl
-make gpu          # build/{prof,sa,weakkeys}_gpu, with the HIP metric (HIPCC=hipcc HIP_ARCH=gfx1030 by default), and build/sactl
-make stest        # build/testu01_stest, with the library ../testu01_gpu and the probdist library of TestU01 (TESTU01=/usr/local by default;
-                  # HOST_ARCH=-march=native for the SIMD of the host in LinearComp, see ../testu01_gpu)
+cmake -B build && cmake --build build   # build/{prof,rank,sa,weakkeys}_cpu, build/check, build/state and build/sactl
+cmake -B build -DMELTY2_SEARCH_GPU=ON     # also build/{prof,rank,sa,weakkeys}_gpu, with the HIP metric
+cmake -B build -DMELTY2_SEARCH_STEST=ON   # also build/testu01_stest, with the library testu01_gpu
 ```
+
+Options:
+
+* `MELTY2_SEARCH_CPU` (ON): the tools with the CPU metric, `check`, `state` and `sactl`.
+* `MELTY2_SEARCH_GPU` (OFF): the tools with the HIP metric.
+* `MELTY2_SEARCH_STEST` (OFF): `testu01_stest`, with an installed [testu01_gpu](../testu01_gpu) (found by `find_package`, e.g. with `CMAKE_PREFIX_PATH`), or else `../testu01_gpu` built along with its options (`TestU01_ROOT` for the prefix of TestU01, and `TESTU01_GPU_HOST_FLAGS=-march=native` for the SIMD of the host in LinearComp).
+* `MELTY2_SEARCH_NATIVE` (ON): `-march=native` for the code of the CPU (not the HIP code).
+* `CMAKE_HIP_ARCHITECTURES` (gfx1030): the GPU architectures of the HIP code.
 
 The tools are written in C++17, and the GPU metric in HIP (C++17 as well); `melty2_init.c` of the library is compiled as C, and so is `hwd/prngs_hwd.c`, which is included into `hwd.c`. The GPU metric is about 50 times faster than the single-threaded CPU one (Radeon RX 6800 vs a core of Ryzen 9 9950X). The CPU and GPU tools compute the same statistic, but use different random counters, so they agree only statistically.
 
@@ -85,7 +92,7 @@ The tools take the required arguments as positional arguments, and the optional 
 ## Example
 
 ```sh
-make cpu gpu
+cmake -B build -DMELTY2_SEARCH_GPU=ON && cmake --build build
 build/check
 build/prof_gpu "$(sed -n 's/^gr10_4: //p' candidates.txt)" 10 20 16 4194304
 build/weakkeys_gpu -b 8 "$(sed -n 's/^gr10_4: //p' candidates.txt)" 15 20 4194304 weak/weak32.lst

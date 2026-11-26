@@ -45,7 +45,7 @@ Early searches found structures with good metric values but with ops not affecti
 The search for 20 steps started from the first 20 ops of the original kernel, with 10 rotations, 3000 iterations and the seeds 501 to 508. The objective at the verification ranged from -11.3 to -19.3, and the structures of the seeds 503, 504, 507 and 508 reached -17.9 to -19.3. At 2^26 pairs over 16 random keys, the last depth clearly biased (above 5 sigma) was 16 for the seeds 504 (8 sigma) and 507 (39 sigma), 17 for 503 (21 sigma), and 18 for 508 (86 sigma). So `gr10_4` (seed 504) has the largest margin and the weakest remaining bias, and it was evaluated in detail together with `gr10_3` (seed 503). The GPU implementation of the metric ([search/metric_gpu.hip](../search/metric_gpu.hip)) made this feasible: an iteration takes about 0.15 seconds on Radeon RX 6800 (about 50 times faster than a core of Ryzen 9 9950X), and the run of a seed takes about 8 minutes. Rerunning the command below reproduces `gr10_4`, with the same objective values.
 
 ```sh
-make -C search gpu
+cmake -S search -B search/build -DMELTY2_SEARCH_GPU=ON && cmake --build search/build
 search/build/sa_gpu 20 504 3000 ORIG22   # prints gr10_4
 ```
 
