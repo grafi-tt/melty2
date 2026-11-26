@@ -8,13 +8,26 @@ All the tests of BigCrush are implemented.
 
 Requirements: ROCm (HIP, hiprtc, rocFFT and rocThrust), and TestU01 installed (its headers and the `probdist` and `mylib` libraries, for the distributions and the goodness-of-fit tests).
 
+With CMake (3.21 or later):
+
 ```sh
-make                          # build/libtestu01_gpu.a and the example build/splitmix_bigcrush
-make TESTU01=/opt/testu01 HIP_ARCH=gfx1100
-make HOST_ARCH=-march=native  # the SIMD of the host for the tests on the host (LinearComp), not portable
+cmake -B build                                       # Release, the static library, for gfx1030
+cmake -B build -DCMAKE_HIP_ARCHITECTURES="gfx1030;gfx1100" -DTestU01_ROOT=/opt/testu01
+cmake -B build -DTESTU01_GPU_HOST_FLAGS=-march=native  # the SIMD of the host for the tests on the host (LinearComp), not portable
+cmake --build build                                  # build/libtestu01_gpu.a and the example build/splitmix_bigcrush
+cmake --install build --prefix /opt/testu01_gpu      # the headers, the library and the CMake package
 ```
 
-A program includes `include/testu01_gpu.hpp` and links `build/libtestu01_gpu.a -lprobdist -lmylib -lhiprtc -lrocfft` with `hipcc`. The kernels of the tests are compiled at run time for the current device, but those of rocThrust (the sorts and prefix sums) are compiled by the build for `HIP_ARCH` (default gfx1030), which must include the GPU used. `HOST_ARCH` adds flags to the host code: the default is portable, and `-march=native` lets the compiler vectorize the Berlekamp-Massey algorithm of LinearComp with the SIMD of the host (AVX-512 halved its time on a Ryzen 9 9950X); as the flags are not tracked by the dependencies, `make clean` first when changing them.
+Other options: `-DBUILD_SHARED_LIBS=ON` (a shared library), `-DTESTU01_GPU_EXAMPLES=OFF`. A CMake project uses the installed library by
+
+```cmake
+find_package(testu01_gpu REQUIRED)  # (CMAKE_PREFIX_PATH including the prefix of the installation)
+target_link_libraries(app PRIVATE testu01_gpu::testu01_gpu)
+```
+
+or the source tree by `add_subdirectory(testu01_gpu)` and the same target. The kernels of the tests are compiled at run time for the current device, but those of rocThrust (the sorts and prefix sums) are compiled by the build for `CMAKE_HIP_ARCHITECTURES` (default gfx1030), which must include the GPU used. `TESTU01_GPU_HOST_FLAGS` adds flags to the host code only (a list): the default is portable, and `-march=native` lets the compiler vectorize the Berlekamp-Massey algorithm of LinearComp with the SIMD of the host (AVX-512 halved its time on a Ryzen 9 9950X).
+
+A program built without CMake includes `include/testu01_gpu.hpp` and links `build/libtestu01_gpu.a -lprobdist -lmylib -lhiprtc -lrocfft` with `hipcc`.
 
 ## Usage
 

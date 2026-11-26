@@ -32,14 +32,15 @@ $(B)/%_gpu: $(B)/%.o $(B)/metric_gpu.o $(COMMON)
 	$(HIPCC) --offload-arch=$(HIP_ARCH) $^ -o $@
 
 # make stest : build/testu01_stest, the tests of BigCrush (but five) on GPU for the ARX structures, by the
-# library testu01_gpu (../testu01_gpu, built there with HIPCC, HIP_ARCH and TESTU01), which links the
+# library testu01_gpu (../testu01_gpu, built there by CMake with HIP_ARCH, TESTU01 and HOST_ARCH), which links the
 # probdist library of TestU01 (TESTU01)
 TESTU01 ?= /usr/local
 TU01G := $(ROOT)/testu01_gpu
 .PHONY: stest $(TU01G)/build/libtestu01_gpu.a
 stest: $(B)/testu01_stest
 $(TU01G)/build/libtestu01_gpu.a:
-	$(MAKE) -C $(TU01G) HIPCC=$(HIPCC) HIP_ARCH=$(HIP_ARCH) TESTU01=$(TESTU01) HOST_ARCH="$(HOST_ARCH)" build/libtestu01_gpu.a
+	cmake -S $(TU01G) -B $(TU01G)/build -DCMAKE_HIP_ARCHITECTURES="$(HIP_ARCH)" -DTestU01_ROOT=$(TESTU01) -DTESTU01_GPU_HOST_FLAGS="$(HOST_ARCH)"
+	cmake --build $(TU01G)/build --target testu01_gpu
 $(B)/testu01_stest.o: testu01_stest.hip $(TU01G)/include/testu01_gpu.hpp $(TU01G)/include/testu01_gpu_params.hpp arx.hpp keymod.hpp pidfile.hpp | $(B)
 	$(HIPCC) -std=c++17 --offload-arch=$(HIP_ARCH) -O3 -Wall $(INC) -I$(TU01G)/include -c $< -o $@
 $(B)/testu01_stest: $(B)/testu01_stest.o $(B)/melty2_init.o $(TU01G)/build/libtestu01_gpu.a
