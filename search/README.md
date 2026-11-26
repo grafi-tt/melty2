@@ -7,7 +7,7 @@ The code in this directory is distributed under the [Apache License 2.0](LICENSE
 ## Build
 
 ```sh
-make cpu          # build/{prof,sa,weakkeys}_cpu, build/check and build/sactl
+make cpu          # build/{prof,sa,weakkeys}_cpu, build/check, build/state and build/sactl
 make gpu          # build/{prof,sa,weakkeys}_gpu, with the HIP metric (HIPCC=hipcc HIP_ARCH=gfx1030 by default), and build/sactl
 make stest        # build/testu01_stest, with the library ../testu01_gpu and the probdist library of TestU01 (TESTU01=/usr/local by default;
                   # HOST_ARCH=-march=native for the SIMD of the host in LinearComp, see ../testu01_gpu)
@@ -45,6 +45,10 @@ The tools take the required arguments as positional arguments, and the optional 
 * `weakkeys [-b nbase] [-d dump] [-p pidfile] structure mlo mhi n list`
 
   The bias of structured keys given by a list of key modifications (see [keymod.hpp](keymod.hpp)), applied to `nbase` base keys (default 2), compared with 64 control keys. With `dump`, the bias of every key is written to the file. The lists used are in [weak/](weak/), and `weak/gen_weak.py [--classes] {weak32|weak48|sweep}` generates them.
+
+* `state [-m ops] [-W words] [-n samples] [-t threads] [-s seed] [-b broken] [-v] structure keylist`
+
+  The counter differentials of the state words (default v0..v3, 128 bits) after the first `ops` ops (default 12), for comparing how far the head of structures has mixed the words that the rest of the structure takes. For every key of `keylist` (as `testu01_stest -l`), the state of random counters c is compared with that of c + 2^j for j = 0..63: the flip frequency of every bit of the xor difference, and the chi-squares of the bytes of the xor and the additive differences, as z-scores. A line per key and a line `total` give the largest z, the number of broken deltas, and the graded measures summed over j (`bit_dev`, the sum of the squared biases of the bits; `unmixed`, the bits with a bias above 0.1; `byte_dev`, the chi-square divergence of the bytes), as the z-scores saturate for a head far from random. `-v` prints a line per key and delta. It runs on the CPU, by `threads` threads (default the hardware threads).
 
 * `testu01_stest [-s seed] [-w] [-t tests] [-f scale] [-l keylist] [-m streams] [-o offset] [-M MB] [-F] [-p pidfile] structure M`
 * `testu01_stest -S M[,M...] [-s seed] [-t tests] [-f scale] [-l keylist] [-m streams] [-o offset] [-D deadline] [-v] [-L] [-M MB] [-F] [-p pidfile] < structures`

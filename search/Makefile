@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# make cpu : build/{prof,rank,sa,weakkeys}_cpu with the CPU metric, build/check and build/sactl
+# make cpu : build/{prof,rank,sa,weakkeys}_cpu with the CPU metric, build/check, build/state and build/sactl
 # make gpu : build/{prof,rank,sa,weakkeys}_gpu with the HIP metric (HIPCC, HIP_ARCH), and build/sactl
 # The tools are C++17; melty2_init.c of the library is compiled as C.
 CC ?= cc
@@ -15,7 +15,7 @@ TOOLS := prof rank sa weakkeys
 HEADERS := arx.hpp metric.hpp keymod.hpp pidfile.hpp
 
 .PHONY: cpu gpu clean
-cpu: $(TOOLS:%=$(B)/%_cpu) $(B)/check $(B)/sactl
+cpu: $(TOOLS:%=$(B)/%_cpu) $(B)/check $(B)/state $(B)/sactl
 gpu: $(TOOLS:%=$(B)/%_gpu) $(B)/sactl
 
 $(B)/%.o: %.cc $(HEADERS) | $(B)
@@ -47,6 +47,8 @@ $(B)/testu01_stest: $(B)/testu01_stest.o $(B)/melty2_init.o $(TU01G)/build/libte
 
 $(B)/check: check.cc arx.hpp | $(B)
 	$(CXX) -std=c++17 $(CXXFLAGS) -Wall -Wextra $(INC) $< -o $@
+$(B)/state: state.cc $(B)/melty2_init.o arx.hpp keymod.hpp | $(B)
+	$(CXX) -std=c++17 $(CXXFLAGS) -Wall -Wextra $(INC) -pthread state.cc $(B)/melty2_init.o -o $@
 $(B)/sactl: sactl.cc | $(B)
 	$(CXX) -std=c++17 $(CXXFLAGS) -Wall -Wextra $< -o $@
 
