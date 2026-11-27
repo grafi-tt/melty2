@@ -20,6 +20,11 @@ The Metropolis test draws the threshold first and passes it to testu01_stest, wh
 candidate once its z-score is above it: so a candidate failing badly costs only its first failing tests.
 Order the stages (and the keys of their lists) to fail early: the cheap and discriminating ones first.
 
+With --log-sum, the objective is instead the sum of log(1 + z) over the keys, step counts and counter orders of the
+stages (testu01_stest --log_sum), a test failing completely (e.g. running out of its counters) counting as z = 1e6:
+for structures failing completely somewhere, whose largest z-score is infinite (and so ranks nothing); the
+temperatures and the limits are then in that unit, and the stopping of the tests at the threshold is kept.
+
 Every scored structure is logged to LOG ("plan<TAB>z<TAB>stopped<TAB>structure"); the progress and the best
 structures are printed to stdout ("it N best Z<TAB>structure", "end Z<TAB>structure").
 """
@@ -157,12 +162,16 @@ def main():
                     help="verify only a candidate whose z-score is below Z (far failing ones need no verification)")
     ap.add_argument("--log", dest="logz", action="store_true", help="anneal log(1 + z) instead of z (for structures failing grossly,\n"
                     "whose z-scores span orders of magnitude; the temperatures are then in that unit)")
+    ap.add_argument("--log-sum", dest="logsum", action="store_true",
+                    help="anneal the sum of log(1 + z) of testu01_stest --log_sum instead of the largest z (see above)")
     ap.add_argument("--stest", default=DEFAULT_STEST, help="testu01_stest (default build/testu01_stest)")
     ap.add_argument("--pidfile", help="write the process ID to this file (removed at the end)")
     ap.add_argument("structure", help="the initial structure")
     ap.add_argument("plan", help="the stages of the objective (see above)")
     ap.add_argument("log")
     a = ap.parse_args()
+    if a.logz and a.logsum:
+        ap.error("--log and --log-sum are exclusive")
     rnd = random.Random(a.seed)
     m0 = a.moves or min(plan_ms(a.plan))
     cur = parse(a.structure)
@@ -176,14 +185,14 @@ def main():
             print(os.getpid(), file=f)
 
     def scorer(plan):
-        return subprocess.Popen([a.stest, f"--plan={plan}", f"--deadline={a.deadline}"],
+        return subprocess.Popen([a.stest, f"--plan={plan}", f"--deadline={a.deadline}"] + (["--log_sum"] if a.logsum else []),
                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
 
     procs = {"plan": scorer(a.plan)}
     if a.verify:
         procs["verify"] = scorer(a.verify)
     log = open(a.log, "a")
-    cache = {}  # (plan, structure) -> (z, stopped): a stopped z is only a lower bound
+    cache = {}  # (plan, structure) -> (z, stopped): a stopped z (or logsum, with --log-sum) is only a lower bound
 
     def run(kind, st, limit):
         z, stopped = cache.get((kind, st), (None, True))
@@ -194,14 +203,14 @@ def main():
             line = p.stdout.readline()
             if not line:
                 raise RuntimeError(f"the scorer {kind} exited")
-            f = line.rstrip("\n").split("\t")
-            z, stopped = float(f[1].split("=")[1]), f[7] == "stopped=1"
+            f = dict(x.split("=", 1) for x in line.rstrip("\n").split("\t")[1:-1])
+            z, stopped = float(f["logsum" if a.logsum else "max_z"]), f["stopped"] == "1"
             cache[kind, st] = z, stopped
             print(f"{kind}\t{z:.3f}\t{int(stopped)}\t{st}", file=log, flush=True)
         return z
 
     def score(ops, limit, best):
-        # the objective (z, or log(1 + z) with --log), or a lower bound of it above limit
+        # the objective (z, log(1 + z) with --log, or the logsum with --log-sum), or a lower bound of it above limit
         st = fmt(ops)
         zl = math.expm1(limit) if a.logz and limit < 700 else (math.inf if a.logz else limit)
         z = run("plan", st, zl)
