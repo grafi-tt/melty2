@@ -9,7 +9,7 @@
 //   testu01_gpu::Params params{};          // the key, etc., as the source reads them
 //   testu01_gpu::Battery battery;          // the device memory, reused across the runs
 //   testu01_gpu::Options o;
-//   o.report = [](const testu01_gpu::Result &r) { std::puts(testu01_gpu::format(r).c_str()); };
+//   o.report = [](const testu01_gpu::Result &r) { std::cout << testu01_gpu::format(r) << std::endl; };
 //   const testu01_gpu::Summary s = battery.run(gen, params, o);
 //
 // The source of the generator defines, in the global namespace,

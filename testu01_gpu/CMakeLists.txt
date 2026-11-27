@@ -114,7 +114,7 @@ else()  # nvcc passes the flags of the host compiler by -Xcompiler
     target_compile_options(testu01_gpu PRIVATE "-Xcompiler=${f}")
   endforeach()
 endif()
-target_link_libraries(testu01_gpu PRIVATE ${gpu_libs} TestU01::probdist TestU01::mylib absl::strings absl::str_format)
+target_link_libraries(testu01_gpu PRIVATE ${gpu_libs} TestU01::probdist TestU01::mylib absl::strings)
 
 if(TESTU01_GPU_EXAMPLES)
   # (HIP: compiled as HIP for hip_runtime.h; CUDA: a C++ program with the runtime of CUDA)

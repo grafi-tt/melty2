@@ -52,7 +52,7 @@ const testu01_gpu::Generator gen(source);  // compiles the kernels (a few second
 testu01_gpu::Params params{};              // e.g. the key in params.w[0..]
 testu01_gpu::Battery battery;              // the device memory, allocated as needed and kept
 testu01_gpu::Options o;                    // tests (default all), scale, first position, limit
-o.report = [](const testu01_gpu::Result &r) { std::puts(testu01_gpu::format(r).c_str()); };
+o.report = [](const testu01_gpu::Result &r) { std::cout << testu01_gpu::format(r) << std::endl; };
 const testu01_gpu::Summary s = battery.run(gen, params, o);  // min_p, max_p, max_z, flagged
 ```
 

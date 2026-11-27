@@ -58,7 +58,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
-#include <cstring>
+#include <format>
 #include <map>
 #include <mutex>
 #include <memory>
@@ -69,7 +69,6 @@
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 
 extern "C" {
 #include <fbar.h>
@@ -1236,13 +1235,13 @@ std::string format(const Result &r) {
     const char *mk = r.p < 0.001 || r.p > 0.999 ? "  *****" : "";
     const std::string &t = r.test, &q = r.params;
     switch (r.kind) {
-    case Stat::kChiSquare: return absl::StrFormat("%-7s %-34s chi2=%-12.6g df=%-8ld p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.df, r.p, mk, r.seconds);
+    case Stat::kChiSquare: return std::format("{:<7} {:<34} chi2={:<12.6g} df={:<8} p={:<9.3g}{}  ({:.1f}s)", t, q, r.stat, r.df, r.p, mk, r.seconds);
     case Stat::kPoisson:
-        return absl::StrFormat("%-7s %-34s coll=%-11lld mean=%-9.6g p=%-9.3g%s  (%.1fs)", t, q, static_cast<long long>(r.stat), r.mean, r.p, mk, r.seconds);
-    case Stat::kNormal: return absl::StrFormat("%-7s %-34s z=%-14.6g p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.p, mk, r.seconds);
-    case Stat::kAndersonDarling: return absl::StrFormat("%-7s %-34s AD=%-13.6g p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.p, mk, r.seconds);
-    case Stat::kClosePairs: return absl::StrFormat("%-7s %-34s stat=%-12.6g p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.p, mk, r.seconds);
-    case Stat::kDiscrete: return absl::StrFormat("%-7s %-34s p=%-9.3g%s", t, q, r.p, mk);
+        return std::format("{:<7} {:<34} coll={:<11} mean={:<9.6g} p={:<9.3g}{}  ({:.1f}s)", t, q, static_cast<long long>(r.stat), r.mean, r.p, mk, r.seconds);
+    case Stat::kNormal: return std::format("{:<7} {:<34} z={:<14.6g} p={:<9.3g}{}  ({:.1f}s)", t, q, r.stat, r.p, mk, r.seconds);
+    case Stat::kAndersonDarling: return std::format("{:<7} {:<34} AD={:<13.6g} p={:<9.3g}{}  ({:.1f}s)", t, q, r.stat, r.p, mk, r.seconds);
+    case Stat::kClosePairs: return std::format("{:<7} {:<34} stat={:<12.6g} p={:<9.3g}{}  ({:.1f}s)", t, q, r.stat, r.p, mk, r.seconds);
+    case Stat::kDiscrete: return std::format("{:<7} {:<34} p={:<9.3g}{}", t, q, r.p, mk);
     }
     return {};
 }
@@ -1319,7 +1318,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const long long n = scaled(s.n);
             const auto t0 = std::chrono::steady_clock::now();
             const auto h = histogram(kn, Poker{s.r, s.d, s.k}, g, ctr, n, s.k + 1, s.k, 0);
-            params = absl::StrFormat("n=%lld r=%d d=%d k=%d", n, s.r, s.d, s.k);
+            params = std::format("n={} r={} d={} k={}", n, s.r, s.d, s.k);
             report("poker", params, chi2(h, poker_prob(s.d, s.k), n), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1341,7 +1340,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             }
             const auto t0 = std::chrono::steady_clock::now();
             const auto h = histogram(kn, Coupon{r, d, tmax}, g, ctr, n, tmax + 1, mean, var);
-            params = absl::StrFormat("n=%lld r=%d d=%d", n, r, d);
+            params = std::format("n={} r={} d={}", n, r, d);
             report("coupon", params, chi2(h, coupon_prob(d, tmax), n), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1356,7 +1355,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const auto t0 = std::chrono::steady_clock::now();
             // the values per gap (including the one in the interval): geometric of the probability w
             const auto h = histogram(kn, Gap{s.r, tmax, 0, UINT64_C(1) << (32 - s.lg)}, g, ctr, n, tmax + 1, 1 / w, (1 - w) / (w * w));
-            params = absl::StrFormat("n=%lld r=%d beta=2^-%d", n, s.r, s.lg);
+            params = std::format("n={} r={} beta=2^-{}", n, s.r, s.lg);
             report("gap", params, chi2(h, gap_prob(w, tmax), n), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1383,7 +1382,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 });
                 ps.push_back(one.second);
             }
-            params = absl::StrFormat("N=%d n=%lld d=%d t=%d", s.N, n, d, s.t);
+            params = std::format("N={} n={} d={} t={}", s.N, n, d, s.t);
             report("maxoft", params, all, seconds_since(t0));
             // the AD test of the maxima against x^t (Bas of TestU01): that of the N p-values, or for N = 1 of the replication
             const auto ad = s.N == 1 ? one : anderson_darling(ps);
@@ -1419,7 +1418,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                         return sum;
                     }
                 }
-                params = absl::StrFormat("N=%d n=%lld r=%d d=2^%d t=%d", N, n, s.r, s.b, s.t);
+                params = std::format("N={} n={} r={} d=2^{} t={}", N, n, s.r, s.b, s.t);
                 report_poisson("collover", params, c, N * mu, seconds_since(t0));
                 if (sum.max_z > o.limit) return sum;
             }
@@ -1438,7 +1437,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 const auto t0 = std::chrono::steady_clock::now();
                 long long c = 0;
                 for (int rep = 0; rep < s.N; ++rep) c += collision_over(kn, mem, tuples(s.r, s.b, s.t, 0), g, ctr, n);
-                params = absl::StrFormat("N=%d n=%lld r=%d d=2^%d t=%d", s.N, n, s.r, s.b, s.t);
+                params = std::format("N={} n={} r={} d=2^{} t={}", s.N, n, s.r, s.b, s.t);
                 report_poisson("kcoll", params, c, s.N * mu, seconds_since(t0));
                 if (sum.max_z > o.limit) return sum;
             }
@@ -1459,7 +1458,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                         return sum;
                     }
                 }
-                params = absl::StrFormat("N=%d n=%lld r=%d d=2^%d t=%d", s.N, n, s.r, s.b, s.t);
+                params = std::format("N={} n={} r={} d=2^{} t={}", s.N, n, s.r, s.b, s.t);
                 report_poisson("birthday", params, c, s.N * lambda, seconds_since(t0));
                 if (sum.max_z > o.limit) return sum;
             }
@@ -1477,7 +1476,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const double sec = seconds_since(t0);
             for (const CpStats &c : close_pairs_stats(reps, n, s.t, m)) {
                 if (!s.s2 && c.name == "mNP2S") continue;
-                params = absl::StrFormat("N=%d n=%lld t=%d m=%d %s", s.N, n, s.t, m, c.name);
+                params = std::format("N={} n={} t={} m={} {}", s.N, n, s.t, m, c.name);
                 emit("cpairs", params, Stat::kClosePairs, c.stat, c.p, 0, sec);
             }
         }
@@ -1526,7 +1525,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 pr = z1 * pairs;
                 pl = 1 - pr;
             }
-            params = absl::StrFormat("N=%d n=%lld r=%d k=%d maxy=%d", sv.N, n, sv.r, k, maxy);
+            params = std::format("N={} n={} r={} k={} maxy={}", sv.N, n, sv.r, k, maxy);
             emit("cpbitm", params, Stat::kDiscrete, static_cast<double>(maxy), gofw_pDisc(pl, pr), 0, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1540,7 +1539,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             for (int i = 2; i <= s.t; ++i) cells *= i;
             const auto t0 = std::chrono::steady_clock::now();
             const auto h = histogram(kn, Permut{s.r, s.t}, g, ctr, n, cells, s.t, 0);
-            params = absl::StrFormat("n=%lld r=%d t=%d", n, s.r, s.t);
+            params = std::format("n={} r={} t={}", n, s.r, s.t);
             // the chi-square of TestU01 (Delta = 1), whose correction of the mean is negligible here
             report("permut", params, chi2(h, std::vector<double>(cells, 1.0 / cells), n), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
@@ -1577,7 +1576,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                     for (int j = 0; j < 6; ++j) k += A[i][j] * (c[i] - n * B[i]) * (c[j] - n * B[j]);
                 khi.push_back(k / (n - 6.0));
             }
-            params = absl::StrFormat("N=%d n=%lld r=%d %s", s.N, n, s.r, s.up ? "up" : "down");
+            params = std::format("N={} n={} r={} {}", s.N, n, s.r, s.up ? "up" : "down");
             report("run", params, Chi2{sum_stat(khi), 6L * s.N}, seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_cnt));
@@ -1627,7 +1626,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 }
                 return x;
             };
-            params = absl::StrFormat("n=%lld r=%d d=%d t=%d", n, r, 1 << b, t);
+            params = std::format("n={} r={} d={} t={}", n, r, 1 << b, t);
             // standardized by the corrected mean and standard deviation of Read and Cressie, as TestU01
             // (smultin_PowDivMomCorChi for Delta = 1, of k - k1 cells): x = (X - X1 - mu) / sigma
             const double kk = static_cast<double>(k - k1), nn = static_cast<double>(n);
@@ -1658,7 +1657,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                     return sum;
                 }
             }
-            params = absl::StrFormat("N=%d n=%lld r=%d t=%d", N, n, r, t);
+            params = std::format("N={} n={} r={} t={}", N, n, r, t);
             report_poisson("collperm", params, c, N * mu, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1675,7 +1674,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             for (int i = 0; i <= k; ++i) prob[i] = std::exp(std::lgamma(k + 1.0) - std::lgamma(i + 1.0) - std::lgamma(k - i + 1.0) + i * std::log(p) + (k - i) * std::log1p(-p));
             const auto t0 = std::chrono::steady_clock::now();
             const auto h = histogram(kn, detail::Weight{s.r, k, UINT64_C(1) << (32 - s.lg)}, g, ctr, n, k + 1, k, 0);
-            params = absl::StrFormat("n=%lld r=%d k=%d beta=2^-%d", n, s.r, k, s.lg);
+            params = std::format("n={} r={} k={} beta=2^-{}", n, s.r, k, s.lg);
             report("weight", params, chi2(h, prob, n), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1707,7 +1706,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             all.x += c.x;
             all.df += c.df;
         }
-        params = absl::StrFormat("N=%d n=%lld r=%d m=2^%d t=%d", N, n, r, sv.lgm, t);
+        params = std::format("N={} n={} r={} m=2^{} t={}", N, n, r, sv.lgm, t);
         report("savir2", params, all, seconds_since(t0));
         if (sum.max_z > o.limit) return sum;
         }
@@ -1735,7 +1734,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             all.x += c.x;
             all.df += c.df;
         }
-        params = absl::StrFormat("N=%d n=%lld r=%d s=%d", N, n, r, s);
+        params = std::format("N={} n={} r={} s={}", N, n, r, s);
         report("gcd", params, all, seconds_since(t0));
         if (sum.max_z > o.limit) return sum;
         }
@@ -1766,7 +1765,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const auto hist = histogram(kn, hamming(r, s, L, 2, h), g, ctr, N * K, 2 * h + 1, vals_per_block(s, L), 0);
             double x = 0;
             for (int c = 0; c <= 2 * h; ++c) x += hist[c] * static_cast<double>(c - h) * (c - h);
-            params = absl::StrFormat("N=%d n=%lld r=%d s=%d L=%d", N, K * L, r, s, L);
+            params = std::format("N={} n={} r={} s={} L={}", N, K * L, r, s, L);
             report("hamweight", params, Chi2{x * 4.0 / L, N * K}, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1789,7 +1788,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                     acc += m * (2.0 * i - L) * (2.0 * j - L);
                     pairs += m;
                 }
-            params = absl::StrFormat("n=%lld r=%d s=%d L=%d", n, r, s, L);
+            params = std::format("n={} r={} s={} L={}", n, r, s, L);
             report_normal("hamcorr", params, acc / (L * std::sqrt(pairs)), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1831,7 +1830,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 for (size_t i = 0; i < eo.size(); ++i) all.x += (oo[i] - eo[i]) * (oo[i] - eo[i]) / eo[i];
                 all.df += static_cast<long>(eo.size()) - 1;
             }
-            params = absl::StrFormat("N=%d n=%lld r=%d s=%d L=%d", c.N, n, c.r, c.s, L);
+            params = std::format("N={} n={} r={} s={} L={}", c.N, n, c.r, c.s, L);
             report("hamindep", params, all, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1868,9 +1867,9 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 }
             }
             const double bits = static_cast<double>(nv) * s;
-            params = absl::StrFormat("n=%lld r=%d s=%d runs", nr, r, s);
+            params = std::format("n={} r={} s={} runs", nr, r, s);
             report("bitrun", params, Chi2{x, 2L * (k - 1)}, seconds_since(t0));
-            params = absl::StrFormat("n=%lld r=%d s=%d count", nr, r, s);
+            params = std::format("n={} r={} s={} count", nr, r, s);
             report_normal("bitrun", params, (bits / 4 - runs1) / std::sqrt(bits / 16), seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_cnt));
@@ -1918,7 +1917,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 ++h[std::min<long long>(x, jhigh)];
                 top = std::max(top, x);
             }
-            params = absl::StrFormat("n=%lld r=%d s=%d L=%lld", nb, r, s, L);
+            params = std::format("n={} r={} s={} L={}", nb, r, s, L);
             report("longhead", params, chi2(h, prob, nb), seconds_since(t0));
             const double lnall = std::log(static_cast<double>(nb) * L);
             double cl = 0, cprev = 0;
@@ -1927,7 +1926,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 cl += plhr(j, lnall);
             }
             const double p = gofw_pDisc(cl, 1 - cprev);
-            params = absl::StrFormat("n=%lld r=%d s=%d longest=%lld", nb, r, s, top);
+            params = std::format("n={} r={} s={} longest={}", nb, r, s, top);
             emit("longhead", params, Stat::kDiscrete, static_cast<double>(top), p, 0, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1958,7 +1957,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 const double m = static_cast<double>(K) * s;
                 zs.push_back(2.0 * (A - m / 2) / std::sqrt(m));
             }
-            params = absl::StrFormat("N=%d n=%lld r=%d s=%d d=%d", N, nbits, c.r, s, c.d);
+            params = std::format("N={} n={} r={} s={} d={}", N, nbits, c.r, s, c.d);
             report_normal("autocor", params, sum_stat(zs) / std::sqrt(static_cast<double>(N)), seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_cnt));
@@ -1984,7 +1983,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             launch(kn.samplecorr, kBlocks, kThreads, 0, g, start, n, 0, k, d_sum);
             double sm;
             CK(gpuMemcpy(&sm, d_sum, sizeof sm, gpuMemcpyDeviceToHost));
-            params = absl::StrFormat("n=%lld r=0 k=%d", n, k);
+            params = std::format("n={} r=0 k={}", n, k);
             report_normal("samplecorr", params, sm * 12.0 / std::sqrt(13.0 * (n - k)), seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_sum));
@@ -2013,7 +2012,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 ps.push_back(one.second);
             }
             const auto ad = c[0] == 1 ? one : anderson_darling(ps);
-            params = absl::StrFormat("N=%d n=%lld r=0 t=%d", c[0], n, c[1]);
+            params = std::format("N={} n={} r=0 t={}", c[0], n, c[1]);
             report_ad("sprod", params, ad.first, ad.second, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -2056,7 +2055,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const auto ad = ad_sorted(n, [&](const Sink &sk) {
                 launch(kn.uniform, kBlocks, kThreads, 0, 1, r, m, g, base, stride, n, static_cast<const double *>(d_tab), ntab, hstep, sk);
             });
-            params = absl::StrFormat("N=%lld n=%d r=%d", n, m, r);
+            params = std::format("N={} n={} r={}", n, m, r);
             report_ad("smean", params, ad.first, ad.second, seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_tab));
@@ -2101,12 +2100,12 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             CK(gpuMemcpy(h.data(), d_hist, sizeof(unsigned long long) * nb, gpuMemcpyDeviceToHost));
             CK(gpuFree(d_hist));
             const double sec = seconds_since(t0);
-            const char *names = "HMJRC";
+            constexpr std::string_view names = "HMJRC";
             for (int k = 0; k < 5; ++k) {
                 std::vector<unsigned long long> obs(h.begin() + k * (L + 1), h.begin() + (k + 1) * (L + 1));
                 std::vector<double> prob(L + 1);
                 for (long i = 0; i <= L; ++i) prob[i] = ex[k][i] / nl;
-                params = absl::StrFormat("n=%lld r=%d s=%d L=%d %c", n, c.r, c.s, c.L, names[k]);
+                params = std::format("n={} r={} s={} L={} {}", n, c.r, c.s, c.L, names[k]);
                 report("walk", params, chi2(obs, prob, n), sec);
             }
             if (sum.max_z > o.limit) return sum;
@@ -2159,7 +2158,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             }
             CK(gpuFree(d_keys));
             CK(gpuFree(d_cls));
-            params = absl::StrFormat("N=%d n=%lld r=%d s=%d", N, n, r, sb);
+            params = std::format("N={} n={} r={} s={}", N, n, r, sb);
             report("periods", params, all, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
             continue;
@@ -2190,7 +2189,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 all.x += c.x;
                 all.df += c.df;
             }
-            params = absl::StrFormat("N=%d n=%lld r=%d s=%d", N, n, r, sb);
+            params = std::format("N={} n={} r={} s={}", N, n, r, sb);
             report("periods", params, all, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -2219,7 +2218,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         const long long n = scaled(sv.n);
         const auto t0 = std::chrono::steady_clock::now();
         const auto h = histogram(kn, detail::SumColl{sv.r, jmax, static_cast<double>(g10)}, g, ctr, n, jmax + 1, 21, 0.4 * 21);
-        params = absl::StrFormat("n=%lld r=%d g=%d", n, sv.r, g10);
+        params = std::format("n={} r={} g={}", n, sv.r, g10);
         report("sumcoll", params, chi2(h, prob, n), seconds_since(t0));
         if (sum.max_z > o.limit) return sum;
         }
@@ -2257,7 +2256,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             CK(gpuMemcpy(b.data(), ft.b, sizeof(double) * b.size(), gpuMemcpyDeviceToHost));
             for (int i = 1; i <= n / 4; ++i) u[i - 1] = fdist_Normal2((b[i] / n - N) / std::sqrt(N * (1.0 - 2.0 / n)));
             const auto ad = anderson_darling(u);
-            params = absl::StrFormat("N=%lld n=2^%d r=%d s=%d", N, k, r, sb);
+            params = std::format("N={} n=2^{} r={} s={}", N, k, r, sb);
             report_ad("fourier", params, ad.first, ad.second, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -2326,9 +2325,9 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 jx.push_back(x);
                 jl.df += M0 - 1;
             }
-            params = absl::StrFormat("N=%lld n=%lld r=%d s=%d jumps", N, n, rs[ri], sb);
+            params = std::format("N={} n={} r={} s={} jumps", N, n, rs[ri], sb);
             report_normal("lincomp", params, sum_stat(zs) / std::sqrt(static_cast<double>(N)), sec);
-            params = absl::StrFormat("N=%lld n=%lld r=%d s=%d sizes", N, n, rs[ri], sb);
+            params = std::format("N={} n={} r={} s={} sizes", N, n, rs[ri], sb);
             jl.x = sum_stat(jx);
             report("lincomp", params, jl, sec);
             if (sum.max_z > o.limit) return sum;
@@ -2391,7 +2390,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 xs.push_back(x.x);
                 all.df += x.df;
             }
-            params = absl::StrFormat("N=%d n=%lld r=%d s=%d L=%d k=%d", c.N, n, c.r, c.s, c.l, c.k);
+            params = std::format("N={} n={} r={} s={} L={} k={}", c.N, n, c.r, c.s, c.l, c.k);
             all.x = sum_stat(xs);
             if (all.df >= 1) report("matrank", params, all, seconds_since(t0));  // (else too few matrices for two classes)
             if (sum.max_z > o.limit) return sum;
@@ -2429,7 +2428,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                              somme += thrust::transform_reduce(thrust::counting_iterator<long long>(0), thrust::counting_iterator<long long>(c),
                                                                AppearTerm{a, ibits, Q}, 0.0, thrust::plus<double>());
                          });
-            params = absl::StrFormat("N=1 Q=%lld K=%lld r=%d s=%d L=%d", Q, K, r, sb, L);
+            params = std::format("N=1 Q={} K={} r={} s={} L={}", Q, K, r, sb, L);
             report_normal("appear", params, (somme * (1.0 / (M_LN2 * K)) - E[L]) / sigma, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -2462,7 +2461,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 zs.push_back((lz78(x, nbits, r, sb) - LZMu[t]) / LZSigma[t]);
             }
             CK(gpuFree(d_out));
-            params = absl::StrFormat("N=%lld n=2^%d r=%d s=%d", N, t, r, sb);
+            params = std::format("N={} n=2^{} r={} s={}", N, t, r, sb);
             report_normal("lempelziv", params, sum_stat(zs) / std::sqrt(static_cast<double>(N)), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }

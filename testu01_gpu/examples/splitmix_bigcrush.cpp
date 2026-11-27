@@ -11,12 +11,17 @@
 #include <hip/hip_runtime.h>
 #endif
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <charconv>
+#include <cstdint>
 #include <exception>
+#include <format>
+#include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <system_error>
+#include <type_traits>
+#include <vector>
 
 #include "absl/log/globals.h"
 #include "absl/log/initialize.h"
@@ -39,27 +44,42 @@ __device__ inline void testu01_gpu_generate(const testu01_gpu::Params &p, uint64
 }
 )";
 
+// a number of the command line, all of it (an integer in hexadecimal with 0x)
+template <typename T> T number(std::string_view a) {
+    int base = 10;
+    if constexpr (std::is_integral_v<T>) {
+        if (a.starts_with("0x") || a.starts_with("0X")) a.remove_prefix(2), base = 16;
+    }
+    T v{};
+    const auto [end, ec] = [&] {
+        if constexpr (std::is_integral_v<T>) return std::from_chars(a.data(), a.data() + a.size(), v, base);
+        else return std::from_chars(a.data(), a.data() + a.size(), v);
+    }();
+    if (ec != std::errc() || end != a.data() + a.size()) throw std::invalid_argument(std::format("not a number: {}", a));
+    return v;
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
     absl::InitializeLog();
     absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);  // the warnings to stderr as well
     try {
-        const uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 0) : 1;
+        const std::vector<std::string_view> args(argv + 1, argv + argc);
+        const uint64_t seed = args.size() > 0 ? number<uint64_t>(args[0]) : 1;
         testu01_gpu::Options o;
-        if (argc > 2) o.scale = std::atof(argv[2]);
-        if (argc > 3 && std::strcmp(argv[3], "all") != 0) o.tests = argv[3];
-        if (argc > 4) o.fast = std::atoi(argv[4]) != 0;
-        if (argc > 5) {
-            const std::string b = argv[5];
+        if (args.size() > 1) o.scale = number<double>(args[1]);
+        if (args.size() > 2 && args[2] != "all") o.tests = args[2];
+        if (args.size() > 3) o.fast = number<int>(args[3]) != 0;
+        if (args.size() > 4) {
+            const std::string_view b = args[4];
             if (b == "small") o.suite = testu01_gpu::Suite::kSmallCrush;
             else if (b == "crush") o.suite = testu01_gpu::Suite::kCrush;
             else if (b == "big") o.suite = testu01_gpu::Suite::kBigCrush;
-            else throw std::invalid_argument("battery: small, crush or big, not " + b);
+            else throw std::invalid_argument(std::format("battery: small, crush or big, not {}", b));
         }
         o.report = [](const testu01_gpu::Result &r) {
-            std::printf("%s\n", testu01_gpu::format(r).c_str());
-            std::fflush(stdout);
+            std::cout << testu01_gpu::format(r) << std::endl;
         };
         // wait for the device by blocking the thread, instead of spinning on a CPU core
 #ifdef TESTU01_GPU_CUDA
@@ -73,7 +93,7 @@ int main(int argc, char **argv) {
         params.w[1] = static_cast<uint32_t>(seed >> 32);
         testu01_gpu::Battery battery;
         const testu01_gpu::Summary s = battery.run(gen, params, o);
-        std::printf("summary\tmin_p=%.3g\tmax_p=%.6g\tflagged=%d\n", s.min_p, s.max_p, s.flagged);
+        std::cout << std::format("summary\tmin_p={:.3g}\tmax_p={:.6g}\tflagged={}\n", s.min_p, s.max_p, s.flagged);
         return 0;
     } catch (const std::exception &e) {
         LOG(ERROR) << e.what();
