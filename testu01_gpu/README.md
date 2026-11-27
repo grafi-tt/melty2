@@ -219,7 +219,25 @@ TestU01 adds the K logarithms (K = 1e8 to 1e9) one after the other to a running 
 
 The p-values of Fourier3 are not uniform for good generators, with too few small p-values, in TestU01 itself as in testu01_gpu. Over 40 seeds, Fourier3 of Crush gave a KS p-value of 0.001 by testu01_gpu (see [The null distributions](#the-null-distributions)). TestU01 on the CPU, on a SplitMix64 with one round of its finalizer and 40 seeds, gives a KS p-value of 0.007, with 3 of 80 p-values below 0.1. This comes from the approximation of the test, not from the port: Fourier3 tests its n/4 standardized sums B_i as n/4 independent normal variables, but their mean varies only as much as that of n/8 independent ones.
 
-The total of the |F_k|² is the same for every sequence. Fourier3 transforms a sequence a_0, …, a_{n−1} of ±1 (its bits) by the unnormalized DFT F_k = Σ_j a_j ω^{−jk}, with ω = e^{2πi/n}. By Parseval's theorem, Σ_{k=0}^{n−1} |F_k|² = n Σ_j a_j² = n². To see it, expand |F_k|² = Σ_j Σ_l a_j a_l ω^{(j−l)k} and sum over k. The sum Σ_k ω^{(j−l)k} is n for j = l and 0 otherwise, which leaves n Σ_j a_j², and a_j² = 1 for every j. For a real sequence |F_{n−k}| = |F_k|, so n² = F_0² + F_{n/2}² + 2 Σ_{k=1}^{n/2−1} |F_k|². The n/2 − 1 free coefficients thus have a nearly fixed total, and so do the B_i of all of them, summed over the N sequences.
+Fourier3 transforms a sequence a_0, …, a_{n−1} of ±1 (its bits) to the frequency domain F_0, …, F_{n−1} by the unnormalized DFT:
+
+```math
+F_k = \sum_j a_j ω^{−jk},\quad\text{with } ω = e^{2πi/n} .
+```
+
+By Parseval's theorem, the total of the frequency domain is the same for every sequence, as
+
+```math
+\sum_{k=0}^{n−1} |F_k|^2 = n \sum_j a_j^2 = n^2 .
+```
+
+Since a_0, …, a_{n−1} is a real sequence, |F_{n−k}| = |F_k| holds. so
+
+```math
+n^2 = F_0^2 + F_{n/2}² + 2 \sum_{k=1}^{n/2−1} |F_k|^2 .
+```
+
+The n/2 − 1 free coefficients thus have a nearly fixed total, and so do the B_i of all of them, summed over the N sequences.
 
 Fourier3 takes half of the free coefficients, k = 1, …, n/4. For M exchangeable variables of variance σ² with a fixed total, every pair has the covariance −σ²/(M − 1), since the variance of the total is 0. A sum of m of them then has the variance m σ² (M − m)/(M − 1) instead of m σ², which is half of it for m = M/2: the same as m/2 independent variables. The fluctuation of the mean of the n/4 values B_i is that of n/8 independent ones. The AD statistic, comparing the B_i with n/4 independent normal variables, comes out small too often, and the small p-values are too few.
 
