@@ -1,8 +1,8 @@
-# testu01_gpu
+# TestU01GPU
 
-A library running the tests of [TestU01](http://simul.iro.umontreal.ca/testu01/tu01.html) on a GPU, by HIP (ROCm) or CUDA. The tests are reimplemented after the source code of TestU01 1.2.3: the test functions used by its batteries SmallCrush, Crush and BigCrush (33 of them, see [Tests](#tests)), with the parameters of their instances in these batteries and sample sizes that can be scaled.
+A library running the tests of [TestU01](http://simul.iro.umontreal.ca/testu01/tu01.html) on a GPU, by HIP (ROCm) or CUDA. **This is a useful library for those who designing a pseudo random number generator.** The tests are reimplemented after the source code of TestU01 1.2.3: the test functions used by its batteries SmallCrush, Crush and BigCrush (33 of them, see [Tests](#tests)), with the parameters of their instances in these batteries and sample sizes that can be scaled.
 
-On a current GPU, BigCrush takes tens of seconds instead of hours on a CPU core, Crush about ten seconds, and SmallCrush less than one. Most tests make their observations from other outputs than TestU01 does (see [Tests](#tests)), so their p-values agree with those of TestU01 statistically; the tests on the single sequence give the same statistics as TestU01 on the same outputs, or statistics differing only by the order of their floating-point operations (Fourier3, AppearanceSpacings). They screen generators quickly, and sample sizes far beyond those of BigCrush are practical.
+**On a current GPU, BigCrush takes tens of seconds instead of hours on a CPU core.** Most tests make their observations from other outputs than TestU01 does (see [Tests](#tests)), so their p-values agree with those of TestU01 statistically; the tests on the single sequence give the same statistics as TestU01 on the same outputs, or statistics differing only by the order of their floating-point operations (Fourier3, AppearanceSpacings). They screen generators quickly, and sample sizes far beyond those of BigCrush are practical.
 
 Currently only counter-based generators are supported: generators whose output at any position of their sequence can be computed directly.
 
@@ -72,6 +72,7 @@ const testu01_gpu::Summary s = battery.run(gen, params, o);  // min_p, max_p, ma
 ## Tests
 
 Only the test functions used by SmallCrush, Crush and BigCrush are ported, with the parameters of their instances in these batteries. Porting the rest of TestU01 is not planned:
+
 * the other test functions, e.g. sknuth_Serial, sknuth_SerialSparse, sknuth_RunIndep, smarsa_Opso, smarsa_CAT, snpair_BickelBreiman, sspectral_Fourier1 and Fourier2, sstring_HammingWeight, svaria_SumLogs, svaria_CollisionArgMax, swalk_RandomWalk1a, swalk_VarGeoN and VarGeoP, and the modules sentrop and sspacings;
 * the other batteries: Rabbit, Alphabit, BlockAlphabit, FIPS_140_2 and pseudoDIEHARD;
 * the generators of TestU01 (its modules u*).
