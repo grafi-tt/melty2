@@ -1,43 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
-// genlow [options] seed swap nbits : the lower nbits bits (after >> shift) of the outputs of the
+// genlow [flags] seed swap nbits : the lower nbits bits (after >> shift) of the outputs of the
 // compiled-in structure (see run.sh), packed into 32bit words from the LSB, to stdout. The least
 // significant bits of ARX outputs mix slowly, as an addition has no carry into bit 0, so their stream
 // is tested separately.
-//   -s, --shift N  right shift of the outputs before taking the lower bits (default 0)
-#include <getopt.h>
-
+//   --shift N      right shift of the outputs before taking the lower bits (default 0)
 #include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
 #include <vector>
 
+#include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
 
 #include "kern.hpp"
 
+ABSL_FLAG(int, shift, 0, "right shift of the outputs before taking the lower bits");
+
 namespace {
 
-[[noreturn]] void usage() {
-    std::fprintf(stderr, "usage: genlow [-s shift] seed swap nbits\n");
-    std::exit(1);
-}
-
 int run(int argc, char **argv) {
-    static const option longopts[] = {
-        {"shift", required_argument, nullptr, 's'},
-        {nullptr, 0, nullptr, 0},
-    };
-    int sh = 0, opt;
-    while ((opt = getopt_long(argc, argv, "s:", longopts, nullptr)) != -1) {
-        switch (opt) {
-        case 's': sh = std::atoi(optarg); break;
-        default: usage();
-        }
-    }
-    if (argc - optind != 3) usage();
-    char **arg = argv + optind;
+    const std::vector<char *> arg = parse_flags(argc, argv, "genlow [flags] seed swap nbits");
+    if (arg.size() != 3) usage();
+    const int sh = absl::GetFlag(FLAGS_shift);
     const auto seed = static_cast<uint32_t>(std::strtoul(arg[0], nullptr, 0));
     const int swp = std::atoi(arg[1]), nb = std::atoi(arg[2]);
     if (nb < 1 || nb > 32 || 32 % nb != 0) {

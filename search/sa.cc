@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// sa [options] L seed iters "init" : simulated annealing of an L-op structure.
-//   -k, --nkeys N       number of keys (default 16)
-//   -n, --pairs N       counter pairs per key and delta (default 2^20)
-//   -w, --weak-words N  words given a zero or a rotation relation in the weak keys (default 6, 0 for none)
-//   -K, --keyset N      0: the keys above (default); 1: also keys with sparse v[4] and v[5]
-//   -O, --objective N   0: the sum below (default); 1: the last biased depth first (see below)
-//   -c, --checkpoint F  save the state to the file F, and resume from it if it exists (see below)
-//   -p, --pidfile F     write the process ID to the file F (see pidfile.hpp)
-//   -S, --subtract      also use subtractions (S ops): a move changes an addition, an xor or a
+// sa [flags] L seed iters "init" : simulated annealing of an L-op structure.
+//   --nkeys N           number of keys (default 16)
+//   --pairs N           counter pairs per key and delta (default 2^20)
+//   --weak_words N      words given a zero or a rotation relation in the weak keys (default 6, 0 for none)
+//   --keyset N          0: the keys above (default); 1: also keys with sparse v[4] and v[5]
+//   --objective N       0: the sum below (default); 1: the last biased depth first (see below)
+//   --checkpoint F      save the state to the file F, and resume from it if it exists (see below)
+//   --pidfile F         write the process ID to the file F (see pidfile.hpp)
+//   --subtract          also use subtractions (S ops): a move changes an addition, an xor or a
 //                       subtraction into one of the other two
-//   -R, --reject-repeats  reject the structures repeating an addition, a subtraction or an xor (see
+//   --reject_repeats      reject the structures repeating an addition, a subtraction or an xor (see
 //                       arx::repeated in arx.hpp)
-//   -C, --common-seeds  compare a candidate with the current structure at the same seed (see below)
-//   -P, --propagate-keys  reject the structures where a key word doesn't propagate into the other words
+//   --common_seeds      compare a candidate with the current structure at the same seed (see below)
+//   --propagate_keys      reject the structures where a key word doesn't propagate into the other words
 //                       (see arx::keys_propagated in arx.hpp)
-//   -F, --freeze K      keep the first K ops of init, and move only the later ones (default 0), e.g. to
+//   --freeze K          keep the first K ops of init, and move only the later ones (default 0), e.g. to
 //                       extend a core found with a smaller L
-//   -D, --key-deadline K  reject the structures where a key word doesn't propagate into the other words
+//   --key_deadline K      reject the structures where a key word doesn't propagate into the other words
 //                       by the first K ops, e.g. one only added near the output (see
 //                       arx::keys_propagated_by in arx.hpp); 1 <= K < L (default none)
-//   -T, --rotations-only  change only the rotation amounts, keeping the ops otherwise, e.g. to tune a
+//   --rotations_only      change only the rotation amounts, keeping the ops otherwise, e.g. to tune a
 //                       structure designed by hand
 //
 // The first L ops of init are the initial structure, and the number of rotations is kept. A move
@@ -42,7 +42,7 @@
 //
 // The candidates are evaluated with the key seeds 1 to 4 in turn. By default, a candidate is compared
 // with the objective of the current structure at the seed where it was accepted, so that the
-// difference includes the noise of the two seeds. With -C, it is compared with the objective of the
+// difference includes the noise of the two seeds. With --common_seeds, it is compared with the objective of the
 // current structure at the same seed (common random numbers), which is computed when first needed and
 // cached per seed with the bias at every depth. As the bias at a depth is determined by the ops before
 // it and the seed, the depths before the first op differing from the current structure are taken from
@@ -59,8 +59,6 @@
 // kernel with the GPU metric; e.g. the kernel is the result of "sa 20 504 3000 ORIG22".
 //
 // The best structure so far is logged (LOG(INFO), to stderr) every 100 iterations.
-#include <getopt.h>
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -75,9 +73,25 @@
 #include <string>
 
 #include "absl/strings/str_format.h"
+#include "flags.hpp"
 #include "logging.hpp"
 #include "metric.hpp"
 #include "pidfile.hpp"
+
+ABSL_FLAG(int, nkeys, 16, "number of keys");
+ABSL_FLAG(int, pairs, 1 << 20, "counter pairs per key and delta");
+ABSL_FLAG(int, weak_words, 6, "words given a zero or a rotation relation in the weak keys (0: none)");
+ABSL_FLAG(int, keyset, 0, "0: the keys of metric::random_keys; 1: also keys with sparse v[4] and v[5]");
+ABSL_FLAG(int, objective, 0, "0: the sum of the biases; 1: the last biased depth first");
+ABSL_FLAG(std::string, checkpoint, "", "save the state to this file, and resume from it if it exists");
+ABSL_FLAG(std::string, pidfile, "", "write the process ID to this file (see pidfile.hpp)");
+ABSL_FLAG(bool, subtract, false, "also use subtractions (S ops)");
+ABSL_FLAG(bool, reject_repeats, false, "reject the structures repeating an addition, a subtraction or an xor");
+ABSL_FLAG(bool, common_seeds, false, "compare a candidate with the current structure at the same seed");
+ABSL_FLAG(bool, propagate_keys, false, "reject the structures where a key word doesn't propagate into the other words");
+ABSL_FLAG(int, freeze, 0, "keep the first K ops of init, and move only the later ones");
+ABSL_FLAG(int, key_deadline, 0, "reject the structures where a key word doesn't propagate into the other words by the first K ops (0: none)");
+ABSL_FLAG(bool, rotations_only, false, "change only the rotation amounts");
 
 namespace {
 
@@ -107,7 +121,7 @@ class XorShift64 {
 struct Options {
     int nk = 16, n = 1 << 20, weak = 6, keyset = 0, objmode = 0, freeze = 0, deadline = 0;
     bool subtract = false, reject_repeats = false, common = false, propagate = false, rotations_only = false;
-    const char *ckpt = nullptr, *pidfile = nullptr;
+    std::string ckpt, pidfile;  // (empty: none)
 };
 
 // the state of the search after the iteration it - 1
@@ -274,54 +288,26 @@ std::optional<State> load_checkpoint(const std::string &path, const std::string 
     return st;
 }
 
-[[noreturn]] void usage() {
-    std::fprintf(stderr, "usage: sa [-k nkeys] [-n pairs] [-w weak_words] [-K keyset] [-O objective] [-c checkpoint]\n"
-                         "          [-p pidfile] [-S] [-R] [-C] [-P] [-F freeze] [-D deadline] [-T] L seed iters init\n"
-                         "  init may be ORIG22 for the original 22-step kernel\n");
-    std::exit(1);
-}
-
 int run(int argc, char **argv) {
-    static const option longopts[] = {
-        {"nkeys", required_argument, nullptr, 'k'},
-        {"pairs", required_argument, nullptr, 'n'},
-        {"weak-words", required_argument, nullptr, 'w'},
-        {"keyset", required_argument, nullptr, 'K'},
-        {"objective", required_argument, nullptr, 'O'},
-        {"checkpoint", required_argument, nullptr, 'c'},
-        {"pidfile", required_argument, nullptr, 'p'},
-        {"subtract", no_argument, nullptr, 'S'},
-        {"reject-repeats", no_argument, nullptr, 'R'},
-        {"common-seeds", no_argument, nullptr, 'C'},
-        {"propagate-keys", no_argument, nullptr, 'P'},
-        {"freeze", required_argument, nullptr, 'F'},
-        {"key-deadline", required_argument, nullptr, 'D'},
-        {"rotations-only", no_argument, nullptr, 'T'},
-        {nullptr, 0, nullptr, 0},
-    };
+    const std::vector<char *> arg = parse_flags(argc, argv,
+                                                "sa [flags] L seed iters init: simulated annealing of an L-op structure (init may be ORIG22 for the "
+                                                "original 22-step kernel)");
+    if (arg.size() != 4) usage();
     Options o;
-    int opt;
-    while ((opt = getopt_long(argc, argv, "k:n:w:K:O:c:p:SRCPF:D:T", longopts, nullptr)) != -1) {
-        switch (opt) {
-        case 'k': o.nk = std::atoi(optarg); break;
-        case 'n': o.n = std::atoi(optarg); break;
-        case 'w': o.weak = std::atoi(optarg); break;
-        case 'K': o.keyset = std::atoi(optarg); break;
-        case 'O': o.objmode = std::atoi(optarg); break;
-        case 'c': o.ckpt = optarg; break;
-        case 'p': o.pidfile = optarg; break;
-        case 'S': o.subtract = true; break;
-        case 'R': o.reject_repeats = true; break;
-        case 'C': o.common = true; break;
-        case 'P': o.propagate = true; break;
-        case 'F': o.freeze = std::atoi(optarg); break;
-        case 'D': o.deadline = std::atoi(optarg); break;
-        case 'T': o.rotations_only = true; break;
-        default: usage();
-        }
-    }
-    if (argc - optind != 4) usage();
-    char **arg = argv + optind;
+    o.nk = absl::GetFlag(FLAGS_nkeys);
+    o.n = absl::GetFlag(FLAGS_pairs);
+    o.weak = absl::GetFlag(FLAGS_weak_words);
+    o.keyset = absl::GetFlag(FLAGS_keyset);
+    o.objmode = absl::GetFlag(FLAGS_objective);
+    o.ckpt = absl::GetFlag(FLAGS_checkpoint);
+    o.pidfile = absl::GetFlag(FLAGS_pidfile);
+    o.subtract = absl::GetFlag(FLAGS_subtract);
+    o.reject_repeats = absl::GetFlag(FLAGS_reject_repeats);
+    o.common = absl::GetFlag(FLAGS_common_seeds);
+    o.propagate = absl::GetFlag(FLAGS_propagate_keys);
+    o.freeze = absl::GetFlag(FLAGS_freeze);
+    o.deadline = absl::GetFlag(FLAGS_key_deadline);
+    o.rotations_only = absl::GetFlag(FLAGS_rotations_only);
     const int L = std::atoi(arg[0]);
     const int iters = std::atoi(arg[2]);
     arx::Arx cur = arx::parse(std::strcmp(arg[3], "ORIG22") == 0 ? arx::kMelty2Orig22 : arg[3]);
@@ -340,7 +326,7 @@ int run(int argc, char **argv) {
     cur.resize(L);
     Search search(o, std::strtoull(arg[1], nullptr, 0) * UINT32_C(2654435761) + 1);
     XorShift64 &rr = search.rng();
-    if (o.pidfile) pidfile::write(o.pidfile);
+    if (!o.pidfile.empty()) pidfile::write(o.pidfile.c_str());
 
     // cur: the current structure and its objective fc; best: the best one so far and fb. The
     // candidates are evaluated with the key seeds 1 to 4 in turn, so that the search doesn't overfit
@@ -360,7 +346,7 @@ int run(int argc, char **argv) {
     double fc, fb, f0;
     arx::Arx best;
     int it0 = 0;
-    if (const std::optional<State> st = o.ckpt ? load_checkpoint(o.ckpt, args) : std::nullopt) {
+    if (const std::optional<State> st = !o.ckpt.empty() ? load_checkpoint(o.ckpt, args) : std::nullopt) {
         it0 = st->it;
         rr = XorShift64(st->rng);
         cur = st->cur;
@@ -373,7 +359,7 @@ int run(int argc, char **argv) {
         fc = f0 = fb = search.objective(cur, o.nk, o.n, 1);
         best = cur;
     }
-    if (o.ckpt) {
+    if (!o.ckpt.empty()) {
         struct sigaction sa {};
         sa.sa_handler = on_signal;
         sigemptyset(&sa.sa_mask);
@@ -425,7 +411,7 @@ int run(int argc, char **argv) {
         }
         if ((it + 1) % 100 == 0 || usr1 || term) {
             LOG(INFO) << absl::StrFormat("it=%d cur=%.2f best=%.2f %s", it + 1, fc, fb, arx::to_string(best));
-            if (o.ckpt) save_checkpoint(o.ckpt, args, State{it + 1, rr.state(), cur, best, fc, fb, f0});
+            if (!o.ckpt.empty()) save_checkpoint(o.ckpt, args, State{it + 1, rr.state(), cur, best, fc, fb, f0});
             usr1 = 0;
             if (term) {
                 LOG(WARNING) << "interrupted at it=" << it + 1;

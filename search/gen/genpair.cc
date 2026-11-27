@@ -2,14 +2,13 @@
 // genpair seed swap mask mode : a stream of the compiled-in structure (see run.sh) combining two keys
 // which share the words in mask (bit i set: word i is shared). Key A is from seed, and key B takes the
 // other words from seed + 0x10000. mode 0: A(c) ^ B(c); 1: A(c), B(c) interleaved; 2: A(c) - B(c).
-#include <getopt.h>
-
 #include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
 #include <vector>
 
+#include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
 
@@ -17,15 +16,9 @@
 
 namespace {
 
-[[noreturn]] void usage() {
-    std::fprintf(stderr, "usage: genpair seed swap mask mode\n");
-    std::exit(1);
-}
-
 int run(int argc, char **argv) {
-    static const option longopts[] = {{nullptr, 0, nullptr, 0}};
-    if (getopt_long(argc, argv, "", longopts, nullptr) != -1 || argc - optind != 4) usage();
-    char **arg = argv + optind;
+    const std::vector<char *> arg = parse_flags(argc, argv, "genpair seed swap mask mode");
+    if (arg.size() != 4) usage();
     const auto seed = static_cast<uint32_t>(std::strtoul(arg[0], nullptr, 0));
     const int swp = std::atoi(arg[1]), mask = static_cast<int>(std::strtol(arg[2], nullptr, 0)), mode = std::atoi(arg[3]);
     arx::Key a = keymod::seed_key(seed), b = keymod::seed_key(seed + 0x10000);

@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// weakkeys [options] "structure" mlo mhi n list : differential bias of structured keys.
-//   -b, --nbase N    number of base keys (default 2)
-//   -d, --dump FILE  file to write the bias of every key at every depth
-//   -p, --pidfile F  write the process ID to the file F (see pidfile.hpp)
+// weakkeys [flags] "structure" mlo mhi n list : differential bias of structured keys.
+//   --nbase N        number of base keys (default 2)
+//   --dump FILE      file to write the bias of every key at every depth
+//   --pidfile F      write the process ID to the file F (see pidfile.hpp)
 //
 // Every line of the list file is a key modification spec (see keymod.hpp), applied to the keys of the
 // seeds 1..nbase. 64 keys of the seeds 1000..1063 are the control. For every depth, the control
 // distribution, the number of structured keys above the control maximum, and the worst 8 structured
 // keys are printed. With dump, the bias of every key at every depth is written to the file as
 // tab-separated values.
-#include <getopt.h>
-
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -21,41 +19,28 @@
 #include <stdexcept>
 #include <string>
 
+#include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
 #include "metric.hpp"
 #include "pidfile.hpp"
+
+ABSL_FLAG(int, nbase, 2, "number of base keys");
+ABSL_FLAG(std::string, dump, "", "file to write the bias of every key at every depth");
+ABSL_FLAG(std::string, pidfile, "", "write the process ID to this file (see pidfile.hpp)");
 
 namespace {
 
 constexpr int kControls = 64;
 constexpr int kChunk = 256;  // keys per call of the metric, to bound the memory of the GPU metric
 
-[[noreturn]] void usage() {
-    std::fprintf(stderr, "usage: weakkeys [-b nbase] [-d dump] [-p pidfile] structure mlo mhi n list\n");
-    std::exit(1);
-}
-
 int run(int argc, char **argv) {
-    static const option longopts[] = {
-        {"nbase", required_argument, nullptr, 'b'},
-        {"dump", required_argument, nullptr, 'd'},
-        {"pidfile", required_argument, nullptr, 'p'},
-        {nullptr, 0, nullptr, 0},
-    };
-    int nbase = 2, opt;
-    const char *dump = nullptr, *pidfile = nullptr;
-    while ((opt = getopt_long(argc, argv, "b:d:p:", longopts, nullptr)) != -1) {
-        switch (opt) {
-        case 'b': nbase = std::atoi(optarg); break;
-        case 'd': dump = optarg; break;
-        case 'p': pidfile = optarg; break;
-        default: usage();
-        }
-    }
-    if (argc - optind != 5) usage();
-    if (pidfile) pidfile::write(pidfile);
-    char **arg = argv + optind;
+    const std::vector<char *> arg = parse_flags(argc, argv, "weakkeys [flags] structure mlo mhi n list: the differential bias of structured keys");
+    if (arg.size() != 5) usage();
+    const int nbase = absl::GetFlag(FLAGS_nbase);
+    const std::string dump_file = absl::GetFlag(FLAGS_dump);
+    const char *dump = dump_file.empty() ? nullptr : dump_file.c_str();
+    if (const std::string pf = absl::GetFlag(FLAGS_pidfile); !pf.empty()) pidfile::write(pf.c_str());
     const arx::Arx a = arx::parse(arg[0]);
     const int mlo = std::atoi(arg[1]), mhi = std::atoi(arg[2]), n = std::atoi(arg[3]);
     const std::string list = arg[4];

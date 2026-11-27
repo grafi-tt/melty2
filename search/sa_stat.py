@@ -2,11 +2,11 @@
 """Simulated annealing of a structure against the statistical tests of testu01_stest.
 
 The objective is the largest z-score of the tests of the stages of the file PLAN (a stage per line,
-"M[,M...] tests scale keylist [offset]", as testu01_stest -P: the tests at the steps M for the keys of
+"M[,M...] tests scale keylist [offset]", as testu01_stest --plan: the tests at the steps M for the keys of
 the list, in both counter orders; a key spec "keymod@streams#seed" takes its own streams and seed). With
 --verify, a candidate about to become the best is also scored on the stages of VERIFY (e.g. larger
 samples, or more keys and streams), and its z-score is the larger of both: so the best structure always
-passes both, while the walk is scored by the cheaper PLAN. Each plan is one testu01_stest -P process.
+passes both, while the walk is scored by the cheaper PLAN. Each plan is one testu01_stest --plan process.
 
 The moves are those of sa: a new rotation amount, a new op type (A, X, R), a new destination or source
 word, or a swap of two adjacent ops, among the ops from FREEZE to MOVES (default the smallest M of PLAN;
@@ -176,7 +176,7 @@ def main():
             print(os.getpid(), file=f)
 
     def scorer(plan):
-        return subprocess.Popen([a.stest, "-P", plan, "-D", str(a.deadline)],
+        return subprocess.Popen([a.stest, f"--plan={plan}", f"--deadline={a.deadline}"],
                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
 
     procs = {"plan": scorer(a.plan)}

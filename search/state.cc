@@ -1,32 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// state [options] "structure" keylist : counter differentials of the state of words (default v0..v3, 128 bits)
+// state [flags] "structure" keylist : counter differentials of the state of words (default v0..v3, 128 bits)
 // after the first M ops (default 12), for comparing how far the head of structures has mixed the words that
 // the rest of the structure takes.
 //
-// For every key of keylist (lines "keymod[#seed]" as testu01_stest -l, "-" for none) and random counters c,
+// For every key of keylist (lines "keymod[#seed]" as testu01_stest --keylist, "-" for none) and random counters c,
 // the state S(c) is compared with S(c + 2^j) for j = 0..63 (the consecutive counters of a stream in either
 // counter order, and the streams of the counters c + (s << j)). For every j:
 //   bits: the flip frequency of every bit of S(c) ^ S(c + 2^j), as z-scores against 1/2 (largest |z|);
 //   bytes: the chi-square of every byte of the xor difference and of the additive difference of every word
 //          (S(c + 2^j) - S(c) mod 2^32), against the uniform 256 values, as z = (chi2 - 255) / sqrt(510)
 //          (largest z).
-// A line "delta <TAB> key=.. <TAB> j=.. <TAB> bit_z=.. <TAB> byte_z=.. <TAB> worst=.." per key and j (with -v),
+// A line "delta <TAB> key=.. <TAB> j=.. <TAB> bit_z=.. <TAB> byte_z=.. <TAB> worst=.." per key and j (with --verbose),
 // and a line "key <TAB> key=.. <TAB> max_z=.. <TAB> broken=.. <TAB> logsum=.. <TAB> worst_j=.. <TAB> bit_dev=.. <TAB>
 // byte_dev=.. <TAB> unmixed=.." per key: the largest z over j, the number of j with a z above --broken (default 6),
 // the sum over j of log(1 + z+) of the largest z of j (noise: a few per j), and the graded measures summed over j
 // (as the z-scores saturate for a head far from random): bit_dev the sum over the bits of the squared bias
 // (2p - 1)^2, unmixed the bits with |2p - 1| > 0.1, byte_dev the sum over the byte histograms of the chi-square
 // divergence (chi2 - 255) / n (the noise subtracted). The last line "total <TAB> ..." sums them over the keys.
-//   -m, --ops M        the number of ops of the head (default 12)
-//   -W, --words LIST   the words of the state (default 0,1,2,3)
-//   -n, --samples N    the base counters per key (default 2^20)
-//   -t, --threads T    threads (default the hardware threads)
-//   -s, --seed N       the seed of the counters (default 1)
-//   -b, --broken Z     the z above which a delta counts as broken (default 6)
-//   -v, --verbose      a line per key and delta
-#include <getopt.h>
-
+//   --ops M            the number of ops of the head (default 12)
+//   --words LIST       the words of the state (default 0,1,2,3)
+//   --samples N        the base counters per key (default 2^20)
+//   --threads T        threads (default the hardware threads)
+//   --seed N           the seed of the counters (default 1)
+//   --broken Z         the z above which a delta counts as broken (default 6)
+//   --verbose          a line per key and delta
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -40,7 +38,17 @@
 
 #include "arx.hpp"
 #include "keymod.hpp"
+#include "absl/strings/numbers.h"
+#include "flags.hpp"
 #include "logging.hpp"
+
+ABSL_FLAG(int, ops, 12, "the number of ops of the head");
+ABSL_FLAG(std::vector<std::string>, words, (std::vector<std::string>{"0", "1", "2", "3"}), "the words of the state, comma-separated");
+ABSL_FLAG(double, samples, 1 << 20, "the base counters per key (e.g. 1e6)");
+ABSL_FLAG(int, threads, 0, "threads (0: the hardware threads)");
+ABSL_FLAG(uint64_t, seed, 1, "the seed of the counters");
+ABSL_FLAG(double, broken, 6, "the z above which a delta counts as broken");
+ABSL_FLAG(bool, verbose, false, "a line per key and delta");
 
 namespace {
 
@@ -100,50 +108,28 @@ void count(const arx::Arx &a, int m, const std::vector<int> &words, const arx::K
     }
 }
 
-[[noreturn]] void usage() {
-    std::fprintf(stderr, "usage: state [-m ops] [-W words] [-n samples] [-t threads] [-s seed] [-b broken] [-v] structure keylist\n");
-    std::exit(1);
-}
-
 int run(int argc, char **argv) {
-    static const option longopts[] = {
-        {"ops", required_argument, nullptr, 'm'},     {"words", required_argument, nullptr, 'W'},
-        {"samples", required_argument, nullptr, 'n'}, {"threads", required_argument, nullptr, 't'},
-        {"seed", required_argument, nullptr, 's'},    {"broken", required_argument, nullptr, 'b'},
-        {"verbose", no_argument, nullptr, 'v'},       {nullptr, 0, nullptr, 0},
-    };
-    int m = 12, threads = static_cast<int>(std::thread::hardware_concurrency()), opt;
-    uint64_t n = uint64_t(1) << 20, seed = 1;
-    double broken = 6;
-    bool verbose = false;
-    std::vector<int> words = {0, 1, 2, 3};
-    while ((opt = getopt_long(argc, argv, "m:W:n:t:s:b:v", longopts, nullptr)) != -1) {
-        switch (opt) {
-        case 'm': m = std::atoi(optarg); break;
-        case 'W': {
-            words.clear();
-            for (const char *p = optarg; *p;) {
-                words.push_back(static_cast<int>(std::strtol(p, const_cast<char **>(&p), 10)));
-                if (*p == ',') ++p;
-            }
-            break;
-        }
-        case 'n': n = static_cast<uint64_t>(std::strtod(optarg, nullptr)); break;
-        case 't': threads = std::atoi(optarg); break;
-        case 's': seed = std::strtoull(optarg, nullptr, 0); break;
-        case 'b': broken = std::atof(optarg); break;
-        case 'v': verbose = true; break;
-        default: usage();
-        }
+    const std::vector<char *> arg =
+        parse_flags(argc, argv, "state [flags] structure keylist: the counter differentials of the state after the head of a structure");
+    const int m = absl::GetFlag(FLAGS_ops);
+    const int threads = absl::GetFlag(FLAGS_threads) > 0 ? absl::GetFlag(FLAGS_threads) : static_cast<int>(std::thread::hardware_concurrency());
+    const uint64_t n = static_cast<uint64_t>(absl::GetFlag(FLAGS_samples)), seed = absl::GetFlag(FLAGS_seed);
+    const double broken = absl::GetFlag(FLAGS_broken);
+    const bool verbose = absl::GetFlag(FLAGS_verbose);
+    std::vector<int> words;
+    for (const std::string &w : absl::GetFlag(FLAGS_words)) {
+        int x;
+        if (!absl::SimpleAtoi(w, &x)) throw std::runtime_error("invalid word: " + w);
+        words.push_back(x);
     }
-    if (argc - optind != 2 || threads < 1) usage();
-    const arx::Arx a = arx::parse(argv[optind]);
+    if (arg.size() != 2 || threads < 1) usage();
+    const arx::Arx a = arx::parse(arg[0]);
     if (m < 1 || m > static_cast<int>(a.size())) throw std::runtime_error("M out of range");
     for (int w : words)
         if (w < 0 || w > 5) throw std::runtime_error("word out of range");
     std::vector<std::string> specs;
     {
-        std::ifstream f(argv[optind + 1]);
+        std::ifstream f(arg[1]);
         if (!f) throw std::runtime_error("cannot read the key list");
         for (std::string line; std::getline(f, line);)
             if (!line.empty() && line[0] != '#') specs.push_back(line);

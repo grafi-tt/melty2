@@ -3,8 +3,6 @@
 // structure (see run.sh), after dropping the top r bits (the statistic of sknuth_Permutation of
 // TestU01). Prints chi2, and the z score and the upper-tail p-value by the Wilson-Hilferty
 // approximation.
-#include <getopt.h>
-
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -12,6 +10,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
 
@@ -19,15 +18,9 @@
 
 namespace {
 
-[[noreturn]] void usage() {
-    std::fprintf(stderr, "usage: fperm seed swap N r t\n");
-    std::exit(1);
-}
-
 int run(int argc, char **argv) {
-    static const option longopts[] = {{nullptr, 0, nullptr, 0}};
-    if (getopt_long(argc, argv, "", longopts, nullptr) != -1 || argc - optind != 5) usage();
-    char **arg = argv + optind;
+    const std::vector<char *> arg = parse_flags(argc, argv, "fperm seed swap N r t");
+    if (arg.size() != 5) usage();
     const auto seed = static_cast<uint32_t>(std::strtoul(arg[0], nullptr, 0));
     const int swp = std::atoi(arg[1]);
     const long N = std::atol(arg[2]);

@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// testu01_stest [options] "structure" M : the tests of BigCrush, implemented on GPU (LinearComp and
+// testu01_stest [flags] "structure" M : the tests of BigCrush, implemented on GPU (LinearComp and
 // LempelZiv on the host), for the outputs of the first M ops of the structure.
-//   -s, --seed N     the key is that of melty2_init(N, 0, 0, 0) (default 1), modified by MELTY2_KEYMOD
-//   -w, --swap       swap the halves of the counter (the other counter order)
-//   -t, --tests LIST comma-separated tests: poker, coupon, gap, maxoft, collision, birthday, closepairs,
+//   --seed N         the key is that of melty2_init(N, 0, 0, 0) (default 1), modified by MELTY2_KEYMOD
+//   --swap           swap the halves of the counter (the other counter order)
+//   --tests LIST     comma-separated tests: poker, coupon, gap, maxoft, collision, birthday, closepairs,
 //                    permutation, run, serial, collpermut, weight, savir2, gcd, hamweight, hamcorr,
 //                    hamindep, bitrun, longhead, autocor, samplecorr, sampleprod, samplemean, walk,
 //                    periods, sumcoll, fourier, linearcomp, matrixrank, appearance, lempelziv (default
 //                    all)
-//   -f, --scale X    multiply the sample sizes n of BigCrush by X (default 1)
-//   -l, --keylist F  run the tests for every key modification spec of the file F (one per line, "-" for
+//   --scale X        multiply the sample sizes n of BigCrush by X (default 1)
+//   --keylist F      run the tests for every key modification spec of the file F (one per line, "-" for
 //                    none; instead of MELTY2_KEYMOD) in one process; a spec "keymod@streams" takes the
-//                    streams (as -m) for it, and a spec "...#seed" the key of that seed (as -s)
-//   -o, --offset X   start the counters of the tests at X instead of 0 (e.g. those of the later tests
+//                    streams (as --streams) for it, and a spec "...#seed" the key of that seed (as --seed)
+//   --offset X       start the counters of the tests at X instead of 0 (e.g. those of the later tests
 //                    of BigCrush, which TestU01 runs on a single stream from 0)
-//   -m, --streams S  test the interleaved outputs of 2^b streams instead of a single stream: "ctr:b:c"
+//   --streams S      test the interleaved outputs of 2^b streams instead of a single stream: "ctr:b:c"
 //                    for the streams of the counters index + (s << c), as with a stream number in the
 //                    high bits of the counter; "key:b:w" for the streams of the keys with the word w
 //                    xored with s (related keys). The output i is that of the stream i mod 2^b.
@@ -23,20 +23,20 @@
 // After the tests of a key, a line "summary <TAB> M=.. <TAB> seed=.. <TAB> swap=.. <TAB> keymod=.. <TAB>
 // min_p=.. <TAB> max_p=.. <TAB> flagged=.. <TAB> streams=.." gives the smallest and the largest p-values and the number
 // of them outside [0.001, 0.999].
-//   -M, --memory MB  the device memory of the large tests in MiB (default 2048): beyond it, they make their
+//   --memory MB      the device memory of the large tests in MiB (default 2048): beyond it, they make their
 //                    points again by parts (the results are the same)
-//   -L, --log-sum    (the score modes) the score is the sum of log(1 + z) of the largest z-scores of every key,
+//   --log_sum        (the score modes) the score is the sum of log(1 + z) of the largest z-scores of every key,
 //                    step count and counter order (logsum=), a test failing completely counting as z = 1e6
 //                    (instead of stopping the structure with z = inf), and the limit stops the tests once the
 //                    sum is above it: for comparing structures failing badly
-//   -F, --fast       faster computations whose results may differ from those of TestU01 in rounding (the
+//   --fast           faster computations whose results may differ from those of TestU01 in rounding (the
 //                    Anderson-Darling statistics of SampleProd and SampleMean summed on GPU)
-//   -p, --pidfile F  write the process ID to the file F (see pidfile.hpp)
+//   --pidfile F      write the process ID to the file F (see pidfile.hpp)
 //
-// testu01_stest -S M[,M...] [-s seed] [-t tests] [-f scale] [-l keylist] [-m streams] [-o offset]
-// [-D deadline] : the score mode for searches. For every structure of stdin (one per line), the tests
+// testu01_stest --score=M[,M...] [--seed --tests --scale --keylist --streams --offset --deadline ...]
+// : the score mode for searches. For every structure of stdin (one per line), the tests
 // run quietly for the outputs of its first M ops (or of each M of the list, e.g. 15,16), for every key
-// (as -l, or MELTY2_KEYMOD) in both counter orders, and a line "score <TAB> max_z=.. <TAB> min_p=..
+// (as --keylist, or MELTY2_KEYMOD) in both counter orders, and a line "score <TAB> max_z=.. <TAB> min_p=..
 // <TAB> flagged=.. <TAB> valid=.. <TAB> propagated=.. <TAB> repeated=.. <TAB> stopped=.. <TAB> logsum=.. <TAB> structure" gives the largest z-score of the statistics (the excess of a chi-square
 // statistic over its degrees of freedom in standard deviations, or of a number of collisions over its
 // mean; not for ClosePairs), the smallest p-value, the number of flagged ones, and arx::valid,
@@ -44,20 +44,19 @@
 // "structure <TAB> limit" stops the tests at a z-score above the limit (stopped=1; the z-score is then that
 // of the tests so far, for Collision and Birthday that of their replications so far).
 //
-// testu01_stest -P plan [-s seed] [-m streams] [-D deadline] : the score mode of several stages, in one
-// process: every line "M[,M...] tests scale keylist [offset]" of the file plan is a stage (as -S M -t tests
-// -f scale -l keylist -o offset), and the stages run in their order for every structure; the line
+// testu01_stest --plan=plan [--seed --streams --deadline ...] : the score mode of several stages, in one
+// process: every line "M[,M...] tests scale keylist [offset]" of the file plan is a stage (as --score=M --tests=tests
+// --scale=scale --keylist=keylist --offset=offset), and the stages run in their order for every structure; the line
 // "score ..." is that of all of them (the limit stopping the later ones). Lines from "#" are comments.
-// With -v, the score modes also print a line "key <TAB> M=.. <TAB> swap=.. <TAB> key=keymod@streams#seed
+// With --verbose, the score modes also print a line "key <TAB> M=.. <TAB> swap=.. <TAB> key=keymod@streams#seed
 // <TAB> tests=.. <TAB> scale=.. <TAB> max_z=.. <TAB> min_p=.. <TAB> flagged=.." for every key, step count
 // and counter order, before the line "score ...".
 //
 //
 // The tests are those of the library testu01_gpu (../testu01_gpu, see its README.md), on the outputs of
 // the first M ops of the structure as a counter-based generator: the position of the sequence is the
-// counter (or that of the interleaved streams, see -m).
+// counter (or that of the interleaved streams, see --streams).
 #include <hip/hip_runtime.h>
-#include <getopt.h>
 
 #include <algorithm>
 #include <chrono>
@@ -76,10 +75,27 @@
 
 #include "arx.hpp"
 #include "absl/strings/str_format.h"
+#include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
 #include "pidfile.hpp"
 #include "testu01_gpu.hpp"
+
+ABSL_FLAG(uint32_t, seed, 1, "the key is that of melty2_init(N, 0, 0, 0), modified by MELTY2_KEYMOD");
+ABSL_FLAG(bool, swap, false, "swap the halves of the counter (the other counter order)");
+ABSL_FLAG(std::string, tests, "", "comma-separated tests (default all)");
+ABSL_FLAG(double, scale, 1, "multiply the sample sizes n of BigCrush by X");
+ABSL_FLAG(std::string, keylist, "", "run the tests for every key modification spec of the file (instead of MELTY2_KEYMOD)");
+ABSL_FLAG(uint64_t, offset, 0, "start the counters of the tests at X instead of 0");
+ABSL_FLAG(std::string, streams, "-", "test the interleaved outputs of 2^b streams: ctr:b:c or key:b:w (default -, a single stream)");
+ABSL_FLAG(uint64_t, memory, 2048, "the device memory of the large tests in MiB");
+ABSL_FLAG(bool, log_sum, false, "(the score modes) the score is the sum of log(1 + z) of the largest z-scores");
+ABSL_FLAG(bool, fast, false, "faster computations whose results may differ from those of TestU01 in rounding");
+ABSL_FLAG(std::string, pidfile, "", "write the process ID to this file (see pidfile.hpp)");
+ABSL_FLAG(std::string, score, "", "the score mode for the steps M[,M...]");
+ABSL_FLAG(std::string, plan, "", "the score mode of the stages of the file");
+ABSL_FLAG(int, deadline, 12, "(the score modes) the deadline of arx::keys_propagated_by");
+ABSL_FLAG(bool, verbose, false, "(the score modes) a line per key, step count and counter order");
 
 namespace {
 
@@ -150,7 +166,7 @@ std::unique_ptr<testu01_gpu::Generator> compile(const arx::Arx &a) { return std:
 struct Options {
     testu01_gpu::Options t;  // the tests, scale, first counter and limit
     bool quiet = false;      // no line per test (the score mode)
-    bool logsum = false;     // the score mode limits the sum of log(1 + z) over the keys (-L)
+    bool logsum = false;     // the score mode limits the sum of log(1 + z) over the keys (--log_sum)
 };
 
 constexpr double kFailZ = 1e6;  // the z-score of a test failing completely, for the sum of log(1 + z)
@@ -170,7 +186,7 @@ Summary run_tests(const Options &o, testu01_gpu::Battery &battery, const testu01
     return battery.run(gen, g.params(), t);
 }
 
-// the streams of g by the spec "ctr:b:c" or "key:b:w" (see -m), or a single stream for "-"
+// the streams of g by the spec "ctr:b:c" or "key:b:w" (see --streams), or a single stream for "-"
 void set_streams(Gen &g, const std::string &streams) {
     g.sbits = 0;
     g.cbit = g.kword = -1;
@@ -185,7 +201,7 @@ void set_streams(Gen &g, const std::string &streams) {
     else g.kword = x;
 }
 
-// a key of the tests: a key spec "keymod[@streams][#seed]" (see -l)
+// a key of the tests: a key spec "keymod[@streams][#seed]" (see --keylist)
 struct KeyRun {
     std::string keymod, streams;
     Gen g;          // the key and the streams (the counter order is set later)
@@ -213,8 +229,8 @@ std::vector<std::string> read_specs(const char *list) {
     return specs;
 }
 
-// the keys of the specs: a spec "keymod@streams" takes its own streams instead of those of -m, and a
-// spec "...#seed" the key of that seed instead of that of -s
+// the keys of the specs: a spec "keymod@streams" takes its own streams instead of those of --streams, and a
+// spec "...#seed" the key of that seed instead of that of --seed
 std::vector<KeyRun> make_keys(const std::vector<std::string> &specs, uint32_t seed, const std::string &streams, const Gen &g) {
     std::vector<KeyRun> keys;
     for (const std::string &spec : specs) {
@@ -251,63 +267,31 @@ std::vector<int> parse_ms(const char *arg) {
     return ms;
 }
 
-[[noreturn]] void usage() {
-    std::fprintf(stderr,
-                 "usage: testu01_stest [-s seed] [-w] [-t tests] [-f scale] [-l keylist] [-m streams] [-o offset] [-M MB] [-F] [-p pidfile] structure M\n"
-                 "       testu01_stest -S M[,M...] [-s seed] [-t tests] [-f scale] [-l keylist] [-m streams] [-o offset] [-D deadline] [-v] [-L] [-M MB] [-F] [-p pidfile]"
-                 " < structures\n"
-                 "       testu01_stest -P plan [-s seed] [-m streams] [-D deadline] [-v] [-L] [-M MB] [-F] [-p pidfile] < structures\n");
-    std::exit(1);
-}
-
 int run_main(int argc, char **argv) {
-    static const option longopts[] = {
-        {"seed", required_argument, nullptr, 's'},
-        {"swap", no_argument, nullptr, 'w'},
-        {"tests", required_argument, nullptr, 't'},
-        {"scale", required_argument, nullptr, 'f'},
-        {"keylist", required_argument, nullptr, 'l'},
-        {"streams", required_argument, nullptr, 'm'},
-        {"pidfile", required_argument, nullptr, 'p'},
-        {"score", required_argument, nullptr, 'S'},
-        {"deadline", required_argument, nullptr, 'D'},
-        {"offset", required_argument, nullptr, 'o'},
-        {"plan", required_argument, nullptr, 'P'},
-        {"verbose", no_argument, nullptr, 'v'},
-        {"memory", required_argument, nullptr, 'M'},
-        {"fast", no_argument, nullptr, 'F'},
-        {"log-sum", no_argument, nullptr, 'L'},
-        {nullptr, 0, nullptr, 0},
-    };
+    const std::vector<char *> arg = parse_flags(
+        argc, argv,
+        "testu01_stest [flags] structure M: the tests of BigCrush on GPU for the first M ops of the structure\n"
+        "       testu01_stest --score=M[,M...] [flags] < structures: the score mode for searches\n"
+        "       testu01_stest --plan=plan [flags] < structures: the score mode of the stages of the plan");
     Options o;
-    uint32_t seed = 1;
-    int swp = 0, opt, deadline = 12;
-    bool verbose = false;
-    std::vector<int> score_ms;
-    const char *pidfile = nullptr, *list = nullptr, *plan = nullptr;
-    std::string streams = "-";
-    while ((opt = getopt_long(argc, argv, "s:wt:f:l:m:p:S:D:o:P:vM:FL", longopts, nullptr)) != -1) {
-        switch (opt) {
-        case 's': seed = static_cast<uint32_t>(std::strtoul(optarg, nullptr, 0)); break;
-        case 'w': swp = 1; break;
-        case 't': o.t.tests = optarg; break;
-        case 'f': o.t.scale = std::atof(optarg); break;
-        case 'l': list = optarg; break;
-        case 'm': streams = optarg; break;
-        case 'p': pidfile = optarg; break;
-        case 'S': score_ms = parse_ms(optarg); break;
-        case 'P': plan = optarg; break;
-        case 'v': verbose = true; break;
-        case 'D': deadline = std::atoi(optarg); break;
-        case 'o': o.t.first = std::strtoull(optarg, nullptr, 0); break;
-        case 'F': o.t.fast = true; break;
-        case 'L': o.logsum = true; break;
-        case 'M': o.t.memory = static_cast<size_t>(std::strtoull(optarg, nullptr, 0)) << 20; break;
-        default: usage();
-        }
-    }
+    const uint32_t seed = absl::GetFlag(FLAGS_seed);
+    const int swp = absl::GetFlag(FLAGS_swap) ? 1 : 0, deadline = absl::GetFlag(FLAGS_deadline);
+    const bool verbose = absl::GetFlag(FLAGS_verbose);
+    if (const std::string t = absl::GetFlag(FLAGS_tests); !t.empty()) o.t.tests = t;
+    o.t.scale = absl::GetFlag(FLAGS_scale);
+    o.t.first = absl::GetFlag(FLAGS_offset);
+    o.t.memory = static_cast<size_t>(absl::GetFlag(FLAGS_memory)) << 20;
+    o.t.fast = absl::GetFlag(FLAGS_fast);
+    o.logsum = absl::GetFlag(FLAGS_log_sum);
+    const std::string streams = absl::GetFlag(FLAGS_streams), score_flag = absl::GetFlag(FLAGS_score);
+    const std::vector<int> score_ms = score_flag.empty() ? std::vector<int>{} : parse_ms(score_flag.c_str());
+    // (nullptr: none)
+    const std::string pidfile_flag = absl::GetFlag(FLAGS_pidfile), list_flag = absl::GetFlag(FLAGS_keylist),
+                      plan_flag = absl::GetFlag(FLAGS_plan);
+    const char *pidfile = pidfile_flag.empty() ? nullptr : pidfile_flag.c_str(), *list = list_flag.empty() ? nullptr : list_flag.c_str(),
+               *plan = plan_flag.empty() ? nullptr : plan_flag.c_str();
     const bool score = !score_ms.empty() || plan;
-    if (argc - optind != (score ? 0 : 2) || (!score_ms.empty() && plan)) usage();
+    if (arg.size() != (score ? 0u : 2u) || (!score_ms.empty() && plan)) usage();
     if (pidfile) pidfile::write(pidfile);
     // wait for the device by blocking the thread, instead of spinning on a CPU core
     if (hipSetDeviceFlags(hipDeviceScheduleBlockingSync) != hipSuccess) throw std::runtime_error("hipSetDeviceFlags failed");
@@ -366,7 +350,7 @@ int run_main(int argc, char **argv) {
                             for (KeyRun k : st.keys) {
                                 if (over()) break;
                                 k.g.swp = w;
-                                // with -L, a key stops once its z-score alone takes the sum over the limit, and a
+                                // with --log_sum, a key stops once its z-score alone takes the sum over the limit, and a
                                 // test failing completely counts as kFailZ
                                 if (lm) st.o.t.limit = std::expm1(std::min(limit - lsum, 700.0));
                                 Summary ks;
@@ -394,8 +378,8 @@ int run_main(int argc, char **argv) {
         }
         return 0;
     }
-    arx::Arx a = arx::parse(argv[optind]);
-    const int M = std::atoi(argv[optind + 1]);
+    arx::Arx a = arx::parse(arg[0]);
+    const int M = std::atoi(arg[1]);
     if (M < 1 || M > static_cast<int>(a.size())) throw std::invalid_argument("M must satisfy 1 <= M <= (ops)");
     a.resize(M);
     const auto t0 = std::chrono::steady_clock::now();

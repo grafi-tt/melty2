@@ -1,49 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// prof [options] "structure" mlo mhi nkeys n : counter-differential bias profile at the depths mlo..mhi
+// prof [flags] "structure" mlo mhi nkeys n : counter-differential bias profile at the depths mlo..mhi
 // over random keys (see metric.hpp). The margin of a structure is its length minus the last depth whose
 // maximum bias is clearly above the noise.
-//   -s, --seed N        seed of the keys and the counters (default 1)
-//   -w, --weak-words N  words given a zero or a rotation relation in the weak keys (default 0, none)
-//   -p, --pidfile F     write the process ID to the file F (see pidfile.hpp)
-#include <getopt.h>
-
+//   --seed N            seed of the keys and the counters (default 1)
+//   --weak_words N      words given a zero or a rotation relation in the weak keys (default 0, none)
+//   --pidfile F         write the process ID to the file F (see pidfile.hpp)
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
 
+#include "flags.hpp"
 #include "logging.hpp"
 #include "metric.hpp"
 #include "pidfile.hpp"
 
+ABSL_FLAG(uint64_t, seed, 1, "seed of the keys and the counters");
+ABSL_FLAG(int, weak_words, 0, "words given a zero or a rotation relation in the weak keys (0: none)");
+ABSL_FLAG(std::string, pidfile, "", "write the process ID to this file (see pidfile.hpp)");
+
 namespace {
 
-[[noreturn]] void usage() {
-    std::fprintf(stderr, "usage: prof [-s seed] [-w weak_words] [-p pidfile] structure mlo mhi nkeys n\n");
-    std::exit(1);
-}
-
 int run(int argc, char **argv) {
-    static const option longopts[] = {
-        {"seed", required_argument, nullptr, 's'},
-        {"weak-words", required_argument, nullptr, 'w'},
-        {"pidfile", required_argument, nullptr, 'p'},
-        {nullptr, 0, nullptr, 0},
-    };
-    uint64_t seed = 1;
-    int weak = 0, opt;
-    const char *pidfile = nullptr;
-    while ((opt = getopt_long(argc, argv, "s:w:p:", longopts, nullptr)) != -1) {
-        switch (opt) {
-        case 's': seed = std::strtoull(optarg, nullptr, 0); break;
-        case 'w': weak = std::atoi(optarg); break;
-        case 'p': pidfile = optarg; break;
-        default: usage();
-        }
-    }
-    if (argc - optind != 5) usage();
-    if (pidfile) pidfile::write(pidfile);
-    char **arg = argv + optind;
+    const std::vector<char *> arg = parse_flags(argc, argv, "prof [flags] structure mlo mhi nkeys n: the counter-differential bias profile");
+    if (arg.size() != 5) usage();
+    const uint64_t seed = absl::GetFlag(FLAGS_seed);
+    const int weak = absl::GetFlag(FLAGS_weak_words);
+    if (const std::string pf = absl::GetFlag(FLAGS_pidfile); !pf.empty()) pidfile::write(pf.c_str());
     const arx::Arx a = arx::parse(arg[0]);
     const int L = static_cast<int>(a.size());
     const int mlo = std::atoi(arg[1]), mhi = std::atoi(arg[2]), nk = std::atoi(arg[3]), n = std::atoi(arg[4]);

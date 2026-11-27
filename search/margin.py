@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """The statistical margins of a structure by the GPU tests of testu01_stest, per group of keys.
 
-A group is a set of key specs (as testu01_stest -l: "keymod[@streams][#seed]") with a target margin,
+A group is a set of key specs (as testu01_stest --keylist: "keymod[@streams][#seed]") with a target margin,
 e.g. the normal keys (3), the weak-key classes of probability 2^-32 (3), about 2^-48 (2) or 2^-64 (1),
 and the counter streams (3). The default 2^-48 classes are a sample of the kinds of constraints of 33 to
 48 bits: three half-words zero, a word fixed or related to another and a half-word zero, two words of
@@ -14,7 +14,7 @@ By default only M = L - target is tested for each group: the verdict is "pass" (
 failure. With --scan, the steps from L - 1 down to L - DOWN are tested until the group fails, for its
 exact margin (or "> DOWN").
 
-The tests at every M are the stages of a testu01_stest -P plan: TESTS at the scale SCALE, and LONG_TESTS
+The tests at every M are the stages of a testu01_stest --plan: TESTS at the scale SCALE, and LONG_TESTS
 (Permutation and Run, whose biases depend on the counter range) at LONG_SCALE (4 reproduces BigCrush). The groups
 are those of --groups (a file of lines "name target spec spec ...") or the defaults below.
 """
@@ -74,7 +74,7 @@ def run_step(a, st, m, groups, tmp):
     plan = os.path.join(tmp, "plan")
     with open(plan, "w") as f:
         f.write("\n".join(lines) + "\n")
-    out = subprocess.run([a.stest, "-v", "-P", plan], input=st + "\n", capture_output=True, text=True, check=True).stdout
+    out = subprocess.run([a.stest, "--verbose", f"--plan={plan}"], input=st + "\n", capture_output=True, text=True, check=True).stdout
     res = {}
     for line in out.splitlines():
         if not line.startswith("key\t"):
@@ -97,7 +97,7 @@ def main():
     ap.add_argument("--scale", type=float, default=1)
     ap.add_argument("--long-tests", default="permutation,run", help="the tests at LONG_SCALE")
     ap.add_argument("--long-scale", type=float, default=4, help="the scale of LONG_TESTS (0: none)")
-    ap.add_argument("--offset", default="0", help="the first counter of the tests (testu01_stest -o)")
+    ap.add_argument("--offset", default="0", help="the first counter of the tests (testu01_stest --offset)")
     ap.add_argument("--stest", default=DEFAULT_STEST, help="testu01_stest (default build/testu01_stest)")
     ap.add_argument("structure")
     a = ap.parse_args()

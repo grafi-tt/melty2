@@ -3,7 +3,7 @@
 # run.sh TOOL "structure" M args... : build TOOL (gen, genlow, genpair, fperm or bcsub) with the first M
 # ops of the structure compiled in, and run it with the arguments args...
 # Builds are cached in ../build/gen/, and rebuilt when the source of the tool, the headers it uses or
-# mkkern.py is newer. The tools are C++20 (CXX, CXXFLAGS), as the abseil of their logging (found by pkg-config,
+# mkkern.py is newer. The tools are C++20 (CXX, CXXFLAGS), as the abseil of their logging and flags (found by pkg-config,
 # or ABSL_CFLAGS and ABSL_LIBS), and melty2_init.c of the library is compiled as C (CC, CFLAGS); LDFLAGS is
 # added to the link, e.g. for the location of TestU01.
 # Concurrent runs may build the same structure: every run writes its own temporary files and renames
@@ -25,13 +25,13 @@ if [ ! -f "$d/kern.hpp" ] || [ "$here/mkkern.py" -nt "$d/kern.hpp" ]; then
     mv "$d/kern.hpp.tmp.$$" "$d/kern.hpp"
 fi
 stale=0
-for f in "$here/$tool.cc" "$here/../keymod.hpp" "$here/../arx.hpp" "$here/../logging.hpp" "$d/kern.hpp"; do
+for f in "$here/$tool.cc" "$here/../keymod.hpp" "$here/../arx.hpp" "$here/../logging.hpp" "$here/../flags.hpp" "$d/kern.hpp"; do
     [ "$f" -nt "$d/$tool" ] && stale=1
 done
 if [ ! -x "$d/$tool" ] || [ $stale = 1 ]; then
     libs=""
     [ "$tool" = bcsub ] && libs="-ltestu01 -lprobdist -lmylib"
-    absl="absl_log absl_check absl_log_initialize absl_log_globals"
+    absl="absl_log absl_check absl_log_initialize absl_log_globals absl_flags absl_flags_parse absl_flags_usage"
     absl_cflags=${ABSL_CFLAGS-$(pkg-config --cflags $absl)}
     absl_libs=${ABSL_LIBS-$(pkg-config --libs $absl)}
     ${CC:-cc} -std=c99 -O3 -march=native ${CFLAGS} -I"$root/include" -c "$root/src/melty2_init.c" -o "$d/melty2_init.o.$$"

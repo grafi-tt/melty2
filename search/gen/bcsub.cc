@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-// bcsub [-b battery] seed swap [tests...] : tests of TestU01 for the compiled-in structure (see
+// bcsub [flags] seed swap [tests...] : tests of TestU01 for the compiled-in structure (see
 // run.sh), by default the selected tests of BigCrush (by the numbers of bbattery_RepeatBigCrush),
 // which are a subset that took long for weak structures if no test is given.
-//   -b, --battery B  small, crush or big for the whole SmallCrush, Crush or BigCrush
-//   -m, --streams S  the interleaved outputs of 2^b streams "ctr:b:c" (b <= 12), as testu01_stest -m:
+//   --battery B      small, crush or big for the whole SmallCrush, Crush or BigCrush
+//   --streams S      the interleaved outputs of 2^b streams "ctr:b:c" (b <= 12), as testu01_stest --streams:
 //                    the output at the position p is that of the stream s = p mod 2^b at its index
 //                    p >> b, of the counter index + (s << c)
-#include <getopt.h>
-
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -20,10 +18,14 @@ extern "C" {
 #include <unif01.h>
 }
 
+#include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
 
 #include "kern.hpp"
+
+ABSL_FLAG(std::string, battery, "", "small, crush or big for the whole SmallCrush, Crush or BigCrush (default: the selected tests)");
+ABSL_FLAG(std::string, streams, "", "the interleaved outputs of 2^b streams \"ctr:b:c\" (b <= 12), as testu01_stest --streams");
 
 namespace {
 
@@ -63,42 +65,25 @@ unsigned int next() {
 
 constexpr int kDefaultTests[] = {12, 22, 23, 24, 34, 40, 41, 42, 43, 44, 45, 66, 67, 76, 77, 78, 79, 80, 81, 82, 93, 94, 95, 96};
 
-[[noreturn]] void usage() {
-    std::fprintf(stderr, "usage: bcsub [-b small|crush|big] [-m ctr:b:c] seed swap [tests...]\n");
-    std::exit(1);
-}
-
 int run(int argc, char **argv) {
-    static const option longopts[] = {
-        {"battery", required_argument, nullptr, 'b'},
-        {"streams", required_argument, nullptr, 'm'},
-        {nullptr, 0, nullptr, 0},
-    };
-    std::string battery;
-    int opt;
-    while ((opt = getopt_long(argc, argv, "b:m:", longopts, nullptr)) != -1) {
-        switch (opt) {
-        case 'b': battery = optarg; break;
-        case 'm':
-            if (std::sscanf(optarg, "ctr:%d:%d", &stream.sbits, &stream.cbit) != 2 || stream.sbits < 1 || stream.sbits > 12 ||
-                stream.cbit < 0 || stream.cbit > 63) {
-                LOG(ERROR) << "invalid streams (ctr:b:c, 1 <= b <= 12): " << optarg;
-                return 1;
-            }
-            stream.buf.assign(static_cast<size_t>(kLanes) << stream.sbits, 0);
-            stream.idx = stream.buf.size();
-            break;
-        default: usage();
+    const std::vector<char *> arg = parse_flags(argc, argv, "bcsub [flags] seed swap [tests...]");
+    const std::string battery = absl::GetFlag(FLAGS_battery), streams = absl::GetFlag(FLAGS_streams);
+    if (!streams.empty()) {
+        if (std::sscanf(streams.c_str(), "ctr:%d:%d", &stream.sbits, &stream.cbit) != 2 || stream.sbits < 1 || stream.sbits > 12 ||
+            stream.cbit < 0 || stream.cbit > 63) {
+            LOG(ERROR) << "invalid streams (ctr:b:c, 1 <= b <= 12): " << streams;
+            return 1;
         }
+        stream.buf.assign(static_cast<size_t>(kLanes) << stream.sbits, 0);
+        stream.idx = stream.buf.size();
     }
-    if (argc - optind < 2) usage();
+    if (arg.size() < 2) usage();
     if (!battery.empty() && battery != "small" && battery != "crush" && battery != "big") usage();
-    if (!battery.empty() && argc - optind > 2) {
+    if (!battery.empty() && arg.size() > 2) {
         LOG(ERROR) << "test numbers are only for the selected tests of BigCrush";
         return 1;
     }
-    char **arg = argv + optind;
-    const int narg = argc - optind;
+    const int narg = static_cast<int>(arg.size());
     const auto s0 = static_cast<uint32_t>(std::strtoul(arg[0], nullptr, 0));
     stream.swp = std::atoi(arg[1]);
     stream.key = keymod::seed_key(s0);
