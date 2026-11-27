@@ -32,6 +32,7 @@
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -40,7 +41,6 @@
 
 #include "arx.hpp"
 #include "keymod.hpp"
-#include "absl/strings/numbers.h"
 #include "flags.hpp"
 #include "logging.hpp"
 #include "number.hpp"
@@ -124,9 +124,10 @@ int run(int argc, char **argv) {
     const bool verbose = absl::GetFlag(FLAGS_verbose);
     std::vector<int> words;
     for (const std::string &w : absl::GetFlag(FLAGS_words)) {
-        int x;
-        if (!absl::SimpleAtoi(w, &x)) throw std::runtime_error("invalid word: " + w);
-        words.push_back(x);
+        std::string_view rest = w;
+        const std::optional<int> x = number::take<int>(rest);
+        if (!x || !rest.empty()) throw std::runtime_error("invalid word: " + w);
+        words.push_back(*x);
     }
     if (arg.size() != 2 || threads < 1) usage();
     const arx::Arx a = arx::parse(arg[0]);

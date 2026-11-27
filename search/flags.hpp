@@ -18,8 +18,6 @@
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
 #include "absl/flags/usage_config.h"
-#include "absl/strings/match.h"
-#include "absl/strings/string_view.h"
 
 // the positional arguments of the command line, after its flags are parsed; usage is "tool [flags] args...: what"
 inline std::vector<std::string_view> parse_flags(int argc, char **argv, std::string_view usage) {
@@ -27,13 +25,13 @@ inline std::vector<std::string_view> parse_flags(int argc, char **argv, std::str
     // --help lists the flags of the tools (by default only those of a file named as the program, e.g. sa_cpu.cc),
     // not those of abseil (--helpfull)
     absl::FlagsUsageConfig config;
-    config.contains_help_flags = config.contains_helpshort_flags = [](absl::string_view file) { return !absl::StrContains(file, "absl/"); };
+    config.contains_help_flags = config.contains_helpshort_flags = [](std::string_view file) { return file.find("absl/") == file.npos; };
     absl::SetFlagsUsageConfig(config);
     const std::vector<char *> args = absl::ParseCommandLine(argc, argv);
     return {args.begin() + 1, args.end()};
 }
 
 [[noreturn]] inline void usage() {
-    std::cerr << std::format("usage: {}\n(--help for the flags)\n", std::string_view(absl::ProgramUsageMessage()));
+    std::cerr << std::format("usage: {}\n(--help for the flags)\n", absl::ProgramUsageMessage());
     std::exit(1);
 }

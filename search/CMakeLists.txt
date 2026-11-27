@@ -80,7 +80,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(root ${CMAKE_CURRENT_SOURCE_DIR}/..)
 find_package(absl REQUIRED)
 # the logging, the flags and the signals of the tools (logging.hpp, flags.hpp, signal.hpp)
-set(absl_libs absl::log absl::check absl::log_initialize absl::log_globals absl::str_format absl::flags absl::flags_parse
+set(absl_libs absl::log absl::check absl::log_initialize absl::log_globals absl::flags absl::flags_parse
                absl::flags_usage)
 set(cpu_flags $<$<BOOL:${MELTY2_SEARCH_NATIVE}>:-march=native>)
 # the warnings of the GPU code (nvcc passes those of the host compiler by -Xcompiler)
