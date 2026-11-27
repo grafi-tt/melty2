@@ -7,7 +7,7 @@
 #                         ../testu01_gpu built along (with its options: TestU01_ROOT, TESTU01_GPU_HOST_FLAGS) (OFF)
 #   MELTY2_SEARCH_NATIVE  -march=native for the C and C++ code of the CPU (ON)
 #   CMAKE_HIP_ARCHITECTURES  the GPU architectures of the HIP code (default gfx1030)
-# The tools are C++17; melty2_init.c of the library is compiled as C.
+# The tools are C++20 (as the abseil of the system, for LOG and CHECK); melty2_init.c of the library is compiled as C.
 cmake_minimum_required(VERSION 3.21)
 
 option(MELTY2_SEARCH_CPU "build the tools with the CPU metric" ON)
@@ -29,21 +29,25 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_HIP_STANDARD 17)
+set(CMAKE_HIP_STANDARD 20)
 set(CMAKE_HIP_STANDARD_REQUIRED ON)
 set(CMAKE_HIP_EXTENSIONS OFF)
 # the executables in build/ itself (the scripts and the README run build/<tool>)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 set(root ${CMAKE_CURRENT_SOURCE_DIR}/..)
+find_package(absl REQUIRED)
+# the logging of the tools (logging.hpp)
+set(absl_libs absl::log absl::check absl::log_initialize absl::log_globals absl::str_format)
 set(cpu_flags $<$<BOOL:${MELTY2_SEARCH_NATIVE}>:-march=native>)
 
 # the CPU code common to the tools: melty2_init (C); metric_common (which calls the metric) goes with each metric
 add_library(melty2_search_common STATIC ${root}/src/melty2_init.c)
 target_include_directories(melty2_search_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${root}/include)
+target_link_libraries(melty2_search_common PUBLIC ${absl_libs})
 target_compile_options(melty2_search_common PRIVATE ${cpu_flags})
 
 set(tools prof rank sa weakkeys)

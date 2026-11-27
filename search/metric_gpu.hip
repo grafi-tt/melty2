@@ -10,10 +10,9 @@
 #include <hip/hip_runtime.h>
 
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
 
+#include "logging.hpp"
 #include "metric.hpp"
 
 namespace metric {
@@ -148,13 +147,12 @@ __global__ void kchi(const unsigned *ghist, double e, double *chi) {
     if (threadIdx.x == 0) chi[h] = part[0] / e - 255;
 }
 
-void check(hipError_t e, const char *what, int line) {
-    if (e != hipSuccess) {
-        std::fprintf(stderr, "HIP %s at %s:%d (%s)\n", hipGetErrorString(e), __FILE__, line, what);
-        std::exit(1);
-    }
-}
-#define CK(x) check((x), #x, __LINE__)
+// CHECK of a HIP call: the failure is fatal, with the error string and the call
+#define CHECK_HIP(x)                                                                         \
+    do {                                                                                     \
+        const hipError_t check_hip_e = (x);                                                  \
+        CHECK(check_hip_e == hipSuccess) << "HIP " << hipGetErrorString(check_hip_e) << ": " #x; \
+    } while (0)
 
 // Launch kdm<g> for g depths from dlo.
 void launch_kdm(int g, dim3 grid, hipStream_t st, int nops, int dlo, const uint32_t *keys, uint64_t seed, int iters, unsigned *ghist, int nd, int mlo) {
@@ -174,11 +172,11 @@ struct Buffer {
     size_t cap = 0;
     void reserve(size_t n, bool with_dev, bool with_host) {
         if (n <= cap) return;
-        if (dev) CK(hipFree(dev));
-        if (host) CK(hipHostFree(host));
+        if (dev) CHECK_HIP(hipFree(dev));
+        if (host) CHECK_HIP(hipHostFree(host));
         dev = host = nullptr;
-        if (with_dev) CK(hipMalloc(reinterpret_cast<void **>(&dev), n * sizeof(T)));
-        if (with_host) CK(hipHostMalloc(reinterpret_cast<void **>(&host), n * sizeof(T), hipHostMallocDefault));
+        if (with_dev) CHECK_HIP(hipMalloc(reinterpret_cast<void **>(&dev), n * sizeof(T)));
+        if (with_host) CHECK_HIP(hipHostMalloc(reinterpret_cast<void **>(&host), n * sizeof(T), hipHostMallocDefault));
         cap = n;
     }
 };
@@ -193,8 +191,8 @@ struct Device {
     Buffer<double> chi;     // the chi-square statistics
     Device() {
         // wait for the device by blocking the thread, instead of spinning on a CPU core
-        CK(hipSetDeviceFlags(hipDeviceScheduleBlockingSync));
-        CK(hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
+        CHECK_HIP(hipSetDeviceFlags(hipDeviceScheduleBlockingSync));
+        CHECK_HIP(hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
         ops.reserve(arx::kMaxOps + 1, false, true);
     }
 };
@@ -218,15 +216,15 @@ std::vector<double> bias_per_key(const arx::Arx &a, int mlo, int mhi, const std:
         if (o.t == arx::kRot && rot == 0) code = 36 + o.d * 6 + o.s;  // rotation by 0 is an xor
         packed[i] = code | rot << 8;
     }
-    CK(hipMemcpyToSymbolAsync(HIP_SYMBOL(c_op), packed, sizeof(int) * (mhi + 1), 0, hipMemcpyHostToDevice, st));
+    CHECK_HIP(hipMemcpyToSymbolAsync(HIP_SYMBOL(c_op), packed, sizeof(int) * (mhi + 1), 0, hipMemcpyHostToDevice, st));
     dev.keys.reserve(6 * static_cast<size_t>(nk), true, true);
     std::memcpy(dev.keys.host, keys.data(), sizeof(Key) * nk);
-    CK(hipMemcpyAsync(dev.keys.dev, dev.keys.host, sizeof(Key) * nk, hipMemcpyHostToDevice, st));
+    CHECK_HIP(hipMemcpyAsync(dev.keys.dev, dev.keys.host, sizeof(Key) * nk, hipMemcpyHostToDevice, st));
     const int nd = mhi - mlo + 1;
     const size_t nh = static_cast<size_t>(nk) * kDeltas * nd * 2 * kWindows;  // number of 256-bin histograms
     dev.hist.reserve(nh * 256, true, false);
     dev.chi.reserve(nh, true, true);
-    CK(hipMemsetAsync(dev.hist.dev, 0, nh * 256 * sizeof(unsigned), st));
+    CHECK_HIP(hipMemsetAsync(dev.hist.dev, 0, nh * 256 * sizeof(unsigned), st));
     const int per_block_iter = kThreads * kPairs;
     const int total = (n + per_block_iter - 1) / per_block_iter;
     const int bx = std::min(total, 16);
@@ -239,9 +237,9 @@ std::vector<double> bias_per_key(const arx::Arx &a, int mlo, int mhi, const std:
     }
     const double e = nreal / 256.0;
     hipLaunchKernelGGL(kchi, dim3(nh), dim3(256), 0, st, dev.hist.dev, e, dev.chi.dev);
-    CK(hipGetLastError());
-    CK(hipMemcpyAsync(dev.chi.host, dev.chi.dev, nh * sizeof(double), hipMemcpyDeviceToHost, st));
-    CK(hipStreamSynchronize(st));  // the only wait: the results are needed below
+    CHECK_HIP(hipGetLastError());
+    CHECK_HIP(hipMemcpyAsync(dev.chi.host, dev.chi.dev, nh * sizeof(double), hipMemcpyDeviceToHost, st));
+    CHECK_HIP(hipStreamSynchronize(st));  // the only wait: the results are needed below
     std::vector<double> per_key(static_cast<size_t>(nk) * nd);
     for (int key = 0; key < nk; ++key)
         for (int m = 0; m < nd; ++m) {

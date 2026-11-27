@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Collect the candidate structures from the logs of sa, for rank.
 
-sa prints the best structure so far every 100 iterations to stderr ("it=N cur=F best=F structure"),
+sa logs the best structure so far every 100 iterations to stderr ("it=N cur=F best=F structure"),
 and the final best structure on the second line of stdout. This script reads the given files (the
 stderr and stdout of sa), and prints every distinct structure once as "name<TAB>structure",
 where the name is the file name without the extension and the iteration where the structure first
@@ -25,6 +25,9 @@ for path in args.files:
             found.append(("final", lines[1].strip()))
     else:
         for line in lines:
+            # (the progress lines of sa: "it=N cur=F best=F structure", after the prefix of abseil's LOG,
+            # "I1127 15:03:05.568861   94958 sa.cc:425] ", in the logs since sa logs by abseil)
+            line = line.split("] ", 1)[1] if line[:1] in "IWEF" and "] it=" in line else line
             if line.startswith("it="):
                 fields = line.split(" ", 3)
                 if len(fields) == 4:

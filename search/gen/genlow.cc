@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "keymod.hpp"
+#include "logging.hpp"
 
 #include "kern.hpp"
 
@@ -40,7 +41,7 @@ int run(int argc, char **argv) {
     const auto seed = static_cast<uint32_t>(std::strtoul(arg[0], nullptr, 0));
     const int swp = std::atoi(arg[1]), nb = std::atoi(arg[2]);
     if (nb < 1 || nb > 32 || 32 % nb != 0) {
-        std::fprintf(stderr, "nbits must divide 32\n");
+        LOG(ERROR) << "nbits must divide 32";
         return 1;
     }
     arx::Key key = keymod::seed_key(seed);
@@ -68,10 +69,11 @@ int run(int argc, char **argv) {
 }  // namespace
 
 int main(int argc, char **argv) {
+    init_logging();
     try {
         return run(argc, argv);
     } catch (const std::exception &e) {
-        std::fprintf(stderr, "%s\n", e.what());
+        LOG(ERROR) << e.what();
         return 1;
     }
 }

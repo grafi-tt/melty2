@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "keymod.hpp"
+#include "logging.hpp"
 
 #include "kern.hpp"
 
@@ -32,7 +33,7 @@ int run(int argc, char **argv) {
     const long N = std::atol(arg[2]);
     const int r = std::atoi(arg[3]), t = std::atoi(arg[4]);
     if (t < 2 || t > 8) {
-        std::fprintf(stderr, "t must be in [2, 8]\n");
+        LOG(ERROR) << "t must be in [2, 8]";
         return 1;
     }
     arx::Key key = keymod::seed_key(seed);
@@ -77,10 +78,11 @@ int run(int argc, char **argv) {
 }  // namespace
 
 int main(int argc, char **argv) {
+    init_logging();
     try {
         return run(argc, argv);
     } catch (const std::exception &e) {
-        std::fprintf(stderr, "%s\n", e.what());
+        LOG(ERROR) << e.what();
         return 1;
     }
 }

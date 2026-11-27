@@ -58,7 +58,7 @@
 // The defaults (16 keys, 2^20 pairs, weak_words = 6, keyset = 0) are those used to find the melty2
 // kernel with the GPU metric; e.g. the kernel is the result of "sa 20 504 3000 ORIG22".
 //
-// The best structure so far is printed to stderr every 100 iterations.
+// The best structure so far is logged (LOG(INFO), to stderr) every 100 iterations.
 #include <getopt.h>
 
 #include <algorithm>
@@ -74,6 +74,8 @@
 #include <stdexcept>
 #include <string>
 
+#include "absl/strings/str_format.h"
+#include "logging.hpp"
 #include "metric.hpp"
 #include "pidfile.hpp"
 
@@ -243,13 +245,13 @@ void save_checkpoint(const std::string &path, const std::string &args, const Sta
     const std::string tmp = path + ".tmp";
     std::FILE *f = std::fopen(tmp.c_str(), "w");
     if (!f) {
-        std::perror(tmp.c_str());
+        PLOG(ERROR) << tmp;
         return;
     }
     std::fprintf(f, "sa-checkpoint 1\n%s\n%d %llu %.17g %.17g %.17g\n%s\n%s\n", args.c_str(), st.it,
                  static_cast<unsigned long long>(st.rng), st.fc, st.fb, st.f0, arx::to_string(st.cur).c_str(),
                  arx::to_string(st.best).c_str());
-    if (std::fclose(f) != 0 || std::rename(tmp.c_str(), path.c_str()) != 0) std::perror(path.c_str());
+    if (std::fclose(f) != 0 || std::rename(tmp.c_str(), path.c_str()) != 0) PLOG(ERROR) << path;
 }
 
 // Load the state from path if it exists. The arguments must match.
@@ -324,15 +326,15 @@ int run(int argc, char **argv) {
     const int iters = std::atoi(arg[2]);
     arx::Arx cur = arx::parse(std::strcmp(arg[3], "ORIG22") == 0 ? arx::kMelty2Orig22 : arg[3]);
     if (L <= kW || L > static_cast<int>(cur.size())) {
-        std::fprintf(stderr, "L must satisfy %d < L <= (ops of init)\n", kW);
+        LOG(ERROR) << "L must satisfy " << kW << " < L <= (ops of init)";
         return 1;
     }
     if (o.freeze < 0 || o.freeze >= L) {
-        std::fprintf(stderr, "freeze must satisfy 0 <= freeze < L\n");
+        LOG(ERROR) << "freeze must satisfy 0 <= freeze < L";
         return 1;
     }
     if (o.deadline < 0 || o.deadline >= L) {
-        std::fprintf(stderr, "the key deadline must satisfy 1 <= deadline < L\n");
+        LOG(ERROR) << "the key deadline must satisfy 1 <= deadline < L";
         return 1;
     }
     cur.resize(L);
@@ -366,7 +368,7 @@ int run(int argc, char **argv) {
         fc = st->fc;
         fb = st->fb;
         f0 = st->f0;
-        std::fprintf(stderr, "resumed from %s at it=%d\n", o.ckpt, it0);
+        LOG(INFO) << "resumed from " << o.ckpt << " at it=" << it0;
     } else {
         fc = f0 = fb = search.objective(cur, o.nk, o.n, 1);
         best = cur;
@@ -422,11 +424,11 @@ int run(int argc, char **argv) {
             }
         }
         if ((it + 1) % 100 == 0 || usr1 || term) {
-            std::fprintf(stderr, "it=%d cur=%.2f best=%.2f %s\n", it + 1, fc, fb, arx::to_string(best).c_str());
+            LOG(INFO) << absl::StrFormat("it=%d cur=%.2f best=%.2f %s", it + 1, fc, fb, arx::to_string(best));
             if (o.ckpt) save_checkpoint(o.ckpt, args, State{it + 1, rr.state(), cur, best, fc, fb, f0});
             usr1 = 0;
             if (term) {
-                std::fprintf(stderr, "interrupted at it=%d\n", it + 1);
+                LOG(WARNING) << "interrupted at it=" << it + 1;
                 std::exit(3);
             }
         }
@@ -446,10 +448,11 @@ int run(int argc, char **argv) {
 }  // namespace
 
 int main(int argc, char **argv) {
+    init_logging();
     try {
         return run(argc, argv);
     } catch (const std::exception &e) {
-        std::fprintf(stderr, "%s\n", e.what());
+        LOG(ERROR) << e.what();
         return 1;
     }
 }

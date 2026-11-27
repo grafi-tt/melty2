@@ -22,6 +22,7 @@
 #include <string>
 
 #include "keymod.hpp"
+#include "logging.hpp"
 #include "metric.hpp"
 #include "pidfile.hpp"
 
@@ -145,10 +146,11 @@ int run(int argc, char **argv) {
 }  // namespace
 
 int main(int argc, char **argv) {
+    init_logging();
     try {
         return run(argc, argv);
     } catch (const std::exception &e) {
-        std::fprintf(stderr, "%s\n", e.what());
+        LOG(ERROR) << e.what();
         return 1;
     }
 }

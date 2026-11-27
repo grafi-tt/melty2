@@ -75,7 +75,9 @@
 #include <vector>
 
 #include "arx.hpp"
+#include "absl/strings/str_format.h"
 #include "keymod.hpp"
+#include "logging.hpp"
 #include "pidfile.hpp"
 #include "testu01_gpu.hpp"
 
@@ -398,7 +400,7 @@ int run_main(int argc, char **argv) {
     a.resize(M);
     const auto t0 = std::chrono::steady_clock::now();
     const auto kn = compile(a);
-    std::fprintf(stderr, "compiled the kernels in %.1fs\n", seconds_since(t0));
+    LOG(INFO) << absl::StrFormat("compiled the kernels in %.1fs", seconds_since(t0));
     for (const KeyRun &k : stages[0].keys) {
         std::printf("# M=%d seed=%u%s keymod=%s scale=%g streams=%s\n", M, k.seed, swp ? " swap" : "", k.keymod.c_str(), o.t.scale, k.streams.c_str());
         const Summary s = run_tests(o, battery, *kn, k.g);
@@ -412,10 +414,11 @@ int run_main(int argc, char **argv) {
 }  // namespace
 
 int main(int argc, char **argv) {
+    init_logging();
     try {
         return run_main(argc, argv);
     } catch (const std::exception &e) {
-        std::fprintf(stderr, "%s\n", e.what());
+        LOG(ERROR) << e.what();
         return 1;
     }
 }

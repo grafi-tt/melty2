@@ -20,7 +20,7 @@ Options:
 * `MELTY2_SEARCH_NATIVE` (ON): `-march=native` for the code of the CPU (not the HIP code).
 * `CMAKE_HIP_ARCHITECTURES` (gfx1030): the GPU architectures of the HIP code.
 
-The tools are written in C++17, and the GPU metric in HIP (C++17 as well); `melty2_init.c` of the library is compiled as C, and so is `hwd/prngs_hwd.c`, which is included into `hwd.c`. The GPU metric is about 50 times faster than the single-threaded CPU one (Radeon RX 6800 vs a core of Ryzen 9 9950X). The CPU and GPU tools compute the same statistic, but use different random counters, so they agree only statistically.
+The tools are written in C++20, and the GPU metric in HIP (C++20 as well), as they log by [abseil](https://abseil.io/docs/cpp/guides/logging) (`LOG` and `CHECK` to stderr; the results go to stdout), whose installed package (`find_package(absl)`, e.g. `dev-cpp/abseil-cpp`) is required and is built in C++20 on current systems; `gen/run.sh` finds it by `pkg-config`. `melty2_init.c` of the library is compiled as C, and so is `hwd/prngs_hwd.c`, which is included into `hwd.c`. The GPU metric is about 50 times faster than the single-threaded CPU one (Radeon RX 6800 vs a core of Ryzen 9 9950X). The CPU and GPU tools compute the same statistic, but use different random counters, so they agree only statistically.
 
 ## Structures
 

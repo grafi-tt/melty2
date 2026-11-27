@@ -21,6 +21,7 @@ extern "C" {
 }
 
 #include "keymod.hpp"
+#include "logging.hpp"
 
 #include "kern.hpp"
 
@@ -81,7 +82,7 @@ int run(int argc, char **argv) {
         case 'm':
             if (std::sscanf(optarg, "ctr:%d:%d", &stream.sbits, &stream.cbit) != 2 || stream.sbits < 1 || stream.sbits > 12 ||
                 stream.cbit < 0 || stream.cbit > 63) {
-                std::fprintf(stderr, "invalid streams (ctr:b:c, 1 <= b <= 12): %s\n", optarg);
+                LOG(ERROR) << "invalid streams (ctr:b:c, 1 <= b <= 12): " << optarg;
                 return 1;
             }
             stream.buf.assign(static_cast<size_t>(kLanes) << stream.sbits, 0);
@@ -93,7 +94,7 @@ int run(int argc, char **argv) {
     if (argc - optind < 2) usage();
     if (!battery.empty() && battery != "small" && battery != "crush" && battery != "big") usage();
     if (!battery.empty() && argc - optind > 2) {
-        std::fprintf(stderr, "test numbers are only for the selected tests of BigCrush\n");
+        LOG(ERROR) << "test numbers are only for the selected tests of BigCrush";
         return 1;
     }
     char **arg = argv + optind;
@@ -107,7 +108,7 @@ int run(int argc, char **argv) {
         for (int i = 2; i < narg; ++i) {
             const int t = std::atoi(arg[i]);
             if (t < 1 || t > 106) {
-                std::fprintf(stderr, "test numbers must be in [1, 106]\n");
+                LOG(ERROR) << "test numbers must be in [1, 106]";
                 return 1;
             }
             rep[t] = 1;
@@ -129,10 +130,11 @@ int run(int argc, char **argv) {
 }  // namespace
 
 int main(int argc, char **argv) {
+    init_logging();
     try {
         return run(argc, argv);
     } catch (const std::exception &e) {
-        std::fprintf(stderr, "%s\n", e.what());
+        LOG(ERROR) << e.what();
         return 1;
     }
 }

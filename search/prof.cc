@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
+#include "logging.hpp"
 #include "metric.hpp"
 #include "pidfile.hpp"
 
@@ -47,7 +48,7 @@ int run(int argc, char **argv) {
     const int L = static_cast<int>(a.size());
     const int mlo = std::atoi(arg[1]), mhi = std::atoi(arg[2]), nk = std::atoi(arg[3]), n = std::atoi(arg[4]);
     if (mlo < 1 || mhi > L || mlo > mhi) {
-        std::fprintf(stderr, "depths must satisfy 1 <= mlo <= mhi <= %d\n", L);
+        LOG(ERROR) << "depths must satisfy 1 <= mlo <= mhi <= " << L;
         return 1;
     }
     const metric::Profile p = metric::profile(a, mlo, mhi, nk, n, seed, weak);
@@ -59,10 +60,11 @@ int run(int argc, char **argv) {
 }  // namespace
 
 int main(int argc, char **argv) {
+    init_logging();
     try {
         return run(argc, argv);
     } catch (const std::exception &e) {
-        std::fprintf(stderr, "%s\n", e.what());
+        LOG(ERROR) << e.what();
         return 1;
     }
 }
