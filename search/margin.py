@@ -5,10 +5,11 @@ A group is a set of key specs (as testu01_stest --keylist: "keymod[@streams][#se
 e.g. the normal keys (3), the weak-key classes of probability 2^-32 (3), about 2^-48 (2) or 2^-64 (1),
 and the counter streams (3). The default 2^-48 classes are a sample of the kinds of constraints of 33 to
 48 bits: three half-words zero, a word fixed or related to another and a half-word zero, two words of
-weight 2, and a word of weight 1 and a half-word zero. A key fails at M steps in a counter order if a p-value of its tests is below 1e-6, or 3 or
-more are outside [0.001, 0.999] (as statjudge.sh); a group fails at M if any of its keys fails in either
-order. Its margin is L - 1 - M for the largest failing M of the structure of L ops (the steps passing
-beyond it: e.g. 3 for an 18-op kernel passing at 15 and failing at 14).
+weight 2, and a word of weight 1 and a half-word zero. A key fails at M steps in a counter order if a p-value of its
+tests is below 1e-6, or 3 or more are outside [0.001, 0.999] (as statjudge.sh), or a test fails completely (e.g. runs
+out of its counters: min_p=0), or it has no result; a group fails at M if any of its keys fails in either order. Its
+margin is L - 1 - M for the largest failing M of the structure of L ops (the steps passing beyond it: e.g. 3 for an
+18-op kernel passing at 15 and failing at 14).
 
 By default only M = L - target is tested for each group: the verdict is "pass" (margin >= target) or the
 failure. With --scan, the steps from L - 1 down to L - DOWN are tested until the group fails, for its
@@ -74,7 +75,10 @@ def run_step(a, st, m, groups, tmp):
     plan = os.path.join(tmp, "plan")
     with open(plan, "w") as f:
         f.write("\n".join(lines) + "\n")
-    out = subprocess.run([a.stest, "--verbose", f"--plan={plan}"], input=st + "\n", capture_output=True, text=True, check=True).stdout
+    # --log_sum (without a limit): a key whose test fails completely gives min_p=0, and the other keys are still tested
+    # (without it, testu01_stest stops the structure at such a key, printing no line for it and the keys after it)
+    out = subprocess.run([a.stest, "--verbose", "--log_sum", f"--plan={plan}"], input=st + "\n", capture_output=True, text=True,
+                         check=True).stdout
     res = {}
     for line in out.splitlines():
         if not line.startswith("key\t"):
@@ -123,11 +127,15 @@ def main():
                 continue
             res = run_step(a, st, m, gs, tmp)
             for name, target, specs in gs:
-                mine = [(p, fl, f"{k[0]}@{k[1]}#{k[2]}", sw) for (k, sw), (p, fl) in res.items() if k in {norm(x) for x in specs}]
+                keys = {norm(x) for x in specs}
+                mine = [(p, fl, f"{k[0]}@{k[1]}#{k[2]}", sw) for (k, sw), (p, fl) in res.items() if k in keys]
                 bad = [x for x in mine if x[0] < 1e-6 or x[1] >= 3]
+                # a key (and counter order) without a result fails: its tests stopped
+                bad += [(0.0, 0, f"{k[0]}@{k[1]}#{k[2]}", sw) for k in sorted(keys) for sw in (0, 1) if (k, sw) not in res]
                 if bad:
                     p, fl, spec, sw = min(bad)
-                    result[name] = (L - 1 - m, m, f"{spec} swap={sw} min_p={p:.3g} flagged={fl}")
+                    what = "no result" if not any(x[2] == spec and x[3] == sw for x in mine) else f"min_p={p:.3g} flagged={fl}"
+                    result[name] = (L - 1 - m, m, f"{spec} swap={sw} {what}")
                     del pending[name]
                 elif not a.scan:
                     p, fl, spec, sw = min(mine)
