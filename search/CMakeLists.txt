@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # The kernel search tools (see README.md):
 #   cmake -B build [-DMELTY2_SEARCH_GPU=ON] [-DMELTY2_SEARCH_STEST=ON] && cmake --build build
-#   MELTY2_SEARCH_CPU     build/{prof,rank,sa,weakkeys}_cpu with the CPU metric, build/check, build/state and
-#                         build/sactl (ON)
+#   MELTY2_SEARCH_CPU     build/{prof,rank,sa,weakkeys}_cpu with the CPU metric, build/check and build/state (ON)
 #   MELTY2_SEARCH_GPU     build/{prof,rank,sa,weakkeys}_gpu with the HIP metric (OFF)
 #   MELTY2_SEARCH_STEST   build/testu01_stest by the library testu01_gpu: an installed one (find_package), or else
 #                         ../testu01_gpu built along (with its options: TestU01_ROOT, TESTU01_GPU_HOST_FLAGS) (OFF)
@@ -80,11 +79,6 @@ if(MELTY2_SEARCH_GPU)
     target_compile_options(${t}_gpu PRIVATE ${cpu_flags} -Wall -Wextra)
     set_target_properties(${t}_gpu PROPERTIES LINKER_LANGUAGE HIP)
   endforeach()
-endif()
-
-if(MELTY2_SEARCH_CPU OR MELTY2_SEARCH_GPU)
-  add_executable(sactl sactl.cc)
-  target_compile_options(sactl PRIVATE ${cpu_flags} -Wall -Wextra)
 endif()
 
 if(MELTY2_SEARCH_STEST)

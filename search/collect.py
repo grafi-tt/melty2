@@ -2,8 +2,8 @@
 """Collect the candidate structures from the logs of sa, for rank.
 
 sa prints the best structure so far every 100 iterations to stderr ("it=N cur=F best=F structure"),
-and the final best structure on the second line of stdout. This script reads the given files (e.g.
-logs/*.err and logs/*.out of sactl), and prints every distinct structure once as "name<TAB>structure",
+and the final best structure on the second line of stdout. This script reads the given files (the
+stderr and stdout of sa), and prints every distinct structure once as "name<TAB>structure",
 where the name is the file name without the extension and the iteration where the structure first
 appeared ("final" for stdout), e.g. "L20_gr_s601@1200".
 """

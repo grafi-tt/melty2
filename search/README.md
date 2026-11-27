@@ -7,14 +7,14 @@ The code in this directory is distributed under the [Apache License 2.0](LICENSE
 ## Build
 
 ```sh
-cmake -B build && cmake --build build   # build/{prof,rank,sa,weakkeys}_cpu, build/check, build/state and build/sactl
+cmake -B build && cmake --build build   # build/{prof,rank,sa,weakkeys}_cpu, build/check and build/state
 cmake -B build -DMELTY2_SEARCH_GPU=ON     # also build/{prof,rank,sa,weakkeys}_gpu, with the HIP metric
 cmake -B build -DMELTY2_SEARCH_STEST=ON   # also build/testu01_stest, with the library testu01_gpu
 ```
 
 Options:
 
-* `MELTY2_SEARCH_CPU` (ON): the tools with the CPU metric, `check`, `state` and `sactl`.
+* `MELTY2_SEARCH_CPU` (ON): the tools with the CPU metric, `check` and `state`.
 * `MELTY2_SEARCH_GPU` (OFF): the tools with the HIP metric.
 * `MELTY2_SEARCH_STEST` (OFF): `testu01_stest`, with an installed [testu01_gpu](../testu01_gpu) (found by `find_package`, e.g. with `CMAKE_PREFIX_PATH`), or else `../testu01_gpu` built along with its options (`TestU01_ROOT` for the prefix of TestU01, and `TESTU01_GPU_HOST_FLAGS=-march=native` for the SIMD of the host in LinearComp).
 * `MELTY2_SEARCH_NATIVE` (ON): `-march=native` for the code of the CPU (not the HIP code).
@@ -47,7 +47,7 @@ The tools take the required arguments as positional arguments, and the optional 
 
 * `rank [-k nkeys] [-n pairs] [-s seed] [-w weak_words] [-K keyset] [-p pidfile] list`
 
-  The margin of every structure in the list (a structure per line, optionally after a name and a tab), at a high resolution (32 keys including sparse `v[4]` and `v[5]`, and 2^24 pairs by default): the length minus the last depth whose maximum bias over the keys is above 5 times the noise level. As the objective of `sa` is evaluated at a resolution too low to see small biases near the output, `sa` generates candidates, and `rank` judges them. `collect.py FILES...` collects the distinct structures from the outputs of `sa` (e.g. the logs of `sactl`) into such a list.
+  The margin of every structure in the list (a structure per line, optionally after a name and a tab), at a high resolution (32 keys including sparse `v[4]` and `v[5]`, and 2^24 pairs by default): the length minus the last depth whose maximum bias over the keys is above 5 times the noise level. As the objective of `sa` is evaluated at a resolution too low to see small biases near the output, `sa` generates candidates, and `rank` judges them. `collect.py FILES...` collects the distinct structures from the outputs of `sa` into such a list.
 
 * `weakkeys [-b nbase] [-d dump] [-p pidfile] structure mlo mhi n list`
 
@@ -71,10 +71,6 @@ The tools take the required arguments as positional arguments, and the optional 
 
   The statistical margins of a structure by `testu01_stest`, per group of keys with a target margin: by default the normal keys (3), the weak-key classes of probability 2^-32 (3), about 2^-48 (2, a sample of the kinds of `weak/gen_weak.py weak48`) and 2^-64 (1), and counter streams of several keys (3). A key fails at `M` steps if a p-value is below 1e-6 or 3 are outside [0.001, 0.999]; the margin is the number of steps passing beyond the largest failing `M`. By default each group is tested only at `L - target` (a verdict); `--scan` finds the exact margins. A group file (lines `name target spec spec ...`) can take e.g. all 570 classes of `weak/gen_weak.py weak48`. The tests are by default SimpPoker, CouponCollector, Gap, MaxOft, CollisionOver, BirthdaySpacings and Fourier3 at the samples of BigCrush, and Permutation and Run at 4 times the samples, as their biases depend on the counter range. A test left out of the objective tends to get worse, so the objective should take every test, step count and stream setting judged. See `sa_stat.py --help`.
 
-* `sactl {run [-s sa] [-i minutes] | snapshot | stop | status} DIR`
-
-  Runs the `sa` jobs listed in `DIR/jobs.tsv` (a name and the arguments of `sa` per line, separated by tabs) in order, resuming interrupted ones from their checkpoints. `run` takes a snapshot of the directory into `DIR/snapshots/` every `minutes` (default 10), and `snapshot` and `stop` let the running `run` take a snapshot now, or save the state and exit. See the comment of [sactl.cc](sactl.cc) for the layout of the directory.
-
 * `gen/run.sh TOOL structure M args...`
 
   Builds `TOOL` with the first `M` ops of the structure compiled in (cached in `build/gen/`, and rebuilt when the source is updated), and runs it with `args...`. The key is that of `melty2_init(seed, 0, 0, 0)`, modified by the environment variable `MELTY2_KEYMOD`, and `swap = 1` swaps the halves of the counter.
@@ -97,14 +93,4 @@ build/check
 build/prof_gpu "$(sed -n 's/^gr10_4: //p' candidates.txt)" 10 20 16 4194304
 build/weakkeys_gpu -b 8 "$(sed -n 's/^gr10_4: //p' candidates.txt)" 15 20 4194304 weak/weak32.lst
 MELTY2_KEYMOD='4=z,5=z' gen/run.sh gen "$(sed -n 's/^gr10_4: //p' candidates.txt)" 20 1 0 | RNG_test stdin32 -tlmax 64GB
-```
-
-A queue of searches:
-
-```sh
-mkdir -p jobs
-printf 's1\t-K\t1\t-O\t1\t20\t601\t3000\tORIG22\n' > jobs/jobs.tsv
-build/sactl run jobs &      # runs build/sa_gpu (copied to jobs/bin/sa)
-build/sactl status jobs
-build/sactl stop jobs       # later, "build/sactl run jobs" resumes
 ```
