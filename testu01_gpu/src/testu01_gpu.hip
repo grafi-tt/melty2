@@ -53,6 +53,7 @@
 #include <thrust/sort.h>
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
@@ -63,6 +64,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/strings/match.h"
@@ -83,7 +85,7 @@ extern "C" {
 
 namespace testu01_gpu {
 
-const char kAllTests[] = "poker,coupon,gap,maxoft,collision,birthday,closepairs,permutation,run,serial,collpermut,weight,savir2,gcd,hamweight,hamcorr,"
+const char kAllTests[] = "poker,coupon,gap,maxoft,collision,kcollision,birthday,closepairs,cpbitmatch,permutation,run,serial,collpermut,weight,savir2,gcd,hamweight,hamcorr,"
                          "hamindep,bitrun,longhead,autocor,samplecorr,sampleprod,samplemean,walk,periods,sumcoll,fourier,linearcomp,"
                          "matrixrank,appearance,lempelziv";
 
@@ -235,7 +237,7 @@ struct Generator::Impl {
                                 {&cp_outputs, "kcp_outputs"}, {&cp_cells, "kcp_cells"}, {&cp_scatter, "kcp_scatter"}, {&cp_pairs, "kcp_pairs"}, {&krun, "krun"},
                                 {&weight, "ktest_weight"}, {&savir2, "ktest_savir2"}, {&gcd, "ktest_gcd"}, {&serial, "kserial"}, {&perm_points, "kperm_points"}, {&cp_slab, "kcp_slab"},
                                 {&hamming, "ktest_hamming"}, {&autocor, "kautocor"}, {&samplecorr, "ksamplecorr"}, {&bitrun, "kbitrun"}, {&longhead, "klonghead"},
-                                {&uniform, "kuniform"}, {&strip, "ktest_strip"}, {&walk, "kwalk"}, {&sumcoll, "ktest_sumcoll"}, {&matrank, "ktest_matrank"}, {&mat_fill, "kmat_fill"},
+                                {&uniform, "kuniform"}, {&strip, "ktest_strip"}, {&periods, "ktest_periods"}, {&walk, "kwalk"}, {&sumcoll, "ktest_sumcoll"}, {&matrank, "ktest_matrank"}, {&mat_fill, "kmat_fill"},
                                 {&mat_rank, "kmat_rank"}, {&appear, "kappear"}})
 #ifdef TESTU01_GPU_CUDA
             CK(cuModuleGetFunction(f, module_, fname));
@@ -262,12 +264,13 @@ struct Generator::Impl {
     gpuFunction_t of(const detail::Gcd &) const { return gcd; }
     gpuFunction_t of(const detail::Hamming &) const { return hamming; }
     gpuFunction_t of(const detail::Strip &) const { return strip; }
+    gpuFunction_t of(const detail::Periods &) const { return periods; }
     gpuFunction_t of(const detail::SumColl &) const { return sumcoll; }
     gpuFunction_t of(const detail::MatRank &) const { return matrank; }
 
     gpuFunction_t poker, coupon, gap, maxoft, permut, points, spacings, insert, fourier_bits, fourier_acc, cp_outputs, cp_cells,
         cp_scatter, cp_pairs, cp_slab, krun, weight, savir2, gcd, serial, perm_points, hamming, autocor, samplecorr, bitrun,
-        longhead, uniform, strip, walk, sumcoll, matrank, mat_fill, mat_rank, appear;
+        longhead, uniform, strip, periods, walk, sumcoll, matrank, mat_fill, mat_rank, appear;
 
   private:
     gpuModule_t module_ = nullptr;
@@ -329,10 +332,13 @@ class Counters {
     static constexpr uint64_t kThreadsPerLaunch = static_cast<uint64_t>(kBlocks) * kThreads;
     // The stride covering the values of the observations of a thread: the largest share of n, of
     // values of mean and variance var per observation, with a margin of 12 standard deviations (and
-    // for the overlap of the first observation), rounded up to the generation by kLanes.
+    // for the overlap of the first observation), rounded up to the generation by kLanes. For a share of
+    // fewer than 100 observations, whose sum is far from normal for heavy tails (e.g. the geometric
+    // lengths of Gap), 40 standard deviations of an observation more; the stride costs nothing beyond the
+    // values used, so the margin is generous.
     static uint64_t stride(long long n, double mean, double var, int extra = 0) {
         const double q = static_cast<double>((n + kThreadsPerLaunch - 1) / kThreadsPerLaunch);
-        const double need = q * mean + 12 * std::sqrt(q * var) + extra;
+        const double need = q * mean + 12 * std::sqrt(q * var) + (q < 100 ? 40 * std::sqrt(var) : 0) + extra;
         return (static_cast<uint64_t>(std::ceil(need)) + kLanes - 1) / kLanes * kLanes;
     }
     explicit Counters(uint64_t first = 0) : next_(first) {}
@@ -595,11 +601,11 @@ void sorted_parts(const Kernels &kn, Mem &m, long long n, int kbits, const Launc
     for (uint64_t part = 0; part < UINT64_C(1) << pb; ++part) sorted_part(kn, m, kbits, f, part_fn, pb, part);
 }
 
-// CollisionOver: the number of collisions of n overlapping points in 2^(b * t) cells
-// (the points are made again for every pass of the hash table, which is cheaper than storing them; no memory
-// grows with n)
+// CollisionOver (and sknuth_Collision, with non-overlapping points): the number of collisions of n overlapping
+// (or non-overlapping) points in 2^(b * t) cells (the points are made again for every pass of the hash table, which is
+// cheaper than storing them; no memory grows with n)
 long long collision_over(const Kernels &kn, Mem &m, const Tuples &tup, const Params &g, Counters &ctr, long long n) {
-    const uint64_t stride = Counters::stride(n, 1, 0, tup.t - 1), base = ctr.take(stride);
+    const uint64_t stride = tup.overlap ? Counters::stride(n, 1, 0, tup.t - 1) : Counters::stride(n, tup.t, 0), base = ctr.take(stride);
     const int pb = m.hash.prepare(n);
     for (uint64_t part = 0; part < UINT64_C(1) << pb; ++part) {
         Sink sk{};
@@ -957,7 +963,7 @@ std::pair<double, double> anderson_darling(std::vector<double> v) {
 // divided by m (uniform given their number); NJumps, the number of these jumps against a Poisson
 // distribution of the mean N m; mNP2S, the AD test of them after the spacings transform of TestU01.
 struct CpStats {
-    const char *name;
+    std::string_view name;
     double stat, p;
 };
 std::vector<CpStats> close_pairs_stats(const std::vector<std::vector<uint32_t>> &reps, long long n, int t, int m) {
@@ -1061,7 +1067,111 @@ Chi2 chi2(const std::vector<unsigned long long> &obs, const std::vector<double> 
     return {x, static_cast<long>(o.size()) - 1};
 }
 
+// the chi-square of the observed numbers obs against the expected numbers e of the classes, by the merging and the
+// floating-point operations of TestU01 (gofs_MergeClasses: from the low end, a class of fewer than 10 expected
+// joined with the next ones until 10, and a last class still below 10 joined with the previous one; then gofs_Chi2)
+Chi2 chi2_gofs(const std::vector<unsigned long long> &obs, std::vector<double> e) {
+    const long smax0 = static_cast<long>(e.size()) - 1;
+    std::vector<long> loc(e.size());
+    long ncl = 0, s = 0, s0 = 0, smin = 0, smax = smax0;
+    while (s <= smax) {
+        if (e[s] < kMinExpected) {
+            s0 = s;
+            double somme = e[s];
+            while (somme < kMinExpected && s < smax) {
+                e[s] = 0.0;
+                ++s;
+                somme += e[s];
+            }
+            e[s] = somme;
+            for (long j = s0; j <= s; ++j) loc[j] = s;
+        } else {
+            loc[s] = s;
+        }
+        ++ncl;
+        ++s;
+    }
+    smin = loc[smin];
+    if (e[smax] < kMinExpected) {
+        if (s0 > smin) --s0;
+        e[s0] += e[smax];
+        e[smax] = 0.0;
+        --ncl;
+        for (long j = s0 + 1; j <= smax; ++j) loc[j] = s0;
+        smax = s0;
+    }
+    if (ncl < 2) throw TestFailure("fewer than two classes");
+    std::vector<double> cnt(e.size(), 0.0);
+    for (long j = 0; j <= smax0; ++j) cnt[loc[j]] += static_cast<double>(obs[j]);
+    double x = 0;
+    for (long j = smin; j <= smax; ++j)
+        if (e[j] > 0.0) {
+            const double d = cnt[j] - e[j];
+            x += d * d / e[j];
+        }
+    return {x, ncl - 1};
+}
+
+// the sum of the values of the N replications as TestU01 takes it, for the same floating-point result: sorted
+// (gofw_ActiveTests2 sorts them in place), summed in that order and divided by N (statcoll_Average), times N
+double sum_stat(std::vector<double> v) {
+    std::sort(v.begin(), v.end());
+    double sum = 0;
+    for (const double x : v) sum += x;
+    const double N = static_cast<double>(v.size());
+    return N * (sum / N);
+}
+
 // the probabilities of the number of distinct values among k values in [0, d) (index 0..k)
+// The correlations of the strings of s bits (s <= 32) and their populations (the numbers of strings of each), in the
+// order of TestU01 (CreateCorr of sstring.c, after Guibas and Odlyzko): the correlations of length i are built from
+// those of every length j <= i - 2 (as 10...0C for a correlation C of length j), and the correlation 11...1 last.
+std::vector<std::pair<uint32_t, long long>> correlations(int s) {
+    struct Corr {
+        int nb;
+        uint64_t c;
+        long long pop;
+        int ext = -1, ext0 = -1;  // the smallest extension, and the next one (indices in all)
+    };
+    std::vector<Corr> all{{0, 0, 1}, {1, 1, 2}};
+    std::vector<std::vector<int>> lists(s + 1);
+    lists[0] = {0};
+    lists[1] = {1};
+    const auto psi = [](uint64_t c, long j, long k) -> long long {
+        if (k > j) return 0;
+        if (k <= 0) return 1LL << -k;
+        return static_cast<long long>(c >> (j - k) & 1);
+    };
+    for (int i = 2; i <= s; ++i) {
+        for (int j = 0; j <= i - 2; ++j)
+            for (size_t q = 0; q < lists[j].size(); ++q) {
+                const int cj = lists[j][q];
+                long long p = all[cj].pop * psi(all[cj].c, j, 2L * j - i);
+                if (q + 1 == lists[j].size()) p -= 2 * psi(all[cj].c, j, 2L * j + 2 - i);  // 1C: only for C = 11...1, the last
+                for (int e = all[cj].ext; e >= 0 && all[e].nb <= (i + j) / 2; e = all[e].ext0) p -= all[e].pop * psi(all[cj].c, j, 2L * all[e].nb - i);
+                if (p <= 0) continue;
+                uint64_t c = 1;
+                for (int k = 0; k < j; ++k)
+                    if (all[cj].c >> k & 1) c |= UINT64_C(1) << (k + i - j);
+                all.push_back({i, c, p});
+                const int ni = static_cast<int>(all.size()) - 1;
+                if (all[cj].ext < 0) {
+                    all[cj].ext = ni;
+                } else {
+                    int e = all[cj].ext;
+                    while (all[e].ext0 >= 0) e = all[e].ext0;
+                    all[e].ext0 = ni;
+                }
+                lists[i].push_back(ni);
+            }
+        all.push_back({i, i == 64 ? ~UINT64_C(0) : (UINT64_C(1) << i) - 1, 2});
+        lists[i].push_back(static_cast<int>(all.size()) - 1);
+    }
+    std::vector<std::pair<uint32_t, long long>> out;
+    for (const int i : lists[s]) out.push_back({static_cast<uint32_t>(all[i].c), all[i].pop});
+    return out;
+}
+
 std::vector<double> poker_prob(int d, int k) {
     std::vector<double> p(k + 1, 0.0);
     p[0] = 1;
@@ -1109,6 +1219,10 @@ int lump_point(F tail_after, long long n, int lo, int limit) {
     while (t < limit && tail_after(t) * n >= kMinExpected) ++t;
     return t;
 }
+
+// the instances of a test in the batteries SmallCrush, Crush and BigCrush (the order of Suite)
+template <class T>
+using PerSuite = std::array<std::vector<T>, 3>;
 
 bool wanted(const Options &o, const char *t) { return absl::StrContains(absl::StrCat(",", o.tests, ","), absl::StrCat(",", t, ",")); }
 
@@ -1164,22 +1278,59 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         emit(name, params, Stat::kChiSquare, c.x, p, (c.x - c.df) / std::sqrt(2.0 * c.df), sec, c.df);
     };
     std::string params;  // the parameters of the current statistic
+    const size_t bat = static_cast<size_t>(o.suite);
+    if (bat > 2) throw std::invalid_argument("testu01_gpu: unknown battery");
 
+    // MaxOft, SampleProd and SampleMean: the Anderson-Darling test of n values transformed to U(0, 1) by their
+    // distribution function (as keys of 64 bits, see kuniform), sorted on GPU by parts if they don't fit in
+    // the memory, and collected on the host
+    const auto ad_sorted = [&](long long n, const Launch &f) {
+        if (o.fast) {  // the terms of the statistic summed on GPU, part by part
+            double a2 = 0;
+            long long off = 0;
+            sorted_parts(kn, mem, n, 64, f, [&](unsigned long long *a, long long c) {
+                a2 += thrust::transform_reduce(thrust::counting_iterator<long long>(0), thrust::counting_iterator<long long>(c), AdTerm{a, off, n}, 0.0,
+                                               thrust::plus<double>());
+                off += c;
+            });
+            a2 = -static_cast<double>(n) - a2 / static_cast<double>(n);
+            return std::pair<double, double>{a2, fbar_AndersonDarling(static_cast<long>(n), a2)};
+        }
+        std::vector<unsigned long long> keys;
+        keys.reserve(n);
+        sorted_parts(kn, mem, n, 64, f, [&](unsigned long long *a, long long c) {
+            const size_t at = keys.size();
+            keys.resize(at + c);
+            if (c) CK(gpuMemcpy(keys.data() + at, a, sizeof(unsigned long long) * c, gpuMemcpyDeviceToHost));
+        });
+        std::vector<double> v(n + 1);  // the arrays of TestU01 start at 1
+        for (long long i = 0; i < n; ++i) v[i + 1] = (static_cast<double>(keys[i]) + 0.5) * 0x1p-64;
+        const double a2 = gofs_AndersonDarling(v.data(), static_cast<long>(n));
+        return std::pair<double, double>{a2, fbar_AndersonDarling(static_cast<long>(n), a2)};
+    };
+    const auto report_ad = [&](const char *name, const std::string &params, double a2, double p, double sec) {
+        emit(name, params, Stat::kAndersonDarling, a2, p, p > 0 ? std::max(0.0, -finv_Normal1(std::max(p, 1e-300))) : HUGE_VAL, sec);
+    };
     if (wanted(o, "poker")) {
-        const int set[][4] = {{0, 8, 8, 0}, {27, 8, 8, 0}, {0, 32, 32, 1}, {25, 32, 32, 1}};  // r, d, k, n = 4e8 or 1e8
-        for (const auto &s : set) {
-            const long long n = scaled(s[3] ? 1e8 : 4e8);
+        struct P { double n; int r, d, k; };  // N = 1
+        static const PerSuite<P> sets{{{{4e5, 24, 64, 64}}, {{4e7, 0, 16, 16}, {4e7, 26, 16, 16}, {1e7, 0, 64, 64}, {1e7, 24, 64, 64}}, {{4e8, 0, 8, 8}, {4e8, 27, 8, 8}, {1e8, 0, 32, 32}, {1e8, 25, 32, 32}}}};
+        for (const auto &s : sets[bat]) {
+            if (s.d < 2 || s.d > 64) throw std::invalid_argument("poker: d must be in [2, 64]");
+            const long long n = scaled(s.n);
             const auto t0 = std::chrono::steady_clock::now();
-            const auto h = histogram(kn, Poker{s[0], s[1], s[2]}, g, ctr, n, s[2] + 1, s[2], 0);
-            params = absl::StrFormat("n=%lld r=%d d=%d k=%d", n, s[0], s[1], s[2]);
-            report("poker", params, chi2(h, poker_prob(s[1], s[2]), n), seconds_since(t0));
+            const auto h = histogram(kn, Poker{s.r, s.d, s.k}, g, ctr, n, s.k + 1, s.k, 0);
+            params = absl::StrFormat("n=%lld r=%d d=%d k=%d", n, s.r, s.d, s.k);
+            report("poker", params, chi2(h, poker_prob(s.d, s.k), n), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
     }
     if (wanted(o, "coupon")) {
-        for (const int r : {0, 10, 20, 27}) {
-            const int d = 8;
-            const long long n = scaled(2e8);
+        struct P { double n; int r, d; };  // N = 1
+        static const PerSuite<P> sets{{{{5e5, 26, 16}}, {{4e7, 0, 4}, {4e7, 28, 4}, {1e7, 0, 16}, {1e7, 26, 16}}, {{2e8, 0, 8}, {2e8, 10, 8}, {2e8, 20, 8}, {2e8, 27, 8}}}};
+        for (const auto &s : sets[bat]) {
+            const int r = s.r, d = s.d;
+            if (d < 2 || d > 64) throw std::invalid_argument("coupon: d must be in [2, 64]");
+            const long long n = scaled(s.n);
             const int tmax = lump_point([&](int t) { const auto p = coupon_prob(d, t); return p[t]; }, n, d, 4000);
             // the values until all d appear: a sum of geometric numbers of the probabilities (d - c) / d
             double mean = 0, var = 0;
@@ -1196,8 +1347,9 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         }
     }
     if (wanted(o, "gap")) {
-        const struct { double n; int r; int lg; } set[] = {{5e8, 0, 4}, {3e8, 25, 5}, {1e8, 0, 7}, {1e7, 20, 10}};  // beta = 2^-lg
-        for (const auto &s : set) {
+        struct P { double n; int r; int lg; };  // N = 1, alpha = 0, beta = 2^-lg
+        static const PerSuite<P> sets{{{{2e5, 22, 8}}, {{1e8, 0, 3}, {1e8, 27, 3}, {5e6, 0, 8}, {5e6, 22, 8}}, {{5e8, 0, 4}, {3e8, 25, 5}, {1e8, 0, 7}, {1e7, 20, 10}}}};
+        for (const auto &s : sets[bat]) {
             const long long n = scaled(s.n);
             const double w = std::ldexp(1.0, -s.lg);
             const int tmax = lump_point([&](int t) { return std::pow(1 - w, t); }, n, 1, 1 << 20);
@@ -1210,20 +1362,32 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         }
     }
     if (wanted(o, "maxoft")) {
-        const int set[][2] = {{40, 8}, {30, 16}, {20, 24}, {20, 32}};  // N, t; n = 1e7, d = 1e5
-        for (const auto &s : set) {
-            const int d = 100000;
-            const long long n = scaled(1e7);
+        struct P { int N; double n; int d, t; };  // r = 0
+        static const PerSuite<P> sets{{{{1, 2e6, 100000, 6}}, {{10, 1e7, 100000, 5}, {5, 1e7, 100000, 10}, {1, 1e7, 100000, 20}, {1, 1e7, 100000, 30}}, {{40, 1e7, 100000, 8}, {30, 1e7, 100000, 16}, {20, 1e7, 100000, 24}, {20, 1e7, 100000, 32}}}};
+        for (const auto &s : sets[bat]) {
+            const int d = s.d;
+            const long long n = scaled(s.n);
             const auto t0 = std::chrono::steady_clock::now();
             Chi2 all{0, 0};
-            for (int rep = 0; rep < s[0]; ++rep) {
-                const auto h = histogram(kn, MaxOft{d, s[1]}, g, ctr, n, d, s[1], 0);
+            std::vector<double> ps;                // the p-values of the AD tests of the replications
+            std::pair<double, double> one{0, 0};  // the AD statistic and the p-value of the last one
+            for (int rep = 0; rep < s.N; ++rep) {
+                Counters again = ctr;  // the same counters, for the AD test of the same maxima
+                const auto h = histogram(kn, MaxOft{d, s.t}, g, ctr, n, d, s.t, 0);
                 const Chi2 c = chi2(h, std::vector<double>(d, 1.0 / d), n);
                 all.x += c.x;
                 all.df += c.df;
+                const uint64_t stride = Counters::stride(n, s.t, 0), base = again.take(stride);
+                one = ad_sorted(n, [&](const Sink &sk) {
+                    launch(kn.uniform, kBlocks, kThreads, 0, 2, 0, s.t, g, base, stride, n, static_cast<const double *>(nullptr), 0, 0.0, sk);
+                });
+                ps.push_back(one.second);
             }
-            params = absl::StrFormat("N=%d n=%lld d=%d t=%d", s[0], n, d, s[1]);
+            params = absl::StrFormat("N=%d n=%lld d=%d t=%d", s.N, n, d, s.t);
             report("maxoft", params, all, seconds_since(t0));
+            // the AD test of the maxima against x^t (Bas of TestU01): that of the N p-values, or for N = 1 of the replication
+            const auto ad = s.N == 1 ? one : anderson_darling(ps);
+            report_ad("maxoft", params + " AD", ad.first, ad.second, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
     }
@@ -1238,31 +1402,51 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     };
     {
         if (wanted(o, "collision")) {
-            const int set[][3] = {{0, 21, 2}, {9, 21, 2}, {0, 14, 3}, {16, 14, 3}, {0, 6, 7}, {24, 6, 7}, {0, 3, 14}, {27, 3, 14}, {0, 2, 21}, {28, 2, 21}};  // r, b, t; N = 30, n = 2e7
-            for (const auto &s : set) {
-                const int N = 30;
-                const long long n = scaled(2e7);
-                const double k = std::ldexp(1.0, s[1] * s[2]);
+            struct P { int N; double n; int r, b, t; };  // d = 2^b
+            static const PerSuite<P> sets{{{}, {{10, 1e7, 0, 20, 2}, {10, 1e7, 10, 20, 2}, {10, 1e7, 0, 10, 4}, {10, 1e7, 20, 10, 4}, {10, 1e7, 0, 5, 8}, {10, 1e7, 25, 5, 8}, {10, 1e7, 0, 2, 20}, {10, 1e7, 28, 2, 20}}, {{30, 2e7, 0, 21, 2}, {30, 2e7, 9, 21, 2}, {30, 2e7, 0, 14, 3}, {30, 2e7, 16, 14, 3}, {30, 2e7, 0, 6, 7},
+                                                     {30, 2e7, 24, 6, 7}, {30, 2e7, 0, 3, 14}, {30, 2e7, 27, 3, 14}, {30, 2e7, 0, 2, 21}, {30, 2e7, 28, 2, 21}}}};
+            for (const auto &s : sets[bat]) {
+                const int N = s.N;
+                const long long n = scaled(s.n);
+                const double k = std::ldexp(1.0, s.b * s.t);
                 const double mu = n + k * std::expm1(n * std::log1p(-1 / k));  // expected collisions of n points in k cells
                 const auto t0 = std::chrono::steady_clock::now();
                 long long c = 0;
                 for (int rep = 0; rep < N; ++rep) {
-                    c += collision_over(kn, mem, tuples(s[0], s[1], s[2], 1), g, ctr, n);
+                    c += collision_over(kn, mem, tuples(s.r, s.b, s.t, 1), g, ctr, n);
                     if ((c - (rep + 1) * mu) / std::sqrt((rep + 1) * mu) > o.limit) {  // already far above its mean
                         sum.add(0, (c - (rep + 1) * mu) / std::sqrt((rep + 1) * mu));
                         return sum;
                     }
                 }
-                params = absl::StrFormat("N=%d n=%lld r=%d d=2^%d t=%d", N, n, s[0], s[1], s[2]);
+                params = absl::StrFormat("N=%d n=%lld r=%d d=2^%d t=%d", N, n, s.r, s.b, s.t);
                 report_poisson("collover", params, c, N * mu, seconds_since(t0));
                 if (sum.max_z > o.limit) return sum;
             }
         }
+        if (wanted(o, "kcollision")) {
+            // sknuth_Collision: the collisions of n non-overlapping points of t values in d^t cells (d = 2^b), against
+            // the Poisson distribution of TestU01 for n > 1e5 and n <= 0.1 k (smultin_CreateCollisions), of the mean
+            // n - k + k (1 - 1/k)^n, summed over N
+            struct P { int N; double n; int r, b, t; };
+            static const PerSuite<P> sets{{{{1, 5e6, 0, 16, 2}}, {}, {}}};
+            for (const auto &s : sets[bat]) {
+                const long long n = scaled(s.n);
+                const double k = std::ldexp(1.0, s.b * s.t);
+                if (n <= 100000 || n > 0.1 * k) throw TestFailure("kcollision: n out of the range of the Poisson approximation");
+                const double mu = n + k * std::expm1(n * std::log1p(-1 / k));
+                const auto t0 = std::chrono::steady_clock::now();
+                long long c = 0;
+                for (int rep = 0; rep < s.N; ++rep) c += collision_over(kn, mem, tuples(s.r, s.b, s.t, 0), g, ctr, n);
+                params = absl::StrFormat("N=%d n=%lld r=%d d=2^%d t=%d", s.N, n, s.r, s.b, s.t);
+                report_poisson("kcoll", params, c, s.N * mu, seconds_since(t0));
+                if (sum.max_z > o.limit) return sum;
+            }
+        }
         if (wanted(o, "birthday")) {
-            const struct { int N; double n; int r, b, t; } set[] = {
-                {100, 1e7, 0, 31, 2}, {20, 2e7, 0, 21, 3}, {20, 3e7, 14, 16, 4}, {20, 2e7, 0, 9, 7}, {20, 2e7, 7, 9, 7},
-                {20, 3e7, 14, 8, 8}, {20, 3e7, 22, 8, 8}, {20, 3e7, 0, 4, 16}, {20, 3e7, 26, 4, 16}};
-            for (const auto &s : set) {
+            struct P { int N; double n; int r, b, t; };
+        static const PerSuite<P> sets{{{{1, 5e6, 0, 30, 2}}, {{5, 2e7, 0, 31, 2}, {5, 2e7, 0, 21, 3}, {5, 2e7, 0, 16, 4}, {3, 2e7, 0, 9, 7}, {3, 2e7, 7, 9, 7}, {3, 2e7, 14, 8, 8}, {3, 2e7, 22, 8, 8}}, {{100, 1e7, 0, 31, 2}, {20, 2e7, 0, 21, 3}, {20, 3e7, 14, 16, 4}, {20, 2e7, 0, 9, 7}, {20, 2e7, 7, 9, 7}, {20, 3e7, 14, 8, 8}, {20, 3e7, 22, 8, 8}, {20, 3e7, 0, 4, 16}, {20, 3e7, 26, 4, 16}}}};
+            for (const auto &s : sets[bat]) {
                 const long long n = scaled(s.n);
                 const double k = std::ldexp(1.0, s.b * s.t);
                 const double lambda = static_cast<double>(n) * n * n / (4 * k);  // expected collisions of the spacings
@@ -1282,8 +1466,9 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         }
     }
     if (wanted(o, "closepairs")) {
-        const struct { int N; double n; int t; } set[] = {{30, 6e6, 3}, {20, 4e6, 5}, {10, 3e6, 9}, {5, 2e6, 16}};  // r = 0, p = 0, m = 30
-        for (const auto &s : set) {
+        struct P { int N; double n; int t; bool s2 = true; };  // s2: mNP2S reported (not by Crush for t = 2, as bbattery.c)
+        static const PerSuite<P> sets{{{}, {{10, 2e6, 2, false}, {10, 2e6, 3}, {5, 2e6, 7}}, {{30, 6e6, 3}, {20, 4e6, 5}, {10, 3e6, 9}, {5, 2e6, 16}}}};  // r = 0, p = 0, m = 30
+        for (const auto &s : sets[bat]) {
             const int m = 30;
             const long long n = scaled(s.n);
             const auto t0 = std::chrono::steady_clock::now();
@@ -1291,14 +1476,65 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             for (int rep = 0; rep < s.N; ++rep) reps.push_back(close_pairs(kn, mem, g, ctr, n, s.t, m));
             const double sec = seconds_since(t0);
             for (const CpStats &c : close_pairs_stats(reps, n, s.t, m)) {
+                if (!s.s2 && c.name == "mNP2S") continue;
                 params = absl::StrFormat("N=%d n=%lld t=%d m=%d %s", s.N, n, s.t, m, c.name);
                 emit("cpairs", params, Stat::kClosePairs, c.stat, c.p, 0, sec);
             }
         }
     }
+    if (wanted(o, "cpbitmatch")) {
+        // ClosePairsBitMatch (snpair_ClosePairsBitMatch): N times n points of k coordinates (consecutive values u =
+        // (x << r) / 2^32, not on the torus); the distance of a pair is the least over the coordinates of the number of
+        // their equal leading bits (2 * 64 for equal coordinates, as TestU01 with 64-bit longs), and MaxY the largest of
+        // all the pairs, against Prob[max over N n (n - 1) / 2 pairs <= MaxY] of the distance of a pair, P[Y >= y] =
+        // 2^(-k y). MaxY is the largest y for which two points have the same top y bits of every coordinate: found by a
+        // binary search of the collisions of the keys of the top y bits of the k coordinates (k y <= 64 bits; beyond,
+        // MaxY is the lower bound 64 / k, as the pairs so close are improbable for k > 2)
+        struct P { int N; double n; int r, k; };
+        static const PerSuite<P> sets{{{}, {{4, 4e6, 0, 2}, {2, 4e6, 0, 4}}, {}}};
+        for (const auto &sv : sets[bat]) {
+            const int k = sv.k;
+            if (k < 1 || k > 64 || sv.r < 0 || sv.r > 31) throw std::invalid_argument("cpbitmatch: 1 <= k <= 64, 0 <= r <= 31");
+            const long long n = scaled(sv.n);
+            const int ymax = std::min(32 - sv.r, 64 / k);
+            const auto t0 = std::chrono::steady_clock::now();
+            int maxy = 0;
+            for (int rep = 0; rep < sv.N; ++rep) {
+                const uint64_t stride = Counters::stride(n, k, 0), base = ctr.take(stride);
+                const auto collide = [&](int y) {
+                    const Tuples tup = tuples(sv.r, y, k, 0);
+                    return count_equal(kn, mem, n, [&](const Sink &sk) { launch(kn.points, kBlocks, kThreads, 0, tup, g, base, stride, n, sk); }) > 0;
+                };
+                int lo = 0, hi = ymax;  // collide(lo) (y = 0: every pair), the largest y in [lo, hi] with a collision
+                while (lo < hi) {
+                    const int mid = (lo + hi + 1) / 2;
+                    if (collide(mid)) lo = mid;
+                    else hi = mid - 1;
+                }
+                // equal points in all their bits (only for k <= 2, with 32 - r bits): equal coordinates, as TestU01
+                int y = lo;
+                if (y == 32 - sv.r && k * (32 - sv.r) <= 64) y = 128;
+                maxy = std::max(maxy, y);
+            }
+            const double pairs = static_cast<double>(sv.N) * n * (n - 1) / 2;
+            const double z1 = std::exp2(-static_cast<double>(k) * (maxy + 1));
+            double pl, pr;
+            if (z1 > DBL_EPSILON) {
+                pl = std::exp(std::log1p(-z1) * pairs);
+                pr = 1 - pl;
+            } else {
+                pr = z1 * pairs;
+                pl = 1 - pr;
+            }
+            params = absl::StrFormat("N=%d n=%lld r=%d k=%d maxy=%d", sv.N, n, sv.r, k, maxy);
+            emit("cpbitm", params, Stat::kDiscrete, static_cast<double>(maxy), gofw_pDisc(pl, pr), 0, seconds_since(t0));
+            if (sum.max_z > o.limit) return sum;
+        }
+    }
     if (wanted(o, "permutation")) {
-        const struct { double n; int r, t; } set[] = {{1e9, 5, 3}, {1e9, 5, 5}, {5e8, 5, 7}, {5e8, 10, 10}};  // N = 1
-        for (const auto &s : set) {
+        struct P { double n; int r, t; };
+        static const PerSuite<P> sets{{{}, {{5e7, 0, 10}, {5e7, 15, 10}}, {{1e9, 5, 3}, {1e9, 5, 5}, {5e8, 5, 7}, {5e8, 10, 10}}}};  // N = 1
+        for (const auto &s : sets[bat]) {
             const long long n = scaled(s.n);
             int cells = 1;
             for (int i = 2; i <= s.t; ++i) cells *= i;
@@ -1320,26 +1556,29 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                                        {22614.7139, 45233.8198, 67852.0446, 90470.0789, 113261.815, 139475.555},
                                        {27892.1588, 55788.8311, 83684.5705, 111580.110, 139475.555, 172860.170}};
         static const double B[6] = {1.0 / 6, 5.0 / 24, 11.0 / 120, 19.0 / 720, 29.0 / 5040, 1.0 / 840};
-        const struct { int N; double n; int r, up; } set[] = {{5, 1e9, 0, 0}, {10, 1e9, 15, 1}};
+        struct P { int N; double n; int r, up; };
+        static const PerSuite<P> sets{{{}, {{1, 5e8, 0, 1}, {1, 5e8, 15, 0}}, {{5, 1e9, 0, 0}, {10, 1e9, 15, 1}}}};
         unsigned long long *d_cnt;
         CK(gpuMalloc(reinterpret_cast<void **>(&d_cnt), sizeof(unsigned long long) * 6));
-        for (const auto &s : set) {
+        for (const auto &s : sets[bat]) {
             const long long n = scaled(s.n);
             const auto t0 = std::chrono::steady_clock::now();
-            double khi = 0;
+            std::vector<double> khi;
+            // the N sequences of n values one after the other, as TestU01
+            const uint64_t start0 = ctr.take((s.N * n + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
             for (int rep = 0; rep < s.N; ++rep) {
                 CK(gpuMemset(d_cnt, 0, sizeof(unsigned long long) * 6));
-                const uint64_t start = ctr.take((n + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
+                const uint64_t start = start0 + static_cast<uint64_t>(rep) * n;
                 launch(kn.krun, kBlocks, kThreads, 0, g, start, n, s.r, s.up, d_cnt);
                 unsigned long long c[6];
                 CK(gpuMemcpy(c, d_cnt, sizeof c, gpuMemcpyDeviceToHost));
                 double k = 0;
                 for (int i = 0; i < 6; ++i)
                     for (int j = 0; j < 6; ++j) k += A[i][j] * (c[i] - n * B[i]) * (c[j] - n * B[j]);
-                khi += k / (n - 6.0);
+                khi.push_back(k / (n - 6.0));
             }
             params = absl::StrFormat("N=%d n=%lld r=%d %s", s.N, n, s.r, s.up ? "up" : "down");
-            report("run", params, Chi2{khi, 6L * s.N}, seconds_since(t0));
+            report("run", params, Chi2{sum_stat(khi), 6L * s.N}, seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_cnt));
                 return sum;
@@ -1350,9 +1589,11 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     if (wanted(o, "serial")) {
         // SerialOver (N = 1, d = 256, t = 3): the chi-square X of the overlapping 3-tuples minus that of the
         // 2-tuples (circular, as TestU01), against the chi-square of k - k1 degrees of freedom (Good)
-        for (const int r : {0, 22}) {
-            const int b = 8, t = 3;
-            const long long n = scaled(1e9);
+        struct P { double n; int r, b, t; };  // N = 1, d = 2^b
+        static const PerSuite<P> sets{{{}, {{5e8, 0, 12, 2}, {3e8, 0, 6, 4}}, {{1e9, 0, 8, 3}, {1e9, 22, 8, 3}}}};
+        for (const auto &s : sets[bat]) {
+            const int r = s.r, b = s.b, t = s.t;
+            const long long n = scaled(s.n);
             const uint64_t k = UINT64_C(1) << (b * t), k1 = UINT64_C(1) << (b * (t - 1));
             const auto t0 = std::chrono::steady_clock::now();
             unsigned *d_cnt, *d_cnt1;
@@ -1367,22 +1608,43 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             CK(gpuMemcpy(c1.data(), d_cnt1, sizeof(unsigned) * k1, gpuMemcpyDeviceToHost));
             CK(gpuFree(d_cnt));
             CK(gpuFree(d_cnt1));
-            const auto pearson = [n](const std::vector<unsigned> &v) {
+            // the chi-square of the counts of the cells, by the same floating-point operations as TestU01 (CalcPowDivEqual of
+            // smultin.c, the cells in their order): for the t-tuples, the terms (c - e)^2 / e summed if 6 e <= k (its
+            // precomputed table, flagTab), else the (c - e)^2 summed and divided by e; for the (t - 1)-tuples always the latter
+            const auto pearson = [n](const std::vector<unsigned> &v, bool table) {
                 const double e = static_cast<double>(n) / v.size();
                 double x = 0;
-                for (const unsigned ci : v) x += (ci - e) * (ci - e);
-                return x / e;
+                if (!table || 6.0 * e > static_cast<double>(v.size())) {
+                    for (const unsigned ci : v) {
+                        const double d = ci - e;
+                        x += d * d;
+                    }
+                    return x / e;
+                }
+                for (const unsigned ci : v) {
+                    const double d = ci - e;
+                    x += d * d / e;
+                }
+                return x;
             };
             params = absl::StrFormat("n=%lld r=%d d=%d t=%d", n, r, 1 << b, t);
-            report("serial", params, Chi2{pearson(c) - pearson(c1), static_cast<long>(k - k1)}, seconds_since(t0));
+            // standardized by the corrected mean and standard deviation of Read and Cressie, as TestU01
+            // (smultin_PowDivMomCorChi for Delta = 1, of k - k1 cells): x = (X - X1 - mu) / sigma
+            const double kk = static_cast<double>(k - k1), nn = static_cast<double>(n);
+            const double sigma = std::sqrt(1.0 + (2.0 - 2.0 * kk - kk * kk + kk * kk) / (2.0 * nn * (kk - 1.0)));
+            const double mu = (kk - 1.0) * (1.0 - sigma);
+            const double x = (pearson(c, true) - pearson(c1, false) - mu) / sigma;
+            report("serial", params, Chi2{x, static_cast<long>(k - k1)}, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
     }
     if (wanted(o, "collpermut")) {
         // CollisionPermut (N = 20, n = 2e7, t = 14): collisions of the orders of 14 values among 14! cells
-        for (const int r : {0, 10}) {
-            const int N = 20, t = 14;
-            const long long n = scaled(2e7);
+        struct P { int N; double n; int r, t; };
+        static const PerSuite<P> sets{{{}, {{5, 1e7, 0, 13}, {5, 1e7, 15, 13}}, {{20, 2e7, 0, 14}, {20, 2e7, 10, 14}}}};
+        for (const auto &s : sets[bat]) {
+            const int N = s.N, r = s.r, t = s.t;
+            const long long n = scaled(s.n);
             double k = 1;
             for (int i = 2; i <= t; ++i) k *= i;
             const double mu = n + k * std::expm1(n * std::log1p(-1 / k));
@@ -1403,10 +1665,11 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     }
     if (wanted(o, "weight")) {
         // WeightDistrib (N = 1, n = 2e7, k = 256, alpha = 0): the binomial number of values below beta
-        const struct { int r, lg; } set[] = {{0, 2}, {20, 2}, {28, 2}, {0, 4}, {10, 4}, {26, 4}};  // beta = 2^-lg
-        for (const auto &s : set) {
-            const int k = 256;
-            const long long n = scaled(2e7);
+        struct P { double n; int r, k, lg; };  // N = 1, alpha = 0, beta = 2^-lg
+        static const PerSuite<P> sets{{{{2e5, 27, 256, 3}}, {{2e6, 0, 256, 3}, {2e6, 8, 256, 3}, {2e6, 16, 256, 3}, {2e6, 24, 256, 3}}, {{2e7, 0, 256, 2}, {2e7, 20, 256, 2}, {2e7, 28, 256, 2}, {2e7, 0, 256, 4}, {2e7, 10, 256, 4}, {2e7, 26, 256, 4}}}};
+        for (const auto &s : sets[bat]) {
+            const int k = s.k;
+            const long long n = scaled(s.n);
             const double p = std::ldexp(1.0, -s.lg);
             std::vector<double> prob(k + 1);
             for (int i = 0; i <= k; ++i) prob[i] = std::exp(std::lgamma(k + 1.0) - std::lgamma(i + 1.0) - std::lgamma(k - i + 1.0) + i * std::log(p) + (k - i) * std::log1p(-p));
@@ -1419,8 +1682,11 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     }
     if (wanted(o, "savir2")) {
         // Savir2 (N = 10, n = 1e7, r = 10, m = 2^20, t = 30): the sum of the chi-squares of the N replications
-        const int N = 10, r = 10, t = 30;
-        const long long m = 1 << 20, n = scaled(1e7);
+        struct P { int N; double n; int r, lgm, t; };  // m = 2^lgm
+        static const PerSuite<P> sets{{{}, {{1, 2e7, 0, 20, 30}}, {{10, 1e7, 10, 20, 30}}}};
+        for (const auto &sv : sets[bat]) {
+        const int N = sv.N, r = sv.r, t = sv.t;
+        const long long m = 1LL << sv.lgm, n = scaled(sv.n);
         std::vector<double> pr(m + 2, 0.0);
         for (long long j = 1; j <= m; ++j) pr[j] = 1.0 / m;
         for (int i = 2; i <= t; ++i)
@@ -1441,14 +1707,18 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             all.x += c.x;
             all.df += c.df;
         }
-        params = absl::StrFormat("N=%d n=%lld r=%d m=2^20 t=%d", N, n, r, t);
+        params = absl::StrFormat("N=%d n=%lld r=%d m=2^%d t=%d", N, n, r, sv.lgm, t);
         report("savir2", params, all, seconds_since(t0));
         if (sum.max_z > o.limit) return sum;
+        }
     }
     if (wanted(o, "gcd")) {
-        // GCD (N = 10, n = 5e7, r = 0, s = 30): the gcd of pairs against 6 / (pi^2 j^2), lumped at jmax
-        const int N = 10, r = 0, s = 30;
-        const long long n = scaled(5e7);
+        // GCD: the gcd of pairs of s-bit values against 6 / (pi^2 j^2), lumped at jmax, summed over N
+        struct P { int N; double n; int r, s; };
+        static const PerSuite<P> sets{{{}, {{1, 1e8, 0, 30}, {1, 4e7, 10, 20}}, {{10, 5e7, 0, 30}}}};
+        for (const auto &sv : sets[bat]) {
+        const int N = sv.N, r = sv.r, s = sv.s;
+        const long long n = scaled(sv.n);
         const double c1 = 6 / (M_PI * M_PI);
         const int jmax = 1 + static_cast<int>(std::sqrt(c1 * n / kMinExpected));
         std::vector<double> prob(jmax + 1, 0.0);
@@ -1458,7 +1728,9 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         const auto t0 = std::chrono::steady_clock::now();
         Chi2 all{0, 0};
         for (int rep = 0; rep < N; ++rep) {
-            const auto h = histogram(kn, detail::Gcd{r, s, jmax}, g, ctr, n, jmax + 1, 2, 0);
+            // a pair with a zero is drawn again: the pairs per observation are geometric of the probability q of no zero
+            const double q = std::pow(1 - std::ldexp(1.0, -s), 2);
+            const auto h = histogram(kn, detail::Gcd{r, s, jmax}, g, ctr, n, jmax + 1, 2 / q, 4 * (1 - q) / (q * q));
             const Chi2 c = chi2(h, prob, n);
             all.x += c.x;
             all.df += c.df;
@@ -1466,6 +1738,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         params = absl::StrFormat("N=%d n=%lld r=%d s=%d", N, n, r, s);
         report("gcd", params, all, seconds_since(t0));
         if (sum.max_z > o.limit) return sum;
+        }
     }
     // the tests on the bits of the Hamming tests (sstring): blocks of L bits of ldivs values of s bits and
     // the first lmods bits of one more
@@ -1484,9 +1757,11 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         // HammingWeight2 (N = 10, n = 1e9 bits, s = 3, L = 1e6): sum over the K = n / L blocks of the N
         // replications of (weight - L/2)^2 * 4 / L, a chi-square of N K degrees of freedom; the weights are
         // counted within L/2 +- h (12 standard deviations), the farther ones at the ends
-        for (const int r : {0, 27}) {
-            const int N = 10, s = 3, L = 1000000, h = 6000;
-            const long long K = static_cast<long long>(scaled(1e9) / L);
+        struct P { int N; double n; int r, s, L; };  // n bits
+        static const PerSuite<P> sets{{{}, {{100, 1e8, 0, 30, 1000000}, {30, 1e8, 20, 10, 1000000}}, {{10, 1e9, 0, 3, 1000000}, {10, 1e9, 27, 3, 1000000}}}};
+        for (const auto &sv : sets[bat]) {
+            const int N = sv.N, r = sv.r, s = sv.s, L = sv.L, h = static_cast<int>(std::ceil(6 * std::sqrt(static_cast<double>(L))));
+            const long long K = static_cast<long long>(scaled(sv.n) / L);
             const auto t0 = std::chrono::steady_clock::now();
             const auto hist = histogram(kn, hamming(r, s, L, 2, h), g, ctr, N * K, 2 * h + 1, vals_per_block(s, L), 0);
             double x = 0;
@@ -1499,9 +1774,10 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     if (wanted(o, "hamcorr")) {
         // HammingCorr (N = 1, r = 10, s = 10): the correlation of the weights of consecutive blocks,
         // sum (2 X_i - L)(2 X_{i+1} - L) / (L sqrt(pairs)), a standard normal
-        const struct { double n; int L; } set[] = {{1e9, 30}, {1e8, 300}, {1e8, 1200}};
-        for (const auto &c : set) {
-            const int r = 10, s = 10, L = c.L;
+        struct P { double n; int r, s, L; };  // N = 1
+        static const PerSuite<P> sets{{{}, {{5e8, 0, 30, 30}, {5e7, 0, 30, 300}, {1e7, 0, 30, 1200}}, {{1e9, 10, 10, 30}, {1e8, 10, 10, 300}, {1e8, 10, 10, 1200}}}};
+        for (const auto &c : sets[bat]) {
+            const int r = c.r, s = c.s, L = c.L;
             const long long n = scaled(c.n);
             const auto t0 = std::chrono::steady_clock::now();
             // (a thread's first block starts its pairs: one block more per thread)
@@ -1522,9 +1798,9 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         // HammingIndep (d = 0): the chi-square of the (L + 1)^2 pairs of the weights of non-overlapping
         // pairs of blocks against the binomial products, the cells of an expected count of at least 10 as
         // classes and the others merged into one (into the last class if below 10), summed over N
-        const struct { int N; double n; int r, s, L; } set[] = {
-            {10, 3e7, 0, 3, 30}, {10, 3e7, 27, 3, 30}, {1, 3e7, 0, 4, 300}, {1, 3e7, 26, 4, 300}, {1, 1e7, 0, 5, 1200}, {1, 1e7, 25, 5, 1200}};
-        for (const auto &c : set) {
+        struct P { int N; double n; int r, s, L; };
+        static const PerSuite<P> sets{{{{1, 5e5, 20, 10, 300}}, {{1, 3e8, 0, 30, 30}, {1, 1e8, 20, 10, 30}, {1, 3e7, 0, 30, 300}, {1, 1e7, 20, 10, 300}, {1, 1e7, 0, 30, 1200}, {1, 1e6, 20, 10, 1200}}, {{10, 3e7, 0, 3, 30}, {10, 3e7, 27, 3, 30}, {1, 3e7, 0, 4, 300}, {1, 3e7, 26, 4, 300}, {1, 1e7, 0, 5, 1200}, {1, 1e7, 25, 5, 1200}}}};
+        for (const auto &c : sets[bat]) {
             const long long n = scaled(c.n);
             const int L = c.L;
             const auto b = binomial(L, 0.5);
@@ -1568,9 +1844,11 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         // independent but for adjacent bits; TestU01 takes the bits for n runs, of the variance 8n instead of 4n)
         unsigned long long *d_cnt;
         CK(gpuMalloc(reinterpret_cast<void **>(&d_cnt), sizeof(unsigned long long) * 80));
-        for (const int r : {0, 27}) {
-            const int s = 3;
-            const long long nr = scaled(2e9), nv = (4 * nr + s - 1) / s;
+        struct P { double n; int r, s; };  // N = 1, n runs
+        static const PerSuite<P> sets{{{}, {{1e9, 0, 30}, {1e9, 20, 10}}, {{2e9, 0, 3}, {2e9, 27, 3}}}};
+        for (const auto &sv : sets[bat]) {
+            const int r = sv.r, s = sv.s;
+            const long long nr = scaled(sv.n), nv = (4 * nr + s - 1) / s;
             const int k = 1 + static_cast<int>(std::log2(nr / kMinExpected));
             if (k > 40) throw TestFailure("bitrun: too many classes");
             const auto t0 = std::chrono::steady_clock::now();
@@ -1612,9 +1890,11 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             return std::exp(-std::exp(-t)) - x;
         };
         long long *d_long;
-        for (const int r : {0, 27}) {
-            const int s = 3;
-            const long long nb = scaled(1000), K = 10000020 / s, L = K * s;
+        struct P { double n; int r, s; long long L; };  // N = 1, n blocks of L bits
+        static const PerSuite<P> sets{{{}, {{1000, 0, 30, 10000020}, {300, 20, 10, 10000020}}, {{1000, 0, 3, 10000020}, {1000, 27, 3, 10000020}}}};
+        for (const auto &sv : sets[bat]) {
+            const int r = sv.r, s = sv.s;
+            const long long nb = scaled(sv.n), K = sv.L / s, L = K * s;
             std::vector<double> prob;
             double cdf = 0;
             for (long j = 0; j < 1000; ++j) {
@@ -1653,27 +1933,33 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         }
     }
     if (wanted(o, "autocor")) {
-        // AutoCor (N = 10, n = 1e9 + 30 bits, s = 3): the differing bits at the distance d over K = (n - d) / s
-        // values, 2 (A - K s / 2) / sqrt(K s) a standard normal, summed over N (divided by sqrt(N))
+        // AutoCor: the differing bits A at the distance d over K = (n - d) / s values of s bits, 2 (A - K s / 2) / sqrt(K s)
+        // a standard normal, summed over N (divided by sqrt(N))
         unsigned long long *d_cnt;
         CK(gpuMalloc(reinterpret_cast<void **>(&d_cnt), sizeof(unsigned long long)));
-        const struct { int r, d; } set[] = {{0, 1}, {0, 3}, {27, 1}, {27, 3}};
-        for (const auto &c : set) {
-            const int N = 10, s = 3;
-            const long long nbits = scaled(1e9 + 30), K = (nbits - c.d) / s;
+        struct P { int N; double n; int r, s, d; };  // n bits
+        static const PerSuite<P> sets{{{}, {{10, 1e9 + 30, 0, 30, 1}, {5, 1e9 + 1, 20, 10, 1}, {10, 1e9 + 31, 0, 30, 30}, {5, 1e9 + 11, 20, 10, 10}}, {{10, 1e9 + 30, 0, 3, 1}, {10, 1e9 + 30, 0, 3, 3}, {10, 1e9 + 30, 27, 3, 1}, {10, 1e9 + 30, 27, 3, 3}}}};
+        for (const auto &c : sets[bat]) {
+            const int N = c.N, s = c.s;
+            if (s < 1 || s > 32 || c.r < 0 || c.r + s > 32 || c.d < 1 || c.d > s) throw std::invalid_argument("autocor: 1 <= d <= s <= 32, r + s <= 32");
+            const long long nbits = scaled(c.n), K = (nbits - c.d) / s;
+            // as TestU01: the replications one after the other, of M - 1 + K values each (M = d / s + 2); TestU01 cuts n
+            // to d + K s, so its statistic takes the K s pairs of bits compared
+            const long long per = K + c.d / s + 1;
+            const uint64_t start0 = ctr.take((N * per + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
             const auto t0 = std::chrono::steady_clock::now();
-            double zs = 0;
+            std::vector<double> zs;
             for (int rep = 0; rep < N; ++rep) {
                 CK(gpuMemset(d_cnt, 0, sizeof(unsigned long long)));
-                const uint64_t start = ctr.take((K + 1 + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
+                const uint64_t start = start0 + static_cast<uint64_t>(rep) * per;
                 launch(kn.autocor, kBlocks, kThreads, 0, g, start, K, c.r, s, c.d, d_cnt);
                 unsigned long long A;
                 CK(gpuMemcpy(&A, d_cnt, sizeof A, gpuMemcpyDeviceToHost));
                 const double m = static_cast<double>(K) * s;
-                zs += 2.0 * (A - m / 2) / std::sqrt(m);
+                zs.push_back(2.0 * (A - m / 2) / std::sqrt(m));
             }
             params = absl::StrFormat("N=%d n=%lld r=%d s=%d d=%d", N, nbits, c.r, s, c.d);
-            report_normal("autocor", params, zs / std::sqrt(static_cast<double>(N)), seconds_since(t0));
+            report_normal("autocor", params, sum_stat(zs) / std::sqrt(static_cast<double>(N)), seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_cnt));
                 return sum;
@@ -1687,8 +1973,11 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         // statistic has the variance 13/12)
         double *d_sum;
         CK(gpuMalloc(reinterpret_cast<void **>(&d_sum), sizeof(double)));
-        for (const int k : {1, 2}) {
-            const long long n = scaled(2e9);
+        struct P { double n; int k; };  // N = 1, r = 0
+        static const PerSuite<P> sets{{{}, {{5e8, 1}}, {{2e9, 1}, {2e9, 2}}}};
+        for (const auto &sv : sets[bat]) {
+            const int k = sv.k;
+            const long long n = scaled(sv.n);
             const auto t0 = std::chrono::steady_clock::now();
             CK(gpuMemset(d_sum, 0, sizeof(double)));
             const uint64_t start = ctr.take((n + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
@@ -1704,52 +1993,26 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         }
         CK(gpuFree(d_sum));
     }
-    // SampleProd and SampleMean: the Anderson-Darling test of n values transformed to U(0, 1) by their
-    // distribution function (as keys of 64 bits, see kuniform), sorted on GPU by parts if they don't fit in
-    // the memory, and collected on the host
-    const auto ad_sorted = [&](long long n, const Launch &f) {
-        if (o.fast) {  // the terms of the statistic summed on GPU, part by part
-            double a2 = 0;
-            long long off = 0;
-            sorted_parts(kn, mem, n, 64, f, [&](unsigned long long *a, long long c) {
-                a2 += thrust::transform_reduce(thrust::counting_iterator<long long>(0), thrust::counting_iterator<long long>(c), AdTerm{a, off, n}, 0.0,
-                                               thrust::plus<double>());
-                off += c;
-            });
-            a2 = -static_cast<double>(n) - a2 / static_cast<double>(n);
-            return std::pair<double, double>{a2, fbar_AndersonDarling(static_cast<long>(n), a2)};
-        }
-        std::vector<unsigned long long> keys;
-        keys.reserve(n);
-        sorted_parts(kn, mem, n, 64, f, [&](unsigned long long *a, long long c) {
-            const size_t at = keys.size();
-            keys.resize(at + c);
-            if (c) CK(gpuMemcpy(keys.data() + at, a, sizeof(unsigned long long) * c, gpuMemcpyDeviceToHost));
-        });
-        std::vector<double> v(n + 1);  // the arrays of TestU01 start at 1
-        for (long long i = 0; i < n; ++i) v[i + 1] = (static_cast<double>(keys[i]) + 0.5) * 0x1p-64;
-        const double a2 = gofs_AndersonDarling(v.data(), static_cast<long>(n));
-        return std::pair<double, double>{a2, fbar_AndersonDarling(static_cast<long>(n), a2)};
-    };
-    const auto report_ad = [&](const char *name, const std::string &params, double a2, double p, double sec) {
-        emit(name, params, Stat::kAndersonDarling, a2, p, p > 0 ? std::max(0.0, -finv_Normal1(std::max(p, 1e-300))) : HUGE_VAL, sec);
-    };
     if (wanted(o, "sampleprod")) {
-        // SampleProd (n = 1e7, r = 0): for each of N replications, the AD test of the products of t values
-        // against FDistProd; then the AD test of the N p-values
-        const int set[][2] = {{40, 8}, {20, 16}, {20, 24}};
-        for (const auto &c : set) {
-            const long long n = scaled(1e7);
+        // SampleProd (r = 0): for each of N replications, the AD test of the n products of t values against FDistProd;
+        // then the AD test of the N p-values, or for N = 1 that of the replication (as TestU01 reports it)
+        struct P { int N; double n; int t; };  // r = 0
+        static const PerSuite<P> sets{{{}, {{1, 1e7, 10}, {1, 1e7, 30}}, {{40, 1e7, 8}, {20, 1e7, 16}, {20, 1e7, 24}}}};
+        for (const auto &sv : sets[bat]) {
+            const int c[2] = {sv.N, sv.t};
+            const long long n = scaled(sv.n);
             const auto t0 = std::chrono::steady_clock::now();
             std::vector<double> ps;
+            std::pair<double, double> one{0, 0};  // the statistic and the p-value of the last replication
             for (int rep = 0; rep < c[0]; ++rep) {
                 const uint64_t stride = Counters::stride(n, c[1], 0);
                 const uint64_t base = ctr.take(stride);
-                ps.push_back(ad_sorted(n, [&](const Sink &sk) {
-                                 launch(kn.uniform, kBlocks, kThreads, 0, 0, 0, c[1], g, base, stride, n, static_cast<const double *>(nullptr), 0, 0.0, sk);
-                             }).second);
+                one = ad_sorted(n, [&](const Sink &sk) {
+                    launch(kn.uniform, kBlocks, kThreads, 0, 0, 0, c[1], g, base, stride, n, static_cast<const double *>(nullptr), 0, 0.0, sk);
+                });
+                ps.push_back(one.second);
             }
-            const auto ad = anderson_darling(ps);
+            const auto ad = c[0] == 1 ? one : anderson_darling(ps);
             params = absl::StrFormat("N=%d n=%lld r=0 t=%d", c[0], n, c[1]);
             report_ad("sprod", params, ad.first, ad.second, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
@@ -1758,11 +2021,14 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     if (wanted(o, "samplemean")) {
         // SampleMean (N = 2e7 sums of n = 30 values, r = 0 and 10): the AD test of the N sums against the
         // Irwin-Hall distribution (by a table of it and its density, see kuniform)
-        const int m = 30, ntab = 1 << 16;
+        struct P { double N; int m, r; };  // N sums of m values
+        static const PerSuite<P> sets{{{}, {{1e7, 20, 0}}, {{2e7, 30, 0}, {2e7, 30, 10}}}};
+        for (const auto &sv : sets[bat]) {
+        const int m = sv.m, ntab = 1 << 16, r = sv.r;
         const double hstep = static_cast<double>(m) / (ntab - 1);
         std::vector<double> tab(2 * ntab);
         {
-            const auto ih = [](long double x, int deg) {  // sum_k (-1)^k C(m, k) (x - k)^deg / deg!, x <= m / 2
+            const auto ih = [m](long double x, int deg) {  // sum_k (-1)^k C(m, k) (x - k)^deg / deg!, x <= m / 2
                 long double s = 0, c = 1, f = 1;
                 for (int i = 2; i <= deg; ++i) f *= i;
                 for (int k = 0; k <= m && k <= x; ++k) {
@@ -1782,8 +2048,8 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         double *d_tab;
         CK(gpuMalloc(reinterpret_cast<void **>(&d_tab), sizeof(double) * tab.size()));
         CK(gpuMemcpy(d_tab, tab.data(), sizeof(double) * tab.size(), gpuMemcpyHostToDevice));
-        for (const int r : {0, 10}) {
-            const long long n = scaled(2e7);
+        {
+            const long long n = scaled(sv.N);
             const auto t0 = std::chrono::steady_clock::now();
             const uint64_t stride = Counters::stride(n, m, 0);
             const uint64_t base = ctr.take(stride);
@@ -1798,12 +2064,14 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             }
         }
         CK(gpuFree(d_tab));
+        }
     }
     if (wanted(o, "walk")) {
         // RandomWalk1 (N = 1, L0 = L1 = L): the chi-squares of the statistics H, M, J, R and C of n walks
         // against the expected numbers of TestU01 (CalcNbExp of swalk.c)
-        const struct { double n; int r, s, L; } set[] = {{1e8, 0, 5, 50}, {1e8, 25, 5, 50}, {1e7, 0, 10, 1000}, {1e7, 20, 10, 1000}, {1e6, 0, 15, 10000}, {1e6, 15, 15, 10000}};
-        for (const auto &c : set) {
+        struct P { double n; int r, s, L; };
+        static const PerSuite<P> sets{{{{1e6, 0, 30, 150}}, {{5e7, 0, 30, 90}, {1e7, 20, 10, 90}, {5e6, 0, 30, 1000}, {1e6, 20, 10, 1000}, {5e5, 0, 30, 10000}, {1e5, 20, 10, 10000}}, {{1e8, 0, 5, 50}, {1e8, 25, 5, 50}, {1e7, 0, 10, 1000}, {1e7, 20, 10, 1000}, {1e6, 0, 15, 10000}, {1e6, 15, 15, 10000}}}};
+        for (const auto &c : sets[bat]) {
             const long long n = scaled(c.n);
             const long L = c.L, L2 = L / 2;
             const double nl = static_cast<double>(n), epsn = 1e-16 * nl;
@@ -1847,7 +2115,55 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     if (wanted(o, "periods")) {
         // PeriodsInStrings (N = 10, n = 5e8, s = 10): the correlations (the periods) of strings of s bits
         // against their populations among the 2^s strings, summed over N
-        const int N = 10, sb = 10;
+        struct P { int N; double n; int r, s; };
+        static const PerSuite<P> sets{{{}, {{1, 3e8, 0, 30}, {1, 3e8, 15, 15}}, {{10, 5e8, 0, 10}, {10, 5e8, 20, 10}}}};
+        for (const auto &sv : sets[bat]) {
+        const int N = sv.N, sb = sv.s, r = sv.r;
+        if (sb < 2 || sb > 32 || r < 0 || r + sb > 32) throw std::invalid_argument("periods: s must be in [2, 32], and r + s <= 32");
+        if (sb > 16) {
+            // the classes of the correlations of TestU01 (in its order), found on GPU by a binary search of the correlations
+            const auto corr = correlations(sb);
+            const int ncls = static_cast<int>(corr.size());
+            std::vector<std::pair<uint32_t, int>> sorted;
+            std::vector<double> prob;
+            for (int i = 0; i < ncls; ++i) {
+                sorted.push_back({corr[i].first, i});
+                prob.push_back(std::ldexp(static_cast<double>(corr[i].second), -sb));
+            }
+            std::sort(sorted.begin(), sorted.end());
+            std::vector<uint32_t> keys;
+            std::vector<int> cl;
+            for (const auto &[k, i] : sorted) {
+                keys.push_back(k);
+                cl.push_back(i);
+            }
+            uint32_t *d_keys;
+            int *d_cls;
+            CK(gpuMalloc(reinterpret_cast<void **>(&d_keys), sizeof(uint32_t) * ncls));
+            CK(gpuMalloc(reinterpret_cast<void **>(&d_cls), sizeof(int) * ncls));
+            CK(gpuMemcpy(d_keys, keys.data(), sizeof(uint32_t) * ncls, gpuMemcpyHostToDevice));
+            CK(gpuMemcpy(d_cls, cl.data(), sizeof(int) * ncls, gpuMemcpyHostToDevice));
+            const long long n = scaled(sv.n);
+            const auto t0 = std::chrono::steady_clock::now();
+            Chi2 all{0, 0};
+            try {
+                for (int rep = 0; rep < N; ++rep) {
+                    const Chi2 c = chi2(histogram(kn, detail::Periods{r, sb, ncls, d_keys, d_cls}, g, ctr, n, ncls, 1, 0), prob, n);
+                    all.x += c.x;
+                    all.df += c.df;
+                }
+            } catch (...) {
+                CK(gpuFree(d_keys));
+                CK(gpuFree(d_cls));
+                throw;
+            }
+            CK(gpuFree(d_keys));
+            CK(gpuFree(d_cls));
+            params = absl::StrFormat("N=%d n=%lld r=%d s=%d", N, n, r, sb);
+            report("periods", params, all, seconds_since(t0));
+            if (sum.max_z > o.limit) return sum;
+            continue;
+        }
         std::map<unsigned, int> cls;  // the correlation of every string -> its class
         std::vector<int> of(1 << sb);
         for (unsigned v = 0; v < (1u << sb); ++v) {
@@ -1862,8 +2178,8 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         }
         std::vector<double> prob(cls.size(), 0.0);
         for (unsigned v = 0; v < (1u << sb); ++v) prob[of[v]] += 1.0 / (1 << sb);
-        for (const int r : {0, 20}) {
-            const long long n = scaled(5e8);
+        {
+            const long long n = scaled(sv.n);
             const auto t0 = std::chrono::steady_clock::now();
             Chi2 all{0, 0};
             for (int rep = 0; rep < N; ++rep) {
@@ -1878,11 +2194,15 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             report("periods", params, all, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
+        }
     }
     if (wanted(o, "sumcoll")) {
         // SumCollector (N = 1, n = 5e8, r = 0, g = 10): the number of values until their sum exceeds g, against
         // P(N = j + 1) = F_j(g) - F_{j+1}(g) of the Irwin-Hall distributions F (in long double), lumped at 50
-        const int jmax = 50, g10 = 10;
+        struct P { double n; int r, g; };  // N = 1
+        static const PerSuite<P> sets{{{}, {{2e7, 0, 10}}, {{5e8, 0, 10}}}};
+        for (const auto &sv : sets[bat]) {
+        const int jmax = 50, g10 = sv.g;
         const auto ihcdf = [](int m, int x) {  // P(sum of m uniforms <= x) for an integer x <= m
             long double s = 0, c = 1, f = 1;
             for (int i = 2; i <= m; ++i) f *= i;
@@ -1896,20 +2216,24 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         double acc = 0;
         for (int j = g10; j < jmax; ++j) acc += prob[j] = static_cast<double>(ihcdf(j, g10) - ihcdf(j + 1, g10));
         prob[jmax] = std::max(0.0, 1 - acc);
-        const long long n = scaled(5e8);
+        const long long n = scaled(sv.n);
         const auto t0 = std::chrono::steady_clock::now();
-        const auto h = histogram(kn, detail::SumColl{0, jmax, static_cast<double>(g10)}, g, ctr, n, jmax + 1, 21, 0.4 * 21);
-        params = absl::StrFormat("n=%lld r=0 g=%d", n, g10);
+        const auto h = histogram(kn, detail::SumColl{sv.r, jmax, static_cast<double>(g10)}, g, ctr, n, jmax + 1, 21, 0.4 * 21);
+        params = absl::StrFormat("n=%lld r=%d g=%d", n, sv.r, g10);
         report("sumcoll", params, chi2(h, prob, n), seconds_since(t0));
         if (sum.max_z > o.limit) return sum;
+        }
     }
     if (wanted(o, "fourier")) {
         // Fourier3 (N = 1e5, k = 14, s = 3, r = 0 and 27): for each of N sequences of n = 2^14 bits (1 and -1)
         // from n / s + 1 values, the squares |F_i|^2 of its Fourier coefficients for i = 1..n/4, summed over
         // the N sequences; the sums divided by n have the mean N and the variance N (1 - 2 / n) (Erdmann), and
         // the AD test of the n / 4 standardized sums against the standard normal distribution
-        const int k = 14, sb = 3, n = 1 << k, kall = n / sb + 1;
-        const long long N = scaled(1e5);
+        struct P { double N; int k, r, s; };  // N sequences of 2^k bits
+        static const PerSuite<P> sets{{{}, {{5e4, 14, 0, 30}, {5e4, 14, 20, 10}}, {{1e5, 14, 0, 3}, {1e5, 14, 27, 3}}}};
+        for (const auto &sv : sets[bat]) {
+        const int k = sv.k, sb = sv.s, n = 1 << k, kall = n / sb + 1, r = sv.r;
+        const long long N = scaled(sv.N);
         // the batch of the FFTs within a quarter of the budget (about 24 n bytes per sequence: its bits,
         // coefficients and the work buffer of rocFFT or cuFFT), a power of 2 in [64, 4096]
         long long batch = 64;
@@ -1919,7 +2243,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             mem.fft = std::make_unique<Fft>(n, batch);
         }
         Fft &ft = *mem.fft;
-        for (const int r : {0, 27}) {
+        {
             const auto t0 = std::chrono::steady_clock::now();
             CK(gpuMemset(ft.b, 0, sizeof(double) * (n / 4 + 1)));
             const uint64_t start = ctr.take((N * kall + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
@@ -1937,6 +2261,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             report_ad("fourier", params, ad.first, ad.second, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
+        }
     }
     if (wanted(o, "linearcomp")) {
         // LinearComp (N = 1, n = 400020 bits, s = 1, r = 0 and 29): the linear complexity profile of n bits
@@ -1945,9 +2270,12 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         // and the standard deviation sigma of TestU01, and the sizes of the jumps against 2^-k (k < M0, the
         // last class lumped), a chi-square of M0 - 1 degrees of freedom; summed over the N sequences. (The
         // chi-square of the linear complexity, for N > 20 in TestU01, is not computed.)
-        const int sb = 1;
+        struct P { double n; int s, r0, r1; };  // N = 1; the two instances r = r0, r1 of the battery
+        static const PerSuite<P> sets{{{}, {{120000, 1, 0, 29}}, {{400020, 1, 0, 29}}}};
+        for (const auto &sv : sets[bat]) {
+        const int sb = sv.s;
         const long long N = 1;
-        const long long K0 = scaled(400020) / sb, n = K0 * sb;
+        const long long K0 = scaled(sv.n) / sb, n = K0 * sb;
         const int par = static_cast<int>(n & 1);
         const double tmp = n >= DBL_MAX_EXP ? 0.0 : std::pow(2.0, -static_cast<double>(n));
         const double mu = n / 4.0 + (4 + par) / 12.0 - tmp / 3.0;
@@ -1957,7 +2285,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         if (M0 < 2) throw TestFailure("linearcomp: too few bits");
         // the bits of all the sequences from the GPU, then the Berlekamp-Massey algorithm of every sequence (its
         // time grows as n^2)
-        const int rs[] = {0, 29};
+        const int rs[] = {sv.r0, sv.r1};
         struct Job {
             std::vector<uint8_t> bits;
             long L = 0, numj = 0;
@@ -1985,22 +2313,26 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         for (Job &jb : jobs) berlekamp_massey(jb.bits, M0, jb.L, jb.numj, jb.cnt);
         const double sec = seconds_since(t0);
         for (int ri = 0; ri < 2; ++ri) {
-            double zs = 0;
+            std::vector<double> zs, jx;
             Chi2 jl{0, 0};
             for (long long q = 0; q < N; ++q) {
                 const Job &jb = jobs[ri * N + q];
-                zs += (jb.numj - mu) / sigma;
+                zs.push_back((jb.numj - mu) / sigma);
+                double x = 0;
                 for (int k = 1; k <= M0; ++k) {
                     const double e = jb.numj / std::ldexp(1.0, k < M0 ? k : M0 - 1);
-                    jl.x += (jb.cnt[k] - e) * (jb.cnt[k] - e) / e;
+                    x += (jb.cnt[k] - e) * (jb.cnt[k] - e) / e;
                 }
+                jx.push_back(x);
                 jl.df += M0 - 1;
             }
             params = absl::StrFormat("N=%lld n=%lld r=%d s=%d jumps", N, n, rs[ri], sb);
-            report_normal("lincomp", params, zs / std::sqrt(static_cast<double>(N)), sec);
+            report_normal("lincomp", params, sum_stat(zs) / std::sqrt(static_cast<double>(N)), sec);
             params = absl::StrFormat("N=%lld n=%lld r=%d s=%d sizes", N, n, rs[ri], sb);
+            jl.x = sum_stat(jx);
             report("lincomp", params, jl, sec);
             if (sum.max_z > o.limit) return sum;
+        }
         }
     }
     if (wanted(o, "matrixrank")) {
@@ -2009,21 +2341,24 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         // s = 30): the ranks over GF(2) against their probabilities (TestU01, in log2), the chi-square summed
         // over N. The small matrices are made from the counters of every thread; the large ones in global memory
         // (a block each, batched within the memory budget) from consecutive values.
-        const struct { int N; double n; int r, s, l, k; } set[] = {{10, 1e6, 0, 5, 30, 30}, {10, 1e6, 25, 5, 30, 30}, {1, 5000, 0, 4, 1000, 1000},
-                                                                   {1, 5000, 26, 4, 1000, 1000}, {1, 80, 15, 15, 5000, 5000}, {1, 80, 0, 30, 5000, 5000}};
-        for (const auto &c : set) {
+        struct P { int N; double n; int r, s, l, k; };
+        static const PerSuite<P> sets{{{{1, 2e4, 20, 10, 60, 60}}, {{1, 1e6, 0, 30, 60, 60}, {1, 1e6, 20, 10, 60, 60}, {1, 5e4, 0, 30, 300, 300}, {1, 5e4, 20, 10, 300, 300}, {1, 2e3, 0, 30, 1200, 1200}, {1, 2e3, 20, 10, 1200, 1200}}, {{10, 1e6, 0, 5, 30, 30}, {10, 1e6, 25, 5, 30, 30}, {1, 5000, 0, 4, 1000, 1000}, {1, 5000, 26, 4, 1000, 1000}, {1, 80, 15, 15, 5000, 5000}, {1, 80, 0, 30, 5000, 5000}}}};
+        for (const auto &c : sets[bat]) {
             const long long n = std::max<long long>(scaled(c.n), 1);
             const int mkl = std::min(c.l, c.k), vpr = c.k / c.s + (c.k % c.s > 0);
-            std::vector<double> prob(mkl + 1);
-            double t2 = -static_cast<double>(c.l) * c.k;
-            prob[0] = std::exp2(t2);
+            // the expected numbers of the ranks, by the operations of TestU01 (num_Log2(x) = log(x) / ln 2, pow)
+            const auto log2_ = [](double x) { return 1.44269504088896340737 * std::log(x); };
+            std::vector<double> nbexp(mkl + 1);
+            double t2 = log2_(static_cast<double>(n)) - c.l * c.k;
+            nbexp[0] = std::pow(2.0, t2);
             for (int j = 1; j <= mkl; ++j) {
-                t2 += c.l + c.k - 2 * j + 1 + std::log2(1 - std::exp2(-static_cast<double>(c.l - j + 1))) +
-                      std::log2(1 - std::exp2(-static_cast<double>(c.k - j + 1))) - std::log2(1 - std::exp2(-static_cast<double>(j)));
-                prob[j] = std::exp2(t2);
+                t2 += c.l + c.k - 2 * j + 1 + log2_(1.0 - std::pow(2.0, -static_cast<double>(c.l - j + 1))) +
+                      log2_(1.0 - std::pow(2.0, -static_cast<double>(c.k - j + 1))) - log2_(1.0 - std::pow(2.0, -static_cast<double>(j)));
+                nbexp[j] = std::pow(2.0, t2);
             }
             const auto t0 = std::chrono::steady_clock::now();
             Chi2 all{0, 0};
+            std::vector<double> xs;
             for (int rep = 0; rep < c.N; ++rep) {
                 std::vector<unsigned long long> h(mkl + 1, 0);
                 if (c.l <= 32 && c.k <= 32) {
@@ -2050,13 +2385,14 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 }
                 Chi2 x{0, 0};
                 try {
-                    x = chi2(h, prob, n);
+                    x = chi2_gofs(h, nbexp);
                 } catch (const TestFailure &) {  // too few matrices for a class (a small scale): no statistic, as TestU01
                 }
-                all.x += x.x;
+                xs.push_back(x.x);
                 all.df += x.df;
             }
             params = absl::StrFormat("N=%d n=%lld r=%d s=%d L=%d k=%d", c.N, n, c.r, c.s, c.l, c.k);
+            all.x = sum_stat(xs);
             if (all.df >= 1) report("matrank", params, all, seconds_since(t0));  // (else too few matrices for two classes)
             if (sum.max_z > o.limit) return sum;
         }
@@ -2076,12 +2412,17 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                                         0.3800637, 0.3845867, 0.3874942, 0.3893189, 0.3904405, 0.3911178, 0.3915202, 0.3917561};
         static const double eCor[17] = {0, 0, 0, 0.4890883, 0.4435381, 0.4137196, 0.3941338, 0.3813210, 0.3730195,
                                         0.3677118, 0.3643695, 0.3622979, 0.3610336, 0.3602731, 0.3598216, 0.3595571, 0.3594040};
-        const int sb = 3, L = 15, vpb = L / sb + (L % sb > 0), ibits = 64 - L;
-        const long long Q = 10000000, K = std::max<long long>(scaled(1e9), 1), n = Q + K;
-        const double sigma = std::sqrt((dCor[L] + eCor[L] * std::ldexp(1.0, L) / K) * KV[L] / K);
-        for (const int r : {0, 27}) {
+        struct P { double Q, K; int r, s, L; };  // N = 1 (Q is not scaled)
+        static const PerSuite<P> sets{{{}, {{1e7, 4e8, 0, 30, 15}, {1e7, 1e8, 20, 10, 15}}, {{1e7, 1e9, 0, 3, 15}, {1e7, 1e9, 27, 3, 15}}}};
+        for (const auto &sv : sets[bat]) {
+            const int sb = sv.s, L = sv.L, vpb = L / sb + (L % sb > 0), ibits = 64 - L, r = sv.r;
+            const long long Q = static_cast<long long>(sv.Q), K = std::max<long long>(scaled(sv.K), 1), n = Q + K;
+            // (as CalcSigma of TestU01: no correction for L < 3)
+            const double sigma = L < 3 ? std::sqrt(KV[L] / K) : std::sqrt((dCor[L] + eCor[L] * std::ldexp(1.0, L) / K) * KV[L] / K);
             const auto t0 = std::chrono::steady_clock::now();
-            const uint64_t base = ctr.take((n * vpb + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
+            // the values: vpb per block, or one per s / L blocks for s > L (as TestU01)
+            const long long nvals = sb > L ? (n + sb / L - 1) / (sb / L) : n * vpb;
+            const uint64_t base = ctr.take((nvals + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
             double somme = 0;
             sorted_parts(kn, mem, n, 64, [&](const Sink &sk) { launch(kn.appear, kBlocks, kThreads, 0, g, base, n, r, sb, L, ibits, sk); },
                          [&](unsigned long long *a, long long c) {
@@ -2089,7 +2430,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                                                                AppearTerm{a, ibits, Q}, 0.0, thrust::plus<double>());
                          });
             params = absl::StrFormat("N=1 Q=%lld K=%lld r=%d s=%d L=%d", Q, K, r, sb, L);
-            report_normal("appear", params, (somme / (M_LN2 * K) - E[L]) / sigma, seconds_since(t0));
+            report_normal("appear", params, (somme * (1.0 / (M_LN2 * K)) - E[L]) / sigma, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
     }
@@ -2103,25 +2444,26 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                                         1762965., 3361490., 6422497., 12293930.};
         static const double LZSigma[29] = {0, 0, 0, 0.49, 0.51, 0.62, 0.75, 0.78, 0.86, 0.94, 1.03, 1.19, 1.43, 1.68, 2.09,
                                            2.46, 3.36, 4.2, 5.4, 6.8, 9.1, 10.9, 14.7, 19.1, 25.2, 33.5, 44.546, 58.194, 75.513};
-        const int t = 27;
-        const long long nbits = 1LL << t, N = std::max<long long>(1, std::llround(10 * o.scale));
-        for (const auto &c : {std::pair{0, 30}, std::pair{15, 15}}) {
-            const int r = c.first, sb = c.second;
+        struct P { int N, k, r, s; };  // N sequences of 2^k bits (the scale multiplies N)
+        static const PerSuite<P> sets{{{}, {{10, 25, 0, 30}}, {{10, 27, 0, 30}, {10, 27, 15, 15}}}};
+        for (const auto &sv : sets[bat]) {
+            const int t = sv.k, r = sv.r, sb = sv.s;
+            const long long nbits = 1LL << t, N = std::max<long long>(1, std::llround(sv.N * o.scale));
             const long long nv = (nbits + sb - 1) / sb;
             const auto t0 = std::chrono::steady_clock::now();
             const uint64_t start = ctr.take((N * nv + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
             uint32_t *d_out;
             CK(gpuMalloc(reinterpret_cast<void **>(&d_out), sizeof(uint32_t) * nv));
             std::vector<uint32_t> x(nv);
-            double zs = 0;
+            std::vector<double> zs;
             for (long long q = 0; q < N; ++q) {
                 launch(kn.cp_outputs, kBlocks, kThreads, 0, g, start + static_cast<uint64_t>(q * nv), nv, d_out);
                 CK(gpuMemcpy(x.data(), d_out, sizeof(uint32_t) * nv, gpuMemcpyDeviceToHost));
-                zs += (lz78(x, nbits, r, sb) - LZMu[t]) / LZSigma[t];
+                zs.push_back((lz78(x, nbits, r, sb) - LZMu[t]) / LZSigma[t]);
             }
             CK(gpuFree(d_out));
             params = absl::StrFormat("N=%lld n=2^%d r=%d s=%d", N, t, r, sb);
-            report_normal("lempelziv", params, zs / std::sqrt(static_cast<double>(N)), seconds_since(t0));
+            report_normal("lempelziv", params, sum_stat(zs) / std::sqrt(static_cast<double>(N)), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
     }

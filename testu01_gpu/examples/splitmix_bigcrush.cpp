@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// splitmix_bigcrush [seed] [scale] [tests] [fast] : run the tests of testu01_gpu on the upper 32 bits of
+// splitmix_bigcrush [seed] [scale] [tests] [fast] [battery] : run the tests of testu01_gpu on the upper 32 bits of
 // SplitMix64, as a counter-based generator: the output at the position i is that of the state
 // seed + (i + 1) * 0x9e3779b97f4a7c15. An example of the library, and a check of the tests on a good
-// generator (the p-values are uniform). The generator source is the same for HIP and CUDA (TESTU01_GPU_CUDA).
+// generator (the p-values are uniform). tests "all" runs all of them; battery is small, crush or big (default, BigCrush).
+// The generator source is the same for HIP and CUDA (TESTU01_GPU_CUDA).
 #ifdef TESTU01_GPU_CUDA
 #include <cuda_runtime.h>
 #else
@@ -12,7 +13,10 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <exception>
+#include <stdexcept>
+#include <string>
 
 #include "absl/log/globals.h"
 #include "absl/log/initialize.h"
@@ -44,8 +48,15 @@ int main(int argc, char **argv) {
         const uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 0) : 1;
         testu01_gpu::Options o;
         if (argc > 2) o.scale = std::atof(argv[2]);
-        if (argc > 3) o.tests = argv[3];
+        if (argc > 3 && std::strcmp(argv[3], "all") != 0) o.tests = argv[3];
         if (argc > 4) o.fast = std::atoi(argv[4]) != 0;
+        if (argc > 5) {
+            const std::string b = argv[5];
+            if (b == "small") o.suite = testu01_gpu::Suite::kSmallCrush;
+            else if (b == "crush") o.suite = testu01_gpu::Suite::kCrush;
+            else if (b == "big") o.suite = testu01_gpu::Suite::kBigCrush;
+            else throw std::invalid_argument("battery: small, crush or big, not " + b);
+        }
         o.report = [](const testu01_gpu::Result &r) {
             std::printf("%s\n", testu01_gpu::format(r).c_str());
             std::fflush(stdout);

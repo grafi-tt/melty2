@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 AND LicenseRef-TestU01
 //
-// testu01_gpu: the tests of the BigCrush battery of TestU01 on a GPU by HIP (ROCm) or CUDA, for a counter-based generator (a generator
-// computing the output at any position of its sequence). See README.md.
+// testu01_gpu: the tests of TestU01 on a GPU by HIP (ROCm) or CUDA, with the instances of its batteries SmallCrush, Crush and
+// BigCrush, for a counter-based generator (a generator computing the output at any position of its sequence). See README.md.
 //
 // Usage:
 //
@@ -97,15 +97,20 @@ struct Summary {
     }
 };
 
+// the batteries of TestU01 whose instances of the tests (their parameters) run
+enum class Suite { kSmallCrush, kCrush, kBigCrush };
+
 struct Options {
-    std::string tests = kAllTests;  // the tests to run (comma-separated names of kAllTests)
-    double scale = 1;               // multiplies the sample sizes n of BigCrush
+    Suite suite = Suite::kBigCrush;  // the battery
+    std::string tests = kAllTests;  // the tests to run (comma-separated names of kAllTests; those of the battery run)
+    double scale = 1;               // multiplies the sample sizes n of the battery
     uint64_t first = 0;             // the first position of the sequence used by the tests
     double limit = HUGE_VAL;        // stop the tests once a z-score is above it (for searches)
     size_t memory = size_t(2) << 30;  // the device memory of the large tests (bytes): beyond it, they make their
                                       // points again by parts (the results are the same)
-    bool fast = false;  // faster computations whose results may differ from those of TestU01 in rounding: the
-                        // Anderson-Darling statistics of SampleProd and SampleMean summed on GPU
+    bool fast = false;  // faster computations whose results differ from those of TestU01 by the order of the
+                        // floating-point sums: the Anderson-Darling statistics of SampleProd and SampleMean summed
+                        // on GPU (by a parallel reduction) instead of in order on the host
     std::function<void(const Result &)> report;  // called for every statistic (if set)
 };
 

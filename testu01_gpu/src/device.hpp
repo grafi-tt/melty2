@@ -35,34 +35,34 @@ __device__ inline uint32_t value(uint32_t x, int r, uint32_t d) {
 // The tests as state machines over the outputs: step() returns the category of a completed
 // observation, or -1.
 
-// SimpPoker: the number of distinct values among k values in [0, d) (d <= 32)
+// SimpPoker: the number of distinct values among k values in [0, d) (d <= 64)
 struct Poker {
-    int r, d, k;
+    int r, d, k;  // d <= 64
     struct State {
         int cnt = 0;
-        uint32_t mask = 0;
+        uint64_t mask = 0;
     };
     __device__ int step(State &s, uint32_t x) const {
-        s.mask |= UINT32_C(1) << value(x, r, d);
+        s.mask |= UINT64_C(1) << value(x, r, d);
         if (++s.cnt < k) return -1;
-        const int m = __popc(s.mask);
+        const int m = __popcll(s.mask);
         s.cnt = 0;
         s.mask = 0;
         return m;
     }
 };
 
-// CouponCollector: the number of values in [0, d) (d <= 32) until all d values appear, lumped at tmax
+// CouponCollector: the number of values in [0, d) (d <= 64) until all d values appear, lumped at tmax
 struct Coupon {
     int r, d, tmax;
     struct State {
         int len = 0;
-        uint32_t mask = 0;
+        uint64_t mask = 0;
     };
     __device__ int step(State &s, uint32_t x) const {
-        s.mask |= UINT32_C(1) << value(x, r, d);
+        s.mask |= UINT64_C(1) << value(x, r, d);
         ++s.len;
-        if (s.mask != (d == 32 ? ~UINT32_C(0) : (UINT32_C(1) << d) - 1)) return -1;
+        if (s.mask != (d == 64 ? ~UINT64_C(0) : (UINT64_C(1) << d) - 1)) return -1;
         const int c = min(s.len, tmax);
         s.len = 0;
         s.mask = 0;
@@ -249,6 +249,33 @@ struct Strip {
     int r, s;
     struct State {};
     __device__ int step(State &, uint32_t x) const { return static_cast<int>((x << r) >> (32 - s)); }
+};
+
+// PeriodsInStrings for a large s (2^s strings too many for a histogram): the class of the correlation of the string of s
+// bits (x << r) >> (32 - s), computed as GenerateC of TestU01 (bit k of the correlation is 1 if the string without its
+// first k bits equals the string without its last k bits), found by a binary search of the sorted correlations keys
+// (ncls of them, their classes in cls)
+struct Periods {
+    int r, s, ncls;
+    const uint32_t *keys;
+    const int *cls;
+    struct State {};
+    __device__ int step(State &, uint32_t x) const {
+        uint32_t g = (x << r) >> (32 - s), d = g, c = 1;
+        int lbit = s - 1;
+        for (int k = 1; k < s; ++k, --lbit) {
+            g &= ~(UINT32_C(1) << lbit);
+            d >>= 1;
+            if (g == d) c |= UINT32_C(1) << k;
+        }
+        int lo = 0, hi = ncls - 1;
+        while (lo < hi) {
+            const int m = (lo + hi) / 2;
+            if (keys[m] < c) lo = m + 1;
+            else hi = m;
+        }
+        return cls[lo];
+    }
 };
 
 // MatrixRank of small matrices (l, k <= 32): the rank over GF(2) of l x k matrices, a row of every
@@ -456,6 +483,7 @@ TESTU01_GPU_TEST_KERNEL(ktest_savir2, Savir2)
 TESTU01_GPU_TEST_KERNEL(ktest_gcd, Gcd)
 TESTU01_GPU_TEST_KERNEL(ktest_hamming, Hamming)
 TESTU01_GPU_TEST_KERNEL(ktest_strip, Strip)
+TESTU01_GPU_TEST_KERNEL(ktest_periods, Periods)
 TESTU01_GPU_TEST_KERNEL(ktest_sumcoll, SumColl)
 TESTU01_GPU_TEST_KERNEL(ktest_matrank, MatRank)
 #undef TESTU01_GPU_TEST_KERNEL
@@ -524,7 +552,8 @@ extern "C" __global__ void __launch_bounds__(kThreads) kwalk(Params g, uint64_t 
 // share of the n values from its counters from base + tid * stride: SampleProd (mode 0), the product of t
 // values u = (x << r) / 2^32, of F(x) = x sum_{j < t} (-ln x)^j / j!; SampleMean (mode 1), the sum of t
 // values, of F the Irwin-Hall distribution by the cubic Hermite interpolation of the table tab of F and its
-// density at the points i * hstep (i < ntab).
+// density at the points i * hstep (i < ntab); MaxOft (mode 2), the maximum of t values, of F(x) = x^t (as the
+// histogram of ktest_maxoft, for the same counters: the same observations).
 extern "C" __global__ void __launch_bounds__(kThreads) kuniform(int mode, int r, int t, Params g, uint64_t base, uint64_t stride, long long n, const double *tab,
                                                                 int ntab, double hstep, Sink sk) {
     const long long nthreads = static_cast<long long>(gridDim.x) * kThreads;
@@ -532,7 +561,7 @@ extern "C" __global__ void __launch_bounds__(kThreads) kuniform(int mode, int r,
     const long long quota = n / nthreads + (tid < n % nthreads);
     long long pos = tid * (n / nthreads) + min(tid, n % nthreads);
     uint64_t ctr = base + tid * stride;
-    double acc = mode ? 0.0 : 1.0;
+    double acc = mode == 0 ? 1.0 : 0.0;
     int cnt = 0;
     long long done = 0;
     while (done < quota) {
@@ -543,7 +572,7 @@ extern "C" __global__ void __launch_bounds__(kThreads) kuniform(int mode, int r,
         for (int l = 0; l < kLanes; ++l) {
             if (done >= quota) break;
             const double u = static_cast<uint32_t>(o[l] << r) * 0x1p-32;
-            acc = mode ? acc + u : acc * u;
+            acc = mode == 0 ? acc * u : mode == 1 ? acc + u : fmax(acc, u);
             if (++cnt < t) continue;
             double f;
             if (mode == 0) {  // FDistProd of TestU01
@@ -558,6 +587,9 @@ extern "C" __global__ void __launch_bounds__(kThreads) kuniform(int mode, int r,
                     }
                     f = acc * sum;
                 }
+            } else if (mode == 2) {  // as ktest_maxoft
+                f = 1;
+                for (int i = 0; i < t; ++i) f *= acc;
             } else {
                 const double x = acc / hstep;
                 const int i = min(max(static_cast<int>(x), 0), ntab - 2);
@@ -567,7 +599,7 @@ extern "C" __global__ void __launch_bounds__(kThreads) kuniform(int mode, int r,
             }
             f = min(max(f, 0.0), 1.0);
             put(sk, pos++, f >= 1.0 ? ~UINT64_C(0) : static_cast<unsigned long long>(f * 0x1p64));
-            acc = mode ? 0.0 : 1.0;
+            acc = mode == 0 ? 1.0 : 0.0;
             cnt = 0;
             ++done;
         }
@@ -596,8 +628,9 @@ extern "C" __global__ void __launch_bounds__(kThreads) kautocor(Params g, uint64
             const long long q = q0 + l;
             const uint32_t v = (o[l] << r) >> (32 - s);
             if (q > a && q <= e) {  // the bits of the value q - 1 against those d later
-                const uint32_t w = cur << s | v;
-                c += __popc(((w ^ (w << d)) >> s) & ((1u << s) - 1));
+                // (in 64 bits: the bits of the two values, 2s <= 64; the bits shifted out by d are not needed)
+                const uint64_t w = static_cast<uint64_t>(cur) << s | v;
+                c += __popcll(((w ^ (w << d)) >> s) & ((UINT64_C(1) << s) - 1));
             }
             cur = v;
         }
@@ -929,8 +962,26 @@ extern "C" __global__ void __launch_bounds__(kThreads) kmat_rank(unsigned long l
 
 // AppearanceSpacings: the keys (block << ibits | i) of the n blocks i of L bits from base (vpb values each: L / s
 // values of s bits (x << r) >> (32 - s), and one of L % s bits if any), into the sink at their positions i; a
-// thread takes 16 consecutive blocks
+// thread takes 16 consecutive blocks. For s > L, as TestU01: every value of s bits gives s / L blocks, from its
+// low bits up (block = sBits % 2^L, then sBits /= 2^L); a thread takes 16 consecutive values.
 extern "C" __global__ void __launch_bounds__(kThreads) kappear(Params g, uint64_t base, long long n, int r, int s, int L, int ibits, Sink sk) {
+    if (s > L) {
+        const int per = s / L;
+        const long long nv = (n + per - 1) / per, groups = (nv + kLanes - 1) / kLanes;
+        for (long long q = static_cast<long long>(blockIdx.x) * kThreads + threadIdx.x; q < groups; q += static_cast<long long>(gridDim.x) * kThreads) {
+            uint32_t o[kLanes];
+            testu01_gpu_generate(g, base + static_cast<uint64_t>(q) * kLanes, o);
+            for (int j = 0; j < kLanes; ++j) {
+                uint32_t bits = (o[j] << r) >> (32 - s);
+                for (int k = 0; k < per; ++k) {
+                    const long long i = (q * kLanes + j) * per + k;
+                    if (i < n) put(sk, i, static_cast<uint64_t>(bits & ((UINT32_C(1) << L) - 1)) << ibits | static_cast<uint64_t>(i));
+                    bits >>= L;
+                }
+            }
+        }
+        return;
+    }
     const int c = L / s, b = L % s, vpb = c + (b > 0);
     const long long groups = (n + 15) / 16;
     for (long long q = static_cast<long long>(blockIdx.x) * kThreads + threadIdx.x; q < groups; q += static_cast<long long>(gridDim.x) * kThreads) {
