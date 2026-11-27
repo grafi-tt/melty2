@@ -1,12 +1,16 @@
 # testu01_gpu
 
-A library running the tests of the BigCrush battery of [TestU01](http://simul.iro.umontreal.ca/testu01/tu01.html) on a GPU, by HIP (ROCm) or CUDA, for counter-based generators: a generator whose output at any position of its sequence can be computed directly. The tests are reimplemented after the source code of TestU01 1.2.3 with the parameters of their instances in BigCrush, and take tens of seconds of a Radeon RX 6800 instead of hours of a CPU core. Their p-values agree with those of TestU01 statistically (the outputs used differ), so they screen generators quickly, and sample sizes far beyond BigCrush are practical; the original BigCrush still judges the final generators.
+A library running the tests of [TestU01](http://simul.iro.umontreal.ca/testu01/tu01.html) on a GPU, by HIP (ROCm) or CUDA. The tests are reimplemented after the source code of TestU01 1.2.3: the test functions used by its BigCrush battery (31 of them, see [Tests](#tests)), with the parameters of their instances in BigCrush and sample sizes that can be scaled.
 
-All the tests of BigCrush are implemented.
+The tests of BigCrush take tens of seconds on a Radeon RX 6800 instead of hours on a CPU core. Their p-values agree with those of TestU01 statistically (the outputs used differ), so they screen generators quickly, and sample sizes far beyond those of BigCrush are practical.
+
+Currently only counter-based generators are supported: generators whose output at any position of their sequence can be computed directly.
 
 ## Build
 
-Requirements: ROCm (HIP, hiprtc, rocFFT and rocThrust) or the CUDA Toolkit (NVRTC, cuFFT and Thrust; a GPU of the compute capability 6.0 or later), and TestU01 installed (its headers and the `probdist` and `mylib` libraries, for the distributions and the goodness-of-fit tests). The host code is C++20 (the header needs only C++17 of its users) and uses [abseil](https://abseil.io/) (`find_package(absl)`, an LTS release from 20230125: its strings in the library, its logging in the example), which is built in C++20 on current systems; the package of Ubuntu 24.04 (20220623) is too old, so the CI builds abseil 20260107.1 from its source.
+Requirements: ROCm (HIP, hiprtc, rocFFT and rocThrust) or the CUDA Toolkit (NVRTC, cuFFT and Thrust; a GPU of compute capability 6.0 or later), Abseil (tested with 20260107.1), and an installation of TestU01. The host code is written in C++20, while the header requires only C++17 of its users.
+
+Note that the Abseil package of Ubuntu 24.04 (20220623) is too old: you will probably need to build Abseil from source, as the CI does.
 
 With CMake (3.21 or later):
 
