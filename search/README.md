@@ -29,7 +29,7 @@ A structure is written as ops separated by `;`, after the counter injection `v0 
 * `A d s`: `v[d] += v[s]`
 * `X d s`: `v[d] ^= v[s]`
 * `R d s r`: `v[d] = rotl(v[d] ^ v[s], r)`
-* `S d s`: `v[d] -= v[s]` (used by the search only with `sa -S`)
+* `S d s`: `v[d] -= v[s]` (used by the search only with `sa --subtract`)
 
 The kernel of melty2 1.0 is `arx::kMelty2` in [arx.hpp](arx.hpp), and `build/check` confirms that it computes the same outputs as `include/melty2_kernel.h`. [candidates.txt](candidates.txt) lists the structures compared in the search.
 
