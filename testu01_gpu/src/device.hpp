@@ -1,20 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0 AND LicenseRef-TestU01
 //
 // The device code of testu01_gpu: the tests as state machines over the outputs, and the kernels. The
-// library compiles it at run time by hiprtc, followed by the source of the generator (see Generator in
+// library compiles it at run time by hiprtc (or NVRTC for CUDA), followed by the source of the generator (see Generator in
 // testu01_gpu.hpp), which defines testu01_gpu_generate; so the generator is inlined into the kernels as
 // straight-line code. The library includes this file too, for the parameters of the kernels (the
-// structs); the device functions and the kernels are compiled only by hiprtc (__HIPCC_RTC__).
+// structs); the device functions and the kernels are compiled only at run time (TESTU01_GPU_RTC).
 #ifndef TESTU01_GPU_DEVICE_HPP_
 #define TESTU01_GPU_DEVICE_HPP_
 
-#ifndef __HIPCC_RTC__
+#if defined(__HIPCC_RTC__) || defined(__CUDACC_RTC__)
+#define TESTU01_GPU_RTC 1
+#elif !defined(__CUDACC__)
 #include <hip/hip_runtime.h>
 #endif
 
 #include "testu01_gpu_params.hpp"
 
-#ifdef __HIPCC_RTC__
+#ifdef TESTU01_GPU_RTC
 // the generator, defined by its source after this file: the outputs at the kLanes consecutive positions
 // pos, pos + 1, ... of the sequence of the parameters p
 __device__ inline void testu01_gpu_generate(const testu01_gpu::Params &p, uint64_t pos, uint32_t (&out)[testu01_gpu::kLanes]);
@@ -347,7 +349,7 @@ struct Sink {
     HashTable h;
 };
 
-#ifdef __HIPCC_RTC__
+#ifdef TESTU01_GPU_RTC
 
 __device__ inline uint64_t mix64(uint64_t z) {
     z = (z ^ (z >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
@@ -1093,7 +1095,7 @@ extern "C" __global__ void __launch_bounds__(kThreads) kcp_pairs(const uint32_t 
     }
 }
 
-#endif  // __HIPCC_RTC__
+#endif  // TESTU01_GPU_RTC
 
 }  // namespace detail
 }  // namespace testu01_gpu
