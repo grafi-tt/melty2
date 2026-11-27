@@ -4,8 +4,7 @@
 // MELTY2_SEARCH_GPU_BACKEND=CUDA). The GPU code (metric_gpu.hip, testu01_stest.hip) is written once, by the names gpu*
 // mapped to those of the backend, and kernels launched by <<<...>>> (as both compile them); CHECK_GPU(call) checks a
 // call (fatal, with the error string and the call).
-#ifndef GPU_RUNTIME_HPP_
-#define GPU_RUNTIME_HPP_
+#pragma once
 
 #ifdef MELTY2_SEARCH_CUDA
 
@@ -68,5 +67,3 @@ inline constexpr int kGpuStaticSharedBytes = 64 * 1024;
         const gpuError_t check_gpu_e = (x);                                                          \
         CHECK(check_gpu_e == gpuSuccess) << "GPU " << gpuGetErrorString(check_gpu_e) << ": " #x;     \
     } while (0)
-
-#endif  // GPU_RUNTIME_HPP_

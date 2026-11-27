@@ -5,8 +5,7 @@
 // throwing std::invalid_argument otherwise. With the base 0 (the default), an integer is read by its prefix: 0x
 // hexadecimal, 0d decimal, 0o octal, 0b binary (in either case, and without a sign after it), else decimal, also
 // with a leading 0 (so 010 is 10) and a sign for a signed type.
-#ifndef NUMBER_HPP_
-#define NUMBER_HPP_
+#pragma once
 
 #include <charconv>
 #include <optional>
@@ -58,5 +57,3 @@ T parse(std::string_view s, int base = 0) {
 }
 
 }  // namespace number
-
-#endif  // NUMBER_HPP_

@@ -16,8 +16,7 @@
 // The callback is called on the watcher thread for every signal taken, with the signal and how many times it has
 // been taken (it must be thread-safe, e.g. LOG); by default it logs that the tool stops or quits. The watcher thread
 // is joined at exit.
-#ifndef SIGNAL_HPP_
-#define SIGNAL_HPP_
+#pragma once
 
 #include <functional>
 #include <initializer_list>
@@ -50,5 +49,3 @@ bool take(int sig);
 const char *name(int sig);
 
 }  // namespace signals
-
-#endif  // SIGNAL_HPP_

@@ -4,8 +4,7 @@
 //
 // pidfile::write(path) writes the process ID to path, and removes the file at exit (by std::exit() or
 // the return from main). A file left by a killed process is detected by kill(pid, 0) of its reader.
-#ifndef PIDFILE_HPP_
-#define PIDFILE_HPP_
+#pragma once
 
 #include <unistd.h>
 
@@ -33,5 +32,3 @@ inline void write(const std::string &path) {
 }
 
 }  // namespace pidfile
-
-#endif

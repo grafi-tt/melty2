@@ -11,8 +11,7 @@
 //
 // bias_per_key is implemented for CPU (metric_cpu.cc) and GPU (metric_gpu.hip, HIP); programs are
 // linked with either of them.
-#ifndef METRIC_HPP_
-#define METRIC_HPP_
+#pragma once
 
 #include <cmath>
 #include <cstdint>
@@ -68,5 +67,3 @@ class SplitMix64 {
 };
 
 }  // namespace metric
-
-#endif

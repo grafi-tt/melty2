@@ -6,8 +6,7 @@
 // parse_flags() parses the flags of argv (an unknown or malformed flag is an error: abseil prints it and exits),
 // and returns the positional arguments (views of argv), without the program name; flags and arguments may come in any order, and
 // "--" ends the flags. usage() prints the usage message and exits with 1, for wrong arguments.
-#ifndef FLAGS_HPP_
-#define FLAGS_HPP_
+#pragma once
 
 #include <cstdlib>
 #include <format>
@@ -38,5 +37,3 @@ inline std::vector<std::string_view> parse_flags(int argc, char **argv, std::str
     std::cerr << std::format("usage: {}\n(--help for the flags)\n", std::string_view(absl::ProgramUsageMessage()));
     std::exit(1);
 }
-
-#endif  // FLAGS_HPP_

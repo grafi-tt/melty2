@@ -6,8 +6,7 @@
 // Op types: Add: v[d] += v[s];  Xor: v[d] ^= v[s];  Rot: v[d] = rotl(v[d] ^ v[s], r);  Sub: v[d] -= v[s].
 // Text form: "A d s", "X d s", "R d s r" and "S d s" separated by ';', e.g. "R1 0 5;A2 1;...".
 // The output of a prefix of m ops is the word written by op m - 1.
-#ifndef ARX_HPP_
-#define ARX_HPP_
+#pragma once
 
 #include <array>
 #include <cctype>
@@ -212,5 +211,3 @@ inline constexpr std::string_view kMelty2Orig22 =
     "R1 0 7;A2 1;R3 2 9;A4 3;R5 4 13;A0 5;R2 0 18;A4 2;R1 4 16;A3 1;R3 5 12;A0 3;R1 0 8;A2 1;R3 2 7;A3 4;R0 3 9;A1 0;R2 1 13;A3 2;R0 3 18;A0 2";
 
 }  // namespace arx
-
-#endif

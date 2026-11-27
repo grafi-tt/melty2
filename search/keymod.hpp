@@ -8,8 +8,7 @@
 //   dJ:C: k_i = k_J + C (C: signed decimal)
 // e.g. "4=z,5=a0x0000ffff" makes k_4 zero and the upper half of k_5 zero.
 // Programs take the spec from the environment variable MELTY2_KEYMOD by from_env().
-#ifndef KEYMOD_HPP_
-#define KEYMOD_HPP_
+#pragma once
 
 #include <algorithm>
 #include <cstdlib>
@@ -105,5 +104,3 @@ inline arx::Key seed_key(uint32_t seed) {
 }
 
 }  // namespace keymod
-
-#endif
