@@ -14,6 +14,9 @@
 #include <cstdlib>
 #include <exception>
 
+#include "absl/log/globals.h"
+#include "absl/log/initialize.h"
+#include "absl/log/log.h"
 #include "testu01_gpu.hpp"
 
 namespace {
@@ -35,6 +38,8 @@ __device__ inline void testu01_gpu_generate(const testu01_gpu::Params &p, uint64
 }  // namespace
 
 int main(int argc, char **argv) {
+    absl::InitializeLog();
+    absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);  // the warnings to stderr as well
     try {
         const uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 0) : 1;
         testu01_gpu::Options o;
@@ -47,9 +52,9 @@ int main(int argc, char **argv) {
         };
         // wait for the device by blocking the thread, instead of spinning on a CPU core
 #ifdef TESTU01_GPU_CUDA
-        if (cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync) != cudaSuccess) std::fprintf(stderr, "cudaSetDeviceFlags failed\n");
+        if (cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync) != cudaSuccess) LOG(WARNING) << "cudaSetDeviceFlags failed";
 #else
-        if (hipSetDeviceFlags(hipDeviceScheduleBlockingSync) != hipSuccess) std::fprintf(stderr, "hipSetDeviceFlags failed\n");
+        if (hipSetDeviceFlags(hipDeviceScheduleBlockingSync) != hipSuccess) LOG(WARNING) << "hipSetDeviceFlags failed";
 #endif
         const testu01_gpu::Generator gen(kSource, "splitmix");
         testu01_gpu::Params params{};
@@ -60,7 +65,7 @@ int main(int argc, char **argv) {
         std::printf("summary\tmin_p=%.3g\tmax_p=%.6g\tflagged=%d\n", s.min_p, s.max_p, s.flagged);
         return 0;
     } catch (const std::exception &e) {
-        std::fprintf(stderr, "%s\n", e.what());
+        LOG(ERROR) << e.what();
         return 1;
     }
 }

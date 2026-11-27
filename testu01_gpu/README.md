@@ -6,7 +6,7 @@ All the tests of BigCrush are implemented.
 
 ## Build
 
-Requirements: ROCm (HIP, hiprtc, rocFFT and rocThrust) or the CUDA Toolkit (NVRTC, cuFFT and Thrust; a GPU of the compute capability 6.0 or later), and TestU01 installed (its headers and the `probdist` and `mylib` libraries, for the distributions and the goodness-of-fit tests).
+Requirements: ROCm (HIP, hiprtc, rocFFT and rocThrust) or the CUDA Toolkit (NVRTC, cuFFT and Thrust; a GPU of the compute capability 6.0 or later), and TestU01 installed (its headers and the `probdist` and `mylib` libraries, for the distributions and the goodness-of-fit tests). The host code is C++20 (the header needs only C++17 of its users) and uses [abseil](https://abseil.io/) (`find_package(absl)`, an LTS release from 20230125: its strings in the library, its logging in the example), which is built in C++20 on current systems; the package of Ubuntu 24.04 (20220623) is too old, so the CI builds abseil 20260107.1 from its source.
 
 With CMake (3.21 or later):
 

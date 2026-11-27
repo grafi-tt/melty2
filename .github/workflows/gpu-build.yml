@@ -1,7 +1,8 @@
 # Compile check of the GPU implementation (melty2_gpu.h) and its test, and of the library testu01_gpu, for CUDA
 # and HIP. GitHub-hosted standard runners have no GPU, so they are only built, not run. testu01_gpu takes TestU01
 # from the package of Ubuntu (libtestu01-0-dev, multiverse), so that the build doesn't depend on the site of
-# TestU01.
+# TestU01. abseil (for testu01_gpu) is built from its source at a fixed release, as the package of Ubuntu 24.04
+# (20220623) has no absl/log; with C++20, as the abseil of the development machine (Gentoo) is built.
 name: GPU build
 
 on:
@@ -10,6 +11,9 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
+
+env:
+  ABSL_VERSION: "20260107.1"
 
 jobs:
   cuda:
@@ -75,6 +79,14 @@ jobs:
 
     - uses: actions/checkout@v7
 
+    - name: Install abseil
+      run: |
+        git clone --depth 1 --branch "$ABSL_VERSION" https://github.com/abseil/abseil-cpp.git /tmp/abseil-cpp
+        cmake -S /tmp/abseil-cpp -B /tmp/abseil-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=20 \
+          -DABSL_PROPAGATE_CXX_STD=ON -DABSL_ENABLE_INSTALL=ON -DABSL_BUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local
+        cmake --build /tmp/abseil-build --parallel
+        cmake --install /tmp/abseil-build
+
     - name: Configure CMake
       run: >
         cmake -S testu01_gpu -B build
@@ -99,6 +111,14 @@ jobs:
         apt-get install -y --no-install-recommends ca-certificates git cmake make g++ libtestu01-0-dev rocfft-dev rocthrust-dev
 
     - uses: actions/checkout@v7
+
+    - name: Install abseil
+      run: |
+        git clone --depth 1 --branch "$ABSL_VERSION" https://github.com/abseil/abseil-cpp.git /tmp/abseil-cpp
+        cmake -S /tmp/abseil-cpp -B /tmp/abseil-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=20 \
+          -DABSL_PROPAGATE_CXX_STD=ON -DABSL_ENABLE_INSTALL=ON -DABSL_BUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local
+        cmake --build /tmp/abseil-build --parallel
+        cmake --install /tmp/abseil-build
 
     - name: Configure CMake
       run: >

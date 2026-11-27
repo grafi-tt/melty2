@@ -56,7 +56,6 @@
 #include <cfloat>
 #include <chrono>
 #include <cmath>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -65,6 +64,10 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 
 extern "C" {
 #include <fbar.h>
@@ -116,7 +119,7 @@ constexpr char kBackend[] = "HIP";
 #endif
 
 void check(gpuError_t e, const char *what, int line) {
-    if (e != gpuSuccess) throw std::runtime_error(std::string(kBackend) + " " + gpuGetErrorString(e) + " at " + __FILE__ + ":" + std::to_string(line) + " (" + what + ")");
+    if (e != gpuSuccess) throw std::runtime_error(absl::StrCat(kBackend, " ", gpuGetErrorString(e), " at ", __FILE__, ":", line, " (", what, ")"));
 }
 #ifdef TESTU01_GPU_CUDA
 // the errors of the driver API (the modules and the launches)
@@ -124,7 +127,7 @@ void check(CUresult e, const char *what, int line) {
     if (e == CUDA_SUCCESS) return;
     const char *s = nullptr;
     if (cuGetErrorString(e, &s) != CUDA_SUCCESS || !s) s = "unknown error";
-    throw std::runtime_error(std::string("CUDA ") + s + " at " + __FILE__ + ":" + std::to_string(line) + " (" + what + ")");
+    throw std::runtime_error(absl::StrCat("CUDA ", s, " at ", __FILE__, ":", line, " (", what, ")"));
 }
 #endif
 #define CK(x) check((x), #x, __LINE__)
@@ -135,7 +138,7 @@ void check(CUresult e, const char *what, int line) {
 // the driver compiles when loading it)
 std::vector<char> compile_program(const std::string &src) {
     const auto rtc = [](nvrtcResult r, const char *what) {
-        if (r != NVRTC_SUCCESS) throw std::runtime_error(std::string(what) + ": " + nvrtcGetErrorString(r));
+        if (r != NVRTC_SUCCESS) throw std::runtime_error(absl::StrCat(what, ": ", nvrtcGetErrorString(r)));
     };
     int dev, major, minor;
     CK(cudaGetDevice(&dev));
@@ -149,9 +152,9 @@ std::vector<char> compile_program(const std::string &src) {
     int use = 0;
     for (const int a : archs)
         if (a <= want && a > use) use = a;
-    if (!use) throw std::runtime_error("NVRTC supports no architecture up to the compute capability " + std::to_string(major) + "." + std::to_string(minor));
+    if (!use) throw std::runtime_error(absl::StrCat("NVRTC supports no architecture up to the compute capability ", major, ".", minor));
     const bool cubin = use == want;
-    const std::string arch = std::string("--gpu-architecture=") + (cubin ? "sm_" : "compute_") + std::to_string(use);
+    const std::string arch = absl::StrCat("--gpu-architecture=", cubin ? "sm_" : "compute_", use);
     const char *opts[] = {arch.c_str(), "--std=c++17"};
     const char *headers[] = {kParamsSource}, *include_names[] = {"testu01_gpu_params.hpp"};
     nvrtcProgram prog;
@@ -163,7 +166,7 @@ std::vector<char> compile_program(const std::string &src) {
         std::string log(n, '\0');
         nvrtcGetProgramLog(prog, log.data());
         nvrtcDestroyProgram(&prog);
-        throw std::runtime_error("nvrtc: " + std::string(nvrtcGetErrorString(r)) + "\n" + log);
+        throw std::runtime_error(absl::StrCat("nvrtc: ", nvrtcGetErrorString(r), "\n", log));
     }
     size_t size = 0;
     std::vector<char> code;
@@ -183,13 +186,13 @@ std::vector<char> compile_program(const std::string &src) {
 // hiprtc: the program of the source (with the header testu01_gpu_params.hpp) compiled for the current device
 std::vector<char> compile_program(const std::string &src) {
     const auto rtc = [](hiprtcResult r, const char *what) {
-        if (r != HIPRTC_SUCCESS) throw std::runtime_error(std::string(what) + ": " + hiprtcGetErrorString(r));
+        if (r != HIPRTC_SUCCESS) throw std::runtime_error(absl::StrCat(what, ": ", hiprtcGetErrorString(r)));
     };
     hipDevice_t dev;
     CK(hipGetDevice(&dev));
     hipDeviceProp_t prop;
     CK(hipGetDeviceProperties(&prop, dev));
-    const std::string arch = std::string("--offload-arch=") + prop.gcnArchName;
+    const std::string arch = absl::StrCat("--offload-arch=", prop.gcnArchName);
     const char *opts[] = {arch.c_str(), "-O3", "-std=c++17"};
     const char *headers[] = {kParamsSource}, *include_names[] = {"testu01_gpu_params.hpp"};
     hiprtcProgram prog;
@@ -201,7 +204,7 @@ std::vector<char> compile_program(const std::string &src) {
         std::string log(n, '\0');
         hiprtcGetProgramLog(prog, log.data());
         hiprtcDestroyProgram(&prog);
-        throw std::runtime_error("hiprtc: " + std::string(hiprtcGetErrorString(r)) + "\n" + log);
+        throw std::runtime_error(absl::StrCat("hiprtc: ", hiprtcGetErrorString(r), "\n", log));
     }
     size_t size = 0;
     rtc(hiprtcGetCodeSize(prog, &size), "hiprtcGetCodeSize");
@@ -219,7 +222,7 @@ std::vector<char> compile_program(const std::string &src) {
 // several times faster than interpreting a generator on GPU), and loaded as a module.
 struct Generator::Impl {
     Impl(const std::string &source, const std::string &name) {
-        const std::string src = std::string(kDeviceSource) + "\n#line 1 \"" + name + "\"\n" + source;
+        const std::string src = absl::StrCat(kDeviceSource, "\n#line 1 \"", name, "\"\n", source);
         const std::vector<char> code = compile_program(src);
 #ifdef TESTU01_GPU_CUDA
         CK(cudaFree(nullptr));  // the primary context of the device, current for the driver API
@@ -373,7 +376,7 @@ struct Fft {
     // transform the batch (on the null stream, after the kernels filling a)
     void execute() { cf(cufftExecD2Z(plan, a, reinterpret_cast<cufftDoubleComplex *>(f)), "cufftExecD2Z"); }
     static void cf(cufftResult st, const char *what) {
-        if (st != CUFFT_SUCCESS) throw std::runtime_error(std::string(what) + ": cufft status " + std::to_string(static_cast<int>(st)));
+        if (st != CUFFT_SUCCESS) throw std::runtime_error(absl::StrCat(what, ": cufft status ", static_cast<int>(st)));
     }
 };
 #else
@@ -415,7 +418,7 @@ struct Fft {
         rf(rocfft_execute(plan, in, out, info), "rocfft_execute");
     }
     static void rf(rocfft_status st, const char *what) {
-        if (st != rocfft_status_success) throw std::runtime_error(std::string(what) + ": rocfft status " + std::to_string(static_cast<int>(st)));
+        if (st != rocfft_status_success) throw std::runtime_error(absl::StrCat(what, ": rocfft status ", static_cast<int>(st)));
     }
 };
 #endif
@@ -1107,7 +1110,7 @@ int lump_point(F tail_after, long long n, int lo, int limit) {
     return t;
 }
 
-bool wanted(const Options &o, const char *t) { return ("," + o.tests + ",").find(std::string(",") + t + ",") != std::string::npos; }
+bool wanted(const Options &o, const char *t) { return absl::StrContains(absl::StrCat(",", o.tests, ","), absl::StrCat(",", t, ",")); }
 
 double seconds_since(std::chrono::steady_clock::time_point t0) {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
@@ -1116,20 +1119,18 @@ double seconds_since(std::chrono::steady_clock::time_point t0) {
 }  // namespace
 
 std::string format(const Result &r) {
-    char line[512];
     const char *mk = r.p < 0.001 || r.p > 0.999 ? "  *****" : "";
-    const char *t = r.test.c_str(), *q = r.params.c_str();
+    const std::string &t = r.test, &q = r.params;
     switch (r.kind) {
-    case Stat::kChiSquare: std::snprintf(line, sizeof line, "%-7s %-34s chi2=%-12.6g df=%-8ld p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.df, r.p, mk, r.seconds); break;
+    case Stat::kChiSquare: return absl::StrFormat("%-7s %-34s chi2=%-12.6g df=%-8ld p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.df, r.p, mk, r.seconds);
     case Stat::kPoisson:
-        std::snprintf(line, sizeof line, "%-7s %-34s coll=%-11lld mean=%-9.6g p=%-9.3g%s  (%.1fs)", t, q, static_cast<long long>(r.stat), r.mean, r.p, mk, r.seconds);
-        break;
-    case Stat::kNormal: std::snprintf(line, sizeof line, "%-7s %-34s z=%-14.6g p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.p, mk, r.seconds); break;
-    case Stat::kAndersonDarling: std::snprintf(line, sizeof line, "%-7s %-34s AD=%-13.6g p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.p, mk, r.seconds); break;
-    case Stat::kClosePairs: std::snprintf(line, sizeof line, "%-7s %-34s stat=%-12.6g p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.p, mk, r.seconds); break;
-    case Stat::kDiscrete: std::snprintf(line, sizeof line, "%-7s %-34s p=%-9.3g%s", t, q, r.p, mk); break;
+        return absl::StrFormat("%-7s %-34s coll=%-11lld mean=%-9.6g p=%-9.3g%s  (%.1fs)", t, q, static_cast<long long>(r.stat), r.mean, r.p, mk, r.seconds);
+    case Stat::kNormal: return absl::StrFormat("%-7s %-34s z=%-14.6g p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.p, mk, r.seconds);
+    case Stat::kAndersonDarling: return absl::StrFormat("%-7s %-34s AD=%-13.6g p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.p, mk, r.seconds);
+    case Stat::kClosePairs: return absl::StrFormat("%-7s %-34s stat=%-12.6g p=%-9.3g%s  (%.1fs)", t, q, r.stat, r.p, mk, r.seconds);
+    case Stat::kDiscrete: return absl::StrFormat("%-7s %-34s p=%-9.3g%s", t, q, r.p, mk);
     }
-    return line;
+    return {};
 }
 
 // the device memory of the tests on points and of ClosePairs, allocated for the largest scale so far
@@ -1154,15 +1155,15 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     const auto scaled = [&](double n) { return static_cast<long long>(n * o.scale); };
     Counters ctr(o.first);
     Summary sum;
-    const auto emit = [&](const char *name, const char *params, Stat kind, double stat, double p, double z, double sec, long df = 0, double mean = 0) {
+    const auto emit = [&](const char *name, const std::string &params, Stat kind, double stat, double p, double z, double sec, long df = 0, double mean = 0) {
         sum.add(p, z);
         if (o.report) o.report(Result{name, params, kind, stat, mean, df, p, z, sec});
     };
-    const auto report = [&](const char *name, const char *params, Chi2 c, double sec) {
+    const auto report = [&](const char *name, const std::string &params, Chi2 c, double sec) {
         const double p = fbar_ChiSquare2(c.df, 12, c.x);
         emit(name, params, Stat::kChiSquare, c.x, p, (c.x - c.df) / std::sqrt(2.0 * c.df), sec, c.df);
     };
-    char params[128];
+    std::string params;  // the parameters of the current statistic
 
     if (wanted(o, "poker")) {
         const int set[][4] = {{0, 8, 8, 0}, {27, 8, 8, 0}, {0, 32, 32, 1}, {25, 32, 32, 1}};  // r, d, k, n = 4e8 or 1e8
@@ -1170,7 +1171,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const long long n = scaled(s[3] ? 1e8 : 4e8);
             const auto t0 = std::chrono::steady_clock::now();
             const auto h = histogram(kn, Poker{s[0], s[1], s[2]}, g, ctr, n, s[2] + 1, s[2], 0);
-            std::snprintf(params, sizeof params, "n=%lld r=%d d=%d k=%d", n, s[0], s[1], s[2]);
+            params = absl::StrFormat("n=%lld r=%d d=%d k=%d", n, s[0], s[1], s[2]);
             report("poker", params, chi2(h, poker_prob(s[1], s[2]), n), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1189,7 +1190,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             }
             const auto t0 = std::chrono::steady_clock::now();
             const auto h = histogram(kn, Coupon{r, d, tmax}, g, ctr, n, tmax + 1, mean, var);
-            std::snprintf(params, sizeof params, "n=%lld r=%d d=%d", n, r, d);
+            params = absl::StrFormat("n=%lld r=%d d=%d", n, r, d);
             report("coupon", params, chi2(h, coupon_prob(d, tmax), n), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1203,7 +1204,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const auto t0 = std::chrono::steady_clock::now();
             // the values per gap (including the one in the interval): geometric of the probability w
             const auto h = histogram(kn, Gap{s.r, tmax, 0, UINT64_C(1) << (32 - s.lg)}, g, ctr, n, tmax + 1, 1 / w, (1 - w) / (w * w));
-            std::snprintf(params, sizeof params, "n=%lld r=%d beta=2^-%d", n, s.r, s.lg);
+            params = absl::StrFormat("n=%lld r=%d beta=2^-%d", n, s.r, s.lg);
             report("gap", params, chi2(h, gap_prob(w, tmax), n), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1221,14 +1222,14 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 all.x += c.x;
                 all.df += c.df;
             }
-            std::snprintf(params, sizeof params, "N=%d n=%lld d=%d t=%d", s[0], n, d, s[1]);
+            params = absl::StrFormat("N=%d n=%lld d=%d t=%d", s[0], n, d, s[1]);
             report("maxoft", params, all, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
     }
     // the tests on points: the total number of collisions over N replications, against a Poisson
     // distribution of the mean N * mu; the p-value is P[X >= observed]
-    const auto report_poisson = [&](const char *name, const char *params, long long obs, double mean, double sec) {
+    const auto report_poisson = [&](const char *name, const std::string &params, long long obs, double mean, double sec) {
         const double p = fbar_Poisson1(mean, obs);
         emit(name, params, Stat::kPoisson, static_cast<double>(obs), p, (obs - mean) / std::sqrt(mean), sec, 0, mean);
     };
@@ -1252,7 +1253,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                         return sum;
                     }
                 }
-                std::snprintf(params, sizeof params, "N=%d n=%lld r=%d d=2^%d t=%d", N, n, s[0], s[1], s[2]);
+                params = absl::StrFormat("N=%d n=%lld r=%d d=2^%d t=%d", N, n, s[0], s[1], s[2]);
                 report_poisson("collover", params, c, N * mu, seconds_since(t0));
                 if (sum.max_z > o.limit) return sum;
             }
@@ -1274,7 +1275,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                         return sum;
                     }
                 }
-                std::snprintf(params, sizeof params, "N=%d n=%lld r=%d d=2^%d t=%d", s.N, n, s.r, s.b, s.t);
+                params = absl::StrFormat("N=%d n=%lld r=%d d=2^%d t=%d", s.N, n, s.r, s.b, s.t);
                 report_poisson("birthday", params, c, s.N * lambda, seconds_since(t0));
                 if (sum.max_z > o.limit) return sum;
             }
@@ -1290,7 +1291,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             for (int rep = 0; rep < s.N; ++rep) reps.push_back(close_pairs(kn, mem, g, ctr, n, s.t, m));
             const double sec = seconds_since(t0);
             for (const CpStats &c : close_pairs_stats(reps, n, s.t, m)) {
-                std::snprintf(params, sizeof params, "N=%d n=%lld t=%d m=%d %s", s.N, n, s.t, m, c.name);
+                params = absl::StrFormat("N=%d n=%lld t=%d m=%d %s", s.N, n, s.t, m, c.name);
                 emit("cpairs", params, Stat::kClosePairs, c.stat, c.p, 0, sec);
             }
         }
@@ -1303,7 +1304,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             for (int i = 2; i <= s.t; ++i) cells *= i;
             const auto t0 = std::chrono::steady_clock::now();
             const auto h = histogram(kn, Permut{s.r, s.t}, g, ctr, n, cells, s.t, 0);
-            std::snprintf(params, sizeof params, "n=%lld r=%d t=%d", n, s.r, s.t);
+            params = absl::StrFormat("n=%lld r=%d t=%d", n, s.r, s.t);
             // the chi-square of TestU01 (Delta = 1), whose correction of the mean is negligible here
             report("permut", params, chi2(h, std::vector<double>(cells, 1.0 / cells), n), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
@@ -1337,7 +1338,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                     for (int j = 0; j < 6; ++j) k += A[i][j] * (c[i] - n * B[i]) * (c[j] - n * B[j]);
                 khi += k / (n - 6.0);
             }
-            std::snprintf(params, sizeof params, "N=%d n=%lld r=%d %s", s.N, n, s.r, s.up ? "up" : "down");
+            params = absl::StrFormat("N=%d n=%lld r=%d %s", s.N, n, s.r, s.up ? "up" : "down");
             report("run", params, Chi2{khi, 6L * s.N}, seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_cnt));
@@ -1372,7 +1373,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 for (const unsigned ci : v) x += (ci - e) * (ci - e);
                 return x / e;
             };
-            std::snprintf(params, sizeof params, "n=%lld r=%d d=%d t=%d", n, r, 1 << b, t);
+            params = absl::StrFormat("n=%lld r=%d d=%d t=%d", n, r, 1 << b, t);
             report("serial", params, Chi2{pearson(c) - pearson(c1), static_cast<long>(k - k1)}, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1395,7 +1396,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                     return sum;
                 }
             }
-            std::snprintf(params, sizeof params, "N=%d n=%lld r=%d t=%d", N, n, r, t);
+            params = absl::StrFormat("N=%d n=%lld r=%d t=%d", N, n, r, t);
             report_poisson("collperm", params, c, N * mu, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1411,7 +1412,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             for (int i = 0; i <= k; ++i) prob[i] = std::exp(std::lgamma(k + 1.0) - std::lgamma(i + 1.0) - std::lgamma(k - i + 1.0) + i * std::log(p) + (k - i) * std::log1p(-p));
             const auto t0 = std::chrono::steady_clock::now();
             const auto h = histogram(kn, detail::Weight{s.r, k, UINT64_C(1) << (32 - s.lg)}, g, ctr, n, k + 1, k, 0);
-            std::snprintf(params, sizeof params, "n=%lld r=%d k=%d beta=2^-%d", n, s.r, k, s.lg);
+            params = absl::StrFormat("n=%lld r=%d k=%d beta=2^-%d", n, s.r, k, s.lg);
             report("weight", params, chi2(h, prob, n), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1440,7 +1441,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             all.x += c.x;
             all.df += c.df;
         }
-        std::snprintf(params, sizeof params, "N=%d n=%lld r=%d m=2^20 t=%d", N, n, r, t);
+        params = absl::StrFormat("N=%d n=%lld r=%d m=2^20 t=%d", N, n, r, t);
         report("savir2", params, all, seconds_since(t0));
         if (sum.max_z > o.limit) return sum;
     }
@@ -1462,7 +1463,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             all.x += c.x;
             all.df += c.df;
         }
-        std::snprintf(params, sizeof params, "N=%d n=%lld r=%d s=%d", N, n, r, s);
+        params = absl::StrFormat("N=%d n=%lld r=%d s=%d", N, n, r, s);
         report("gcd", params, all, seconds_since(t0));
         if (sum.max_z > o.limit) return sum;
     }
@@ -1470,7 +1471,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
     // the first lmods bits of one more
     const auto hamming = [](int r, int s, int L, int mode, int h) { return detail::Hamming{r, s, L / s, L % s, L, mode, h}; };
     const auto vals_per_block = [](int s, int L) { return L / s + (L % s > 0); };
-    const auto report_normal = [&](const char *name, const char *params, double z, double sec) {
+    const auto report_normal = [&](const char *name, const std::string &params, double z, double sec) {
         const double p = fbar_Normal1(z);
         emit(name, params, Stat::kNormal, z, p, std::fabs(z), sec);
     };
@@ -1490,7 +1491,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const auto hist = histogram(kn, hamming(r, s, L, 2, h), g, ctr, N * K, 2 * h + 1, vals_per_block(s, L), 0);
             double x = 0;
             for (int c = 0; c <= 2 * h; ++c) x += hist[c] * static_cast<double>(c - h) * (c - h);
-            std::snprintf(params, sizeof params, "N=%d n=%lld r=%d s=%d L=%d", N, K * L, r, s, L);
+            params = absl::StrFormat("N=%d n=%lld r=%d s=%d L=%d", N, K * L, r, s, L);
             report("hamweight", params, Chi2{x * 4.0 / L, N * K}, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1512,7 +1513,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                     acc += m * (2.0 * i - L) * (2.0 * j - L);
                     pairs += m;
                 }
-            std::snprintf(params, sizeof params, "n=%lld r=%d s=%d L=%d", n, r, s, L);
+            params = absl::StrFormat("n=%lld r=%d s=%d L=%d", n, r, s, L);
             report_normal("hamcorr", params, acc / (L * std::sqrt(pairs)), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1554,7 +1555,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 for (size_t i = 0; i < eo.size(); ++i) all.x += (oo[i] - eo[i]) * (oo[i] - eo[i]) / eo[i];
                 all.df += static_cast<long>(eo.size()) - 1;
             }
-            std::snprintf(params, sizeof params, "N=%d n=%lld r=%d s=%d L=%d", c.N, n, c.r, c.s, L);
+            params = absl::StrFormat("N=%d n=%lld r=%d s=%d L=%d", c.N, n, c.r, c.s, L);
             report("hamindep", params, all, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1589,9 +1590,9 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 }
             }
             const double bits = static_cast<double>(nv) * s;
-            std::snprintf(params, sizeof params, "n=%lld r=%d s=%d runs", nr, r, s);
+            params = absl::StrFormat("n=%lld r=%d s=%d runs", nr, r, s);
             report("bitrun", params, Chi2{x, 2L * (k - 1)}, seconds_since(t0));
-            std::snprintf(params, sizeof params, "n=%lld r=%d s=%d count", nr, r, s);
+            params = absl::StrFormat("n=%lld r=%d s=%d count", nr, r, s);
             report_normal("bitrun", params, (bits / 4 - runs1) / std::sqrt(bits / 16), seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_cnt));
@@ -1637,7 +1638,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 ++h[std::min<long long>(x, jhigh)];
                 top = std::max(top, x);
             }
-            std::snprintf(params, sizeof params, "n=%lld r=%d s=%d L=%lld", nb, r, s, L);
+            params = absl::StrFormat("n=%lld r=%d s=%d L=%lld", nb, r, s, L);
             report("longhead", params, chi2(h, prob, nb), seconds_since(t0));
             const double lnall = std::log(static_cast<double>(nb) * L);
             double cl = 0, cprev = 0;
@@ -1646,7 +1647,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 cl += plhr(j, lnall);
             }
             const double p = gofw_pDisc(cl, 1 - cprev);
-            std::snprintf(params, sizeof params, "n=%lld r=%d s=%d longest=%lld", nb, r, s, top);
+            params = absl::StrFormat("n=%lld r=%d s=%d longest=%lld", nb, r, s, top);
             emit("longhead", params, Stat::kDiscrete, static_cast<double>(top), p, 0, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1671,7 +1672,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 const double m = static_cast<double>(K) * s;
                 zs += 2.0 * (A - m / 2) / std::sqrt(m);
             }
-            std::snprintf(params, sizeof params, "N=%d n=%lld r=%d s=%d d=%d", N, nbits, c.r, s, c.d);
+            params = absl::StrFormat("N=%d n=%lld r=%d s=%d d=%d", N, nbits, c.r, s, c.d);
             report_normal("autocor", params, zs / std::sqrt(static_cast<double>(N)), seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_cnt));
@@ -1694,7 +1695,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             launch(kn.samplecorr, kBlocks, kThreads, 0, g, start, n, 0, k, d_sum);
             double sm;
             CK(gpuMemcpy(&sm, d_sum, sizeof sm, gpuMemcpyDeviceToHost));
-            std::snprintf(params, sizeof params, "n=%lld r=0 k=%d", n, k);
+            params = absl::StrFormat("n=%lld r=0 k=%d", n, k);
             report_normal("samplecorr", params, sm * 12.0 / std::sqrt(13.0 * (n - k)), seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_sum));
@@ -1730,7 +1731,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         const double a2 = gofs_AndersonDarling(v.data(), static_cast<long>(n));
         return std::pair<double, double>{a2, fbar_AndersonDarling(static_cast<long>(n), a2)};
     };
-    const auto report_ad = [&](const char *name, const char *params, double a2, double p, double sec) {
+    const auto report_ad = [&](const char *name, const std::string &params, double a2, double p, double sec) {
         emit(name, params, Stat::kAndersonDarling, a2, p, p > 0 ? std::max(0.0, -finv_Normal1(std::max(p, 1e-300))) : HUGE_VAL, sec);
     };
     if (wanted(o, "sampleprod")) {
@@ -1749,7 +1750,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                              }).second);
             }
             const auto ad = anderson_darling(ps);
-            std::snprintf(params, sizeof params, "N=%d n=%lld r=0 t=%d", c[0], n, c[1]);
+            params = absl::StrFormat("N=%d n=%lld r=0 t=%d", c[0], n, c[1]);
             report_ad("sprod", params, ad.first, ad.second, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1789,7 +1790,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const auto ad = ad_sorted(n, [&](const Sink &sk) {
                 launch(kn.uniform, kBlocks, kThreads, 0, 1, r, m, g, base, stride, n, static_cast<const double *>(d_tab), ntab, hstep, sk);
             });
-            std::snprintf(params, sizeof params, "N=%lld n=%d r=%d", n, m, r);
+            params = absl::StrFormat("N=%lld n=%d r=%d", n, m, r);
             report_ad("smean", params, ad.first, ad.second, seconds_since(t0));
             if (sum.max_z > o.limit) {
                 CK(gpuFree(d_tab));
@@ -1837,7 +1838,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 std::vector<unsigned long long> obs(h.begin() + k * (L + 1), h.begin() + (k + 1) * (L + 1));
                 std::vector<double> prob(L + 1);
                 for (long i = 0; i <= L; ++i) prob[i] = ex[k][i] / nl;
-                std::snprintf(params, sizeof params, "n=%lld r=%d s=%d L=%d %c", n, c.r, c.s, c.L, names[k]);
+                params = absl::StrFormat("n=%lld r=%d s=%d L=%d %c", n, c.r, c.s, c.L, names[k]);
                 report("walk", params, chi2(obs, prob, n), sec);
             }
             if (sum.max_z > o.limit) return sum;
@@ -1873,7 +1874,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 all.x += c.x;
                 all.df += c.df;
             }
-            std::snprintf(params, sizeof params, "N=%d n=%lld r=%d s=%d", N, n, r, sb);
+            params = absl::StrFormat("N=%d n=%lld r=%d s=%d", N, n, r, sb);
             report("periods", params, all, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1898,7 +1899,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         const long long n = scaled(5e8);
         const auto t0 = std::chrono::steady_clock::now();
         const auto h = histogram(kn, detail::SumColl{0, jmax, static_cast<double>(g10)}, g, ctr, n, jmax + 1, 21, 0.4 * 21);
-        std::snprintf(params, sizeof params, "n=%lld r=0 g=%d", n, g10);
+        params = absl::StrFormat("n=%lld r=0 g=%d", n, g10);
         report("sumcoll", params, chi2(h, prob, n), seconds_since(t0));
         if (sum.max_z > o.limit) return sum;
     }
@@ -1932,7 +1933,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             CK(gpuMemcpy(b.data(), ft.b, sizeof(double) * b.size(), gpuMemcpyDeviceToHost));
             for (int i = 1; i <= n / 4; ++i) u[i - 1] = fdist_Normal2((b[i] / n - N) / std::sqrt(N * (1.0 - 2.0 / n)));
             const auto ad = anderson_darling(u);
-            std::snprintf(params, sizeof params, "N=%lld n=2^%d r=%d s=%d", N, k, r, sb);
+            params = absl::StrFormat("N=%lld n=2^%d r=%d s=%d", N, k, r, sb);
             report_ad("fourier", params, ad.first, ad.second, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -1995,9 +1996,9 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 }
                 jl.df += M0 - 1;
             }
-            std::snprintf(params, sizeof params, "N=%lld n=%lld r=%d s=%d jumps", N, n, rs[ri], sb);
+            params = absl::StrFormat("N=%lld n=%lld r=%d s=%d jumps", N, n, rs[ri], sb);
             report_normal("lincomp", params, zs / std::sqrt(static_cast<double>(N)), sec);
-            std::snprintf(params, sizeof params, "N=%lld n=%lld r=%d s=%d sizes", N, n, rs[ri], sb);
+            params = absl::StrFormat("N=%lld n=%lld r=%d s=%d sizes", N, n, rs[ri], sb);
             report("lincomp", params, jl, sec);
             if (sum.max_z > o.limit) return sum;
         }
@@ -2055,7 +2056,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 all.x += x.x;
                 all.df += x.df;
             }
-            std::snprintf(params, sizeof params, "N=%d n=%lld r=%d s=%d L=%d k=%d", c.N, n, c.r, c.s, c.l, c.k);
+            params = absl::StrFormat("N=%d n=%lld r=%d s=%d L=%d k=%d", c.N, n, c.r, c.s, c.l, c.k);
             if (all.df >= 1) report("matrank", params, all, seconds_since(t0));  // (else too few matrices for two classes)
             if (sum.max_z > o.limit) return sum;
         }
@@ -2087,7 +2088,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                              somme += thrust::transform_reduce(thrust::counting_iterator<long long>(0), thrust::counting_iterator<long long>(c),
                                                                AppearTerm{a, ibits, Q}, 0.0, thrust::plus<double>());
                          });
-            std::snprintf(params, sizeof params, "N=1 Q=%lld K=%lld r=%d s=%d L=%d", Q, K, r, sb, L);
+            params = absl::StrFormat("N=1 Q=%lld K=%lld r=%d s=%d L=%d", Q, K, r, sb, L);
             report_normal("appear", params, (somme / (M_LN2 * K) - E[L]) / sigma, seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }
@@ -2119,7 +2120,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 zs += (lz78(x, nbits, r, sb) - LZMu[t]) / LZSigma[t];
             }
             CK(gpuFree(d_out));
-            std::snprintf(params, sizeof params, "N=%lld n=2^%d r=%d s=%d", N, t, r, sb);
+            params = absl::StrFormat("N=%lld n=2^%d r=%d s=%d", N, t, r, sb);
             report_normal("lempelziv", params, zs / std::sqrt(static_cast<double>(N)), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;
         }

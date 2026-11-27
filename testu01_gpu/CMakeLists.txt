@@ -71,6 +71,8 @@ else()
   set(gpu_libs CUDA::cudart CUDA::cuda_driver CUDA::nvrtc CUDA::cufft)
 endif()
 find_package(TestU01 REQUIRED)
+# abseil (its LTS releases from 20230125, with absl/log): the strings of the library, the logging of the example
+find_package(absl REQUIRED)
 
 # the device code and the parameters header, embedded into the library as raw string literals
 set(gen ${CMAKE_CURRENT_BINARY_DIR}/generated)
@@ -90,7 +92,9 @@ set_source_files_properties(src/testu01_gpu.hip PROPERTIES LANGUAGE ${gpu_lang})
 add_library(testu01_gpu src/testu01_gpu.hip ${gen}/device.inc ${gen}/params.inc)
 add_library(testu01_gpu::testu01_gpu ALIAS testu01_gpu)
 target_compile_features(testu01_gpu PUBLIC cxx_std_17)
-set_target_properties(testu01_gpu PROPERTIES ${gpu_lang}_STANDARD 17 ${gpu_lang}_STANDARD_REQUIRED ON ${gpu_lang}_EXTENSIONS OFF
+# the host code is C++20 (as the abseil of the system may be built, with std::weak_ordering etc. in its types); the
+# header needs only C++17 of its users
+set_target_properties(testu01_gpu PROPERTIES ${gpu_lang}_STANDARD 20 ${gpu_lang}_STANDARD_REQUIRED ON ${gpu_lang}_EXTENSIONS OFF
                                              POSITION_INDEPENDENT_CODE ON
                                              VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
 if(gpu_lang STREQUAL "CUDA")
@@ -110,7 +114,7 @@ else()  # nvcc passes the flags of the host compiler by -Xcompiler
     target_compile_options(testu01_gpu PRIVATE "-Xcompiler=${f}")
   endforeach()
 endif()
-target_link_libraries(testu01_gpu PRIVATE ${gpu_libs} TestU01::probdist TestU01::mylib)
+target_link_libraries(testu01_gpu PRIVATE ${gpu_libs} TestU01::probdist TestU01::mylib absl::strings absl::str_format)
 
 if(TESTU01_GPU_EXAMPLES)
   # (HIP: compiled as HIP for hip_runtime.h; CUDA: a C++ program with the runtime of CUDA)
@@ -118,13 +122,13 @@ if(TESTU01_GPU_EXAMPLES)
     set_source_files_properties(examples/splitmix_bigcrush.cpp PROPERTIES LANGUAGE HIP)
   endif()
   add_executable(splitmix_bigcrush examples/splitmix_bigcrush.cpp)
-  set_target_properties(splitmix_bigcrush PROPERTIES ${gpu_lang}_STANDARD 17 ${gpu_lang}_STANDARD_REQUIRED ON ${gpu_lang}_EXTENSIONS OFF)
-  target_compile_features(splitmix_bigcrush PRIVATE cxx_std_17)
+  set_target_properties(splitmix_bigcrush PROPERTIES ${gpu_lang}_STANDARD 20 ${gpu_lang}_STANDARD_REQUIRED ON ${gpu_lang}_EXTENSIONS OFF)
+  target_compile_features(splitmix_bigcrush PRIVATE cxx_std_20)
   target_compile_options(splitmix_bigcrush PRIVATE -Wall)
   if(gpu_lang STREQUAL "CUDA")
     target_compile_definitions(splitmix_bigcrush PRIVATE TESTU01_GPU_CUDA)
   endif()
-  target_link_libraries(splitmix_bigcrush PRIVATE testu01_gpu::testu01_gpu ${gpu_runtime})
+  target_link_libraries(splitmix_bigcrush PRIVATE testu01_gpu::testu01_gpu ${gpu_runtime} absl::log absl::log_initialize absl::log_globals)
 endif()
 
 # installation: the headers, the library and the package testu01_gpu (find_package(testu01_gpu))
