@@ -23,9 +23,6 @@
 #include <type_traits>
 #include <vector>
 
-#include "absl/log/globals.h"
-#include "absl/log/initialize.h"
-#include "absl/log/log.h"
 #include "testu01_gpu.hpp"
 
 namespace {
@@ -62,8 +59,6 @@ template <typename T> T number(std::string_view a) {
 }  // namespace
 
 int main(int argc, char **argv) {
-    absl::InitializeLog();
-    absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);  // the warnings to stderr as well
     try {
         const std::vector<std::string_view> args(argv + 1, argv + argc);
         const uint64_t seed = args.size() > 0 ? number<uint64_t>(args[0]) : 1;
@@ -83,9 +78,9 @@ int main(int argc, char **argv) {
         };
         // wait for the device by blocking the thread, instead of spinning on a CPU core
 #ifdef TESTU01_GPU_CUDA
-        if (cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync) != cudaSuccess) LOG(WARNING) << "cudaSetDeviceFlags failed";
+        if (cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync) != cudaSuccess) std::cerr << "warning: cudaSetDeviceFlags failed\n";
 #else
-        if (hipSetDeviceFlags(hipDeviceScheduleBlockingSync) != hipSuccess) LOG(WARNING) << "hipSetDeviceFlags failed";
+        if (hipSetDeviceFlags(hipDeviceScheduleBlockingSync) != hipSuccess) std::cerr << "warning: hipSetDeviceFlags failed\n";
 #endif
         const testu01_gpu::Generator gen(kSource, "splitmix");
         testu01_gpu::Params params{};
@@ -96,7 +91,7 @@ int main(int argc, char **argv) {
         std::cout << std::format("summary\tmin_p={:.3g}\tmax_p={:.6g}\tflagged={}\n", s.min_p, s.max_p, s.flagged);
         return 0;
     } catch (const std::exception &e) {
-        LOG(ERROR) << e.what();
+        std::cerr << std::format("error: {}\n", e.what());
         return 1;
     }
 }
