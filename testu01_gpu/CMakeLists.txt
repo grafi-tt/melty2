@@ -71,8 +71,6 @@ else()
   set(gpu_libs CUDA::cudart CUDA::cuda_driver CUDA::nvrtc CUDA::cufft)
 endif()
 find_package(TestU01 REQUIRED)
-# abseil (its LTS releases from 20230125, with absl/log): the strings of the library, the logging of the example
-find_package(absl REQUIRED)
 
 # the device code and the parameters header, embedded into the library as raw string literals
 set(gen ${CMAKE_CURRENT_BINARY_DIR}/generated)
@@ -92,8 +90,7 @@ set_source_files_properties(src/testu01_gpu.hip PROPERTIES LANGUAGE ${gpu_lang})
 add_library(testu01_gpu src/testu01_gpu.hip ${gen}/device.inc ${gen}/params.inc)
 add_library(testu01_gpu::testu01_gpu ALIAS testu01_gpu)
 target_compile_features(testu01_gpu PUBLIC cxx_std_17)
-# the host code is C++20 (as the abseil of the system may be built, with std::weak_ordering etc. in its types); the
-# header needs only C++17 of its users
+# the host code is C++20 (std::format); the header needs only C++17 of its users
 set_target_properties(testu01_gpu PROPERTIES ${gpu_lang}_STANDARD 20 ${gpu_lang}_STANDARD_REQUIRED ON ${gpu_lang}_EXTENSIONS OFF
                                              POSITION_INDEPENDENT_CODE ON
                                              VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
@@ -114,9 +111,11 @@ else()  # nvcc passes the flags of the host compiler by -Xcompiler
     target_compile_options(testu01_gpu PRIVATE "-Xcompiler=${f}")
   endforeach()
 endif()
-target_link_libraries(testu01_gpu PRIVATE ${gpu_libs} TestU01::probdist TestU01::mylib absl::strings)
+target_link_libraries(testu01_gpu PRIVATE ${gpu_libs} TestU01::probdist TestU01::mylib)
 
 if(TESTU01_GPU_EXAMPLES)
+  # abseil (its LTS releases from 20230125, with absl/log): the logging of the example (the library doesn't use it)
+  find_package(absl REQUIRED)
   # (HIP: compiled as HIP for hip_runtime.h; CUDA: a C++ program with the runtime of CUDA)
   if(gpu_lang STREQUAL "HIP")
     set_source_files_properties(examples/splitmix_bigcrush.cpp PROPERTIES LANGUAGE HIP)

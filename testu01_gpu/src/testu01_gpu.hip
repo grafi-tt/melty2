@@ -67,8 +67,6 @@
 #include <string_view>
 #include <vector>
 
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
 
 extern "C" {
 #include <fbar.h>
@@ -114,21 +112,21 @@ constexpr char kParamsSource[] =
     ;
 
 #ifdef TESTU01_GPU_CUDA
-constexpr char kBackend[] = "CUDA";
+constexpr std::string_view kBackend = "CUDA";
 #else
-constexpr char kBackend[] = "HIP";
+constexpr std::string_view kBackend = "HIP";
 #endif
 
-void check(gpuError_t e, const char *what, int line) {
-    if (e != gpuSuccess) throw std::runtime_error(absl::StrCat(kBackend, " ", gpuGetErrorString(e), " at ", __FILE__, ":", line, " (", what, ")"));
+void check(gpuError_t e, std::string_view what, int line) {
+    if (e != gpuSuccess) throw std::runtime_error(std::format("{} {} at {}:{} ({})", kBackend, gpuGetErrorString(e), __FILE__, line, what));
 }
 #ifdef TESTU01_GPU_CUDA
 // the errors of the driver API (the modules and the launches)
-void check(CUresult e, const char *what, int line) {
+void check(CUresult e, std::string_view what, int line) {
     if (e == CUDA_SUCCESS) return;
     const char *s = nullptr;
     if (cuGetErrorString(e, &s) != CUDA_SUCCESS || !s) s = "unknown error";
-    throw std::runtime_error(absl::StrCat("CUDA ", s, " at ", __FILE__, ":", line, " (", what, ")"));
+    throw std::runtime_error(std::format("CUDA {} at {}:{} ({})", s, __FILE__, line, what));
 }
 #endif
 #define CK(x) check((x), #x, __LINE__)
@@ -138,8 +136,8 @@ void check(CUresult e, const char *what, int line) {
 // a CUBIN for its architecture if NVRTC supports it, else as the PTX of the newest architecture below it (which
 // the driver compiles when loading it)
 std::vector<char> compile_program(const std::string &src) {
-    const auto rtc = [](nvrtcResult r, const char *what) {
-        if (r != NVRTC_SUCCESS) throw std::runtime_error(absl::StrCat(what, ": ", nvrtcGetErrorString(r)));
+    const auto rtc = [](nvrtcResult r, std::string_view what) {
+        if (r != NVRTC_SUCCESS) throw std::runtime_error(std::format("{}: {}", what, nvrtcGetErrorString(r)));
     };
     int dev, major, minor;
     CK(cudaGetDevice(&dev));
@@ -153,9 +151,9 @@ std::vector<char> compile_program(const std::string &src) {
     int use = 0;
     for (const int a : archs)
         if (a <= want && a > use) use = a;
-    if (!use) throw std::runtime_error(absl::StrCat("NVRTC supports no architecture up to the compute capability ", major, ".", minor));
+    if (!use) throw std::runtime_error(std::format("NVRTC supports no architecture up to the compute capability {}.{}", major, minor));
     const bool cubin = use == want;
-    const std::string arch = absl::StrCat("--gpu-architecture=", cubin ? "sm_" : "compute_", use);
+    const std::string arch = std::format("--gpu-architecture={}{}", cubin ? "sm_" : "compute_", use);
     const char *opts[] = {arch.c_str(), "--std=c++17"};
     const char *headers[] = {kParamsSource}, *include_names[] = {"testu01_gpu_params.hpp"};
     nvrtcProgram prog;
@@ -167,7 +165,7 @@ std::vector<char> compile_program(const std::string &src) {
         std::string log(n, '\0');
         nvrtcGetProgramLog(prog, log.data());
         nvrtcDestroyProgram(&prog);
-        throw std::runtime_error(absl::StrCat("nvrtc: ", nvrtcGetErrorString(r), "\n", log));
+        throw std::runtime_error(std::format("nvrtc: {}\n{}", nvrtcGetErrorString(r), log));
     }
     size_t size = 0;
     std::vector<char> code;
@@ -186,14 +184,14 @@ std::vector<char> compile_program(const std::string &src) {
 #else
 // hiprtc: the program of the source (with the header testu01_gpu_params.hpp) compiled for the current device
 std::vector<char> compile_program(const std::string &src) {
-    const auto rtc = [](hiprtcResult r, const char *what) {
-        if (r != HIPRTC_SUCCESS) throw std::runtime_error(absl::StrCat(what, ": ", hiprtcGetErrorString(r)));
+    const auto rtc = [](hiprtcResult r, std::string_view what) {
+        if (r != HIPRTC_SUCCESS) throw std::runtime_error(std::format("{}: {}", what, hiprtcGetErrorString(r)));
     };
     hipDevice_t dev;
     CK(hipGetDevice(&dev));
     hipDeviceProp_t prop;
     CK(hipGetDeviceProperties(&prop, dev));
-    const std::string arch = absl::StrCat("--offload-arch=", prop.gcnArchName);
+    const std::string arch = std::format("--offload-arch={}", std::string_view(prop.gcnArchName));
     const char *opts[] = {arch.c_str(), "-O3", "-std=c++17"};
     const char *headers[] = {kParamsSource}, *include_names[] = {"testu01_gpu_params.hpp"};
     hiprtcProgram prog;
@@ -205,7 +203,7 @@ std::vector<char> compile_program(const std::string &src) {
         std::string log(n, '\0');
         hiprtcGetProgramLog(prog, log.data());
         hiprtcDestroyProgram(&prog);
-        throw std::runtime_error(absl::StrCat("hiprtc: ", hiprtcGetErrorString(r), "\n", log));
+        throw std::runtime_error(std::format("hiprtc: {}\n{}", hiprtcGetErrorString(r), log));
     }
     size_t size = 0;
     rtc(hiprtcGetCodeSize(prog, &size), "hiprtcGetCodeSize");
@@ -223,7 +221,7 @@ std::vector<char> compile_program(const std::string &src) {
 // several times faster than interpreting a generator on GPU), and loaded as a module.
 struct Generator::Impl {
     Impl(const std::string &source, const std::string &name) {
-        const std::string src = absl::StrCat(kDeviceSource, "\n#line 1 \"", name, "\"\n", source);
+        const std::string src = std::format("{}\n#line 1 \"{}\"\n{}", std::string_view(kDeviceSource), name, source);
         const std::vector<char> code = compile_program(src);
 #ifdef TESTU01_GPU_CUDA
         CK(cudaFree(nullptr));  // the primary context of the device, current for the driver API
@@ -380,8 +378,8 @@ struct Fft {
     Fft &operator=(const Fft &) = delete;
     // transform the batch (on the null stream, after the kernels filling a)
     void execute() { cf(cufftExecD2Z(plan, a, reinterpret_cast<cufftDoubleComplex *>(f)), "cufftExecD2Z"); }
-    static void cf(cufftResult st, const char *what) {
-        if (st != CUFFT_SUCCESS) throw std::runtime_error(absl::StrCat(what, ": cufft status ", static_cast<int>(st)));
+    static void cf(cufftResult st, std::string_view what) {
+        if (st != CUFFT_SUCCESS) throw std::runtime_error(std::format("{}: cufft status {}", what, static_cast<int>(st)));
     }
 };
 #else
@@ -422,8 +420,8 @@ struct Fft {
         void *in[1] = {a}, *out[1] = {f};
         rf(rocfft_execute(plan, in, out, info), "rocfft_execute");
     }
-    static void rf(rocfft_status st, const char *what) {
-        if (st != rocfft_status_success) throw std::runtime_error(absl::StrCat(what, ": rocfft status ", static_cast<int>(st)));
+    static void rf(rocfft_status st, std::string_view what) {
+        if (st != rocfft_status_success) throw std::runtime_error(std::format("{}: rocfft status {}", what, static_cast<int>(st)));
     }
 };
 #endif
@@ -1223,7 +1221,7 @@ int lump_point(F tail_after, long long n, int lo, int limit) {
 template <class T>
 using PerSuite = std::array<std::vector<T>, 3>;
 
-bool wanted(const Options &o, const char *t) { return absl::StrContains(absl::StrCat(",", o.tests, ","), absl::StrCat(",", t, ",")); }
+bool wanted(const Options &o, std::string_view t) { return std::format(",{},", o.tests).find(std::format(",{},", t)) != std::string::npos; }
 
 double seconds_since(std::chrono::steady_clock::time_point t0) {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();

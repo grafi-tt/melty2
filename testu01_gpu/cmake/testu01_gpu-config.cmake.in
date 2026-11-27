@@ -13,7 +13,6 @@ else()
   find_dependency(CUDAToolkit)
 endif()
 find_dependency(TestU01)
-find_dependency(absl)
 list(POP_FRONT CMAKE_MODULE_PATH)
 
 include(${CMAKE_CURRENT_LIST_DIR}/testu01_gpu-targets.cmake)

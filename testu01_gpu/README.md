@@ -8,9 +8,9 @@ Currently only counter-based generators are supported: generators whose output a
 
 ## Build
 
-Requirements: ROCm (HIP, hiprtc, rocFFT and rocThrust) or the CUDA Toolkit (NVRTC, cuFFT and Thrust; a GPU of compute capability 6.0 or later), Abseil (tested with 20260107.1), and an installation of TestU01. The host code is written in C++20, while the header requires only C++17 of its users.
+Requirements: ROCm (HIP, hiprtc, rocFFT and rocThrust) or the CUDA Toolkit (NVRTC, cuFFT and Thrust; a GPU of compute capability 6.0 or later), and an installation of TestU01. The host code is written in C++20 (with `std::format`, e.g. GCC 13 or later), while the header requires only C++17 of its users. The example also needs Abseil for its logging (tested with 20260107.1); the library itself doesn't, and `-DTESTU01_GPU_EXAMPLES=OFF` builds without it.
 
-Note that the Abseil package of Ubuntu 24.04 (20220623) is too old: you will probably need to build Abseil from source, as the CI does.
+Note that the Abseil package of Ubuntu 24.04 (20220623) is too old for the example: you will probably need to build Abseil from source, as the CI does.
 
 With CMake (3.21 or later):
 
