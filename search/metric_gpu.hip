@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-// GPU (HIP) implementation of metric::bias_per_key() in metric.hpp.
+// GPU implementation (HIP or CUDA, see gpu_runtime.hpp) of metric::bias_per_key() in metric.hpp.
 //
 // The structure is interpreted on the device: ops are packed into constant memory, and each thread
-// traces kPairs counter pairs. Histograms of up to kMaxGroup depths at a time are accumulated in LDS,
+// traces kPairs counter pairs. Histograms of up to kMaxGroup depths at a time are accumulated in shared memory,
 // and then in global memory; the chi-square statistics are reduced on the device.
 //
 // The transfers are asynchronous on a stream, through pinned host buffers, and the host waits only
 // for the results at the end of bias_per_key(); it waits by blocking, not by spinning.
-#include <hip/hip_runtime.h>
-
 #include <algorithm>
 #include <cstring>
 
+#include "gpu_runtime.hpp"
 #include "logging.hpp"
 #include "metric.hpp"
 
@@ -21,9 +20,12 @@ namespace {
 
 constexpr int kPairs = 8;                  // counter pairs per thread
 constexpr int kTraces = 2 * kPairs;        // traces per thread
-constexpr int kMaxGroup = 4;               // maximum depths per launch: the histograms of 4 depths fill the 64KB of LDS
 constexpr int kThreads = 256;              // threads per block
 constexpr int kBins = 2 * kWindows * 256;  // bins of the histograms of a depth (addition and xor)
+// maximum depths per launch: the histograms of the depths in the shared memory of a block (4 in the 64 KiB of the LDS
+// of HIP, 3 in the 48 KiB of CUDA); the depths are independent, so the results don't depend on it
+constexpr int kMaxGroup = kGpuStaticSharedBytes / static_cast<int>(kBins * sizeof(unsigned));
+static_assert(kMaxGroup >= 3);
 
 }  // namespace
 
@@ -64,12 +66,12 @@ __device__ void hist_add(unsigned *H, const uint32_t (&o)[kTraces]) {
 #define CASES_DS(M, d) M(d, 0) M(d, 1) M(d, 2) M(d, 3) M(d, 4) M(d, 5)
 #define CASES(M) CASES_DS(M, 0) CASES_DS(M, 1) CASES_DS(M, 2) CASES_DS(M, 3) CASES_DS(M, 4) CASES_DS(M, 5)
 
-// Histogram the output differences for the G depths dlo..dlo + G - 1 (G <= kMaxGroup, as the LDS holds
+// Histogram the output differences for the G depths dlo..dlo + G - 1 (G <= kMaxGroup, as the shared memory holds
 // kMaxGroup histogram sets), running the first nops ops (nops = dlo + G - 1, the last depth of the
-// launch). Every G has its own kernel, so that a launch for fewer depths uses less LDS. A thread traces
+// launch). Every G has its own kernel, so that a launch for fewer depths uses less shared memory. A thread traces
 // kPairs pairs of counters c and c + delta (kTraces traces) iters times, with c from a SplitMix64
-// stream of the seed, the key and delta, and the thread. The histograms are accumulated in LDS and
-// then added to ghist.
+// stream of the seed, the key and delta, and the thread. The histograms are accumulated in shared memory
+// and then added to ghist.
 // grid: x = blocks per (key, delta), y = key * kDeltas + delta
 template <int G>
 __global__ void __launch_bounds__(kThreads) kdm(int nops, int dlo, const uint32_t *keys, uint64_t seed, int iters, unsigned *ghist, int nd, int mlo) {
@@ -147,20 +149,13 @@ __global__ void kchi(const unsigned *ghist, double e, double *chi) {
     if (threadIdx.x == 0) chi[h] = part[0] / e - 255;
 }
 
-// CHECK of a HIP call: the failure is fatal, with the error string and the call
-#define CHECK_HIP(x)                                                                         \
-    do {                                                                                     \
-        const hipError_t check_hip_e = (x);                                                  \
-        CHECK(check_hip_e == hipSuccess) << "HIP " << hipGetErrorString(check_hip_e) << ": " #x; \
-    } while (0)
-
 // Launch kdm<g> for g depths from dlo.
-void launch_kdm(int g, dim3 grid, hipStream_t st, int nops, int dlo, const uint32_t *keys, uint64_t seed, int iters, unsigned *ghist, int nd, int mlo) {
+void launch_kdm(int g, dim3 grid, gpuStream_t st, int nops, int dlo, const uint32_t *keys, uint64_t seed, int iters, unsigned *ghist, int nd, int mlo) {
     switch (g) {
-    case 1: hipLaunchKernelGGL(kdm<1>, grid, dim3(kThreads), 0, st, nops, dlo, keys, seed, iters, ghist, nd, mlo); break;
-    case 2: hipLaunchKernelGGL(kdm<2>, grid, dim3(kThreads), 0, st, nops, dlo, keys, seed, iters, ghist, nd, mlo); break;
-    case 3: hipLaunchKernelGGL(kdm<3>, grid, dim3(kThreads), 0, st, nops, dlo, keys, seed, iters, ghist, nd, mlo); break;
-    default: hipLaunchKernelGGL(kdm<kMaxGroup>, grid, dim3(kThreads), 0, st, nops, dlo, keys, seed, iters, ghist, nd, mlo); break;
+    case 1: kdm<1><<<grid, dim3(kThreads), 0, st>>>(nops, dlo, keys, seed, iters, ghist, nd, mlo); break;
+    case 2: kdm<2><<<grid, dim3(kThreads), 0, st>>>(nops, dlo, keys, seed, iters, ghist, nd, mlo); break;
+    case 3: kdm<3><<<grid, dim3(kThreads), 0, st>>>(nops, dlo, keys, seed, iters, ghist, nd, mlo); break;
+    default: kdm<kMaxGroup><<<grid, dim3(kThreads), 0, st>>>(nops, dlo, keys, seed, iters, ghist, nd, mlo); break;
     }
 }
 
@@ -172,11 +167,11 @@ struct Buffer {
     size_t cap = 0;
     void reserve(size_t n, bool with_dev, bool with_host) {
         if (n <= cap) return;
-        if (dev) CHECK_HIP(hipFree(dev));
-        if (host) CHECK_HIP(hipHostFree(host));
+        if (dev) CHECK_GPU(gpuFree(dev));
+        if (host) CHECK_GPU(gpuHostFree(host));
         dev = host = nullptr;
-        if (with_dev) CHECK_HIP(hipMalloc(reinterpret_cast<void **>(&dev), n * sizeof(T)));
-        if (with_host) CHECK_HIP(hipHostMalloc(reinterpret_cast<void **>(&host), n * sizeof(T), hipHostMallocDefault));
+        if (with_dev) CHECK_GPU(gpuMalloc(reinterpret_cast<void **>(&dev), n * sizeof(T)));
+        if (with_host) CHECK_GPU(gpuHostMalloc(reinterpret_cast<void **>(&host), n * sizeof(T)));
         cap = n;
     }
 };
@@ -184,15 +179,15 @@ struct Buffer {
 // The stream and the buffers, kept across calls. The host buffers are reused only after the wait at
 // the end of the previous call.
 struct Device {
-    hipStream_t stream = nullptr;
+    gpuStream_t stream = nullptr;
     Buffer<int> ops;        // host only: the packed ops
     Buffer<uint32_t> keys;  // the keys
     Buffer<unsigned> hist;  // device only: the histograms
     Buffer<double> chi;     // the chi-square statistics
     Device() {
         // wait for the device by blocking the thread, instead of spinning on a CPU core
-        CHECK_HIP(hipSetDeviceFlags(hipDeviceScheduleBlockingSync));
-        CHECK_HIP(hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
+        CHECK_GPU(gpuSetDeviceFlags(gpuDeviceScheduleBlockingSync));
+        CHECK_GPU(gpuStreamCreateWithFlags(&stream, gpuStreamNonBlocking));
         ops.reserve(arx::kMaxOps + 1, false, true);
     }
 };
@@ -205,7 +200,7 @@ static_assert(sizeof(Key) == 6 * sizeof(uint32_t), "the keys are copied as array
 // to kMaxGroup depths. n is rounded up to a multiple of the pairs of a launch.
 std::vector<double> bias_per_key(const arx::Arx &a, int mlo, int mhi, const std::vector<Key> &keys, int n, uint64_t seed) {
     static Device dev;
-    const hipStream_t st = dev.stream;
+    const gpuStream_t st = dev.stream;
     const int nk = static_cast<int>(keys.size());
     int *packed = dev.ops.host;
     std::fill(packed, packed + arx::kMaxOps + 1, 0);
@@ -216,15 +211,15 @@ std::vector<double> bias_per_key(const arx::Arx &a, int mlo, int mhi, const std:
         if (o.t == arx::kRot && rot == 0) code = 36 + o.d * 6 + o.s;  // rotation by 0 is an xor
         packed[i] = code | rot << 8;
     }
-    CHECK_HIP(hipMemcpyToSymbolAsync(HIP_SYMBOL(c_op), packed, sizeof(int) * (mhi + 1), 0, hipMemcpyHostToDevice, st));
+    CHECK_GPU(gpuMemcpyToSymbolAsync(c_op, packed, sizeof(int) * (mhi + 1), 0, gpuMemcpyHostToDevice, st));
     dev.keys.reserve(6 * static_cast<size_t>(nk), true, true);
     std::memcpy(dev.keys.host, keys.data(), sizeof(Key) * nk);
-    CHECK_HIP(hipMemcpyAsync(dev.keys.dev, dev.keys.host, sizeof(Key) * nk, hipMemcpyHostToDevice, st));
+    CHECK_GPU(gpuMemcpyAsync(dev.keys.dev, dev.keys.host, sizeof(Key) * nk, gpuMemcpyHostToDevice, st));
     const int nd = mhi - mlo + 1;
     const size_t nh = static_cast<size_t>(nk) * kDeltas * nd * 2 * kWindows;  // number of 256-bin histograms
     dev.hist.reserve(nh * 256, true, false);
     dev.chi.reserve(nh, true, true);
-    CHECK_HIP(hipMemsetAsync(dev.hist.dev, 0, nh * 256 * sizeof(unsigned), st));
+    CHECK_GPU(gpuMemsetAsync(dev.hist.dev, 0, nh * 256 * sizeof(unsigned), st));
     const int per_block_iter = kThreads * kPairs;
     const int total = (n + per_block_iter - 1) / per_block_iter;
     const int bx = std::min(total, 16);
@@ -236,10 +231,10 @@ std::vector<double> bias_per_key(const arx::Arx &a, int mlo, int mhi, const std:
         launch_kdm(g, dim3(bx, nk * kDeltas), st, dlo + g - 1, dlo, dev.keys.dev, seed, iters, dev.hist.dev, nd, mlo);
     }
     const double e = nreal / 256.0;
-    hipLaunchKernelGGL(kchi, dim3(nh), dim3(256), 0, st, dev.hist.dev, e, dev.chi.dev);
-    CHECK_HIP(hipGetLastError());
-    CHECK_HIP(hipMemcpyAsync(dev.chi.host, dev.chi.dev, nh * sizeof(double), hipMemcpyDeviceToHost, st));
-    CHECK_HIP(hipStreamSynchronize(st));  // the only wait: the results are needed below
+    kchi<<<dim3(nh), dim3(256), 0, st>>>(dev.hist.dev, e, dev.chi.dev);
+    CHECK_GPU(gpuGetLastError());
+    CHECK_GPU(gpuMemcpyAsync(dev.chi.host, dev.chi.dev, nh * sizeof(double), gpuMemcpyDeviceToHost, st));
+    CHECK_GPU(gpuStreamSynchronize(st));  // the only wait: the results are needed below
     std::vector<double> per_key(static_cast<size_t>(nk) * nd);
     for (int key = 0; key < nk; ++key)
         for (int m = 0; m < nd; ++m) {

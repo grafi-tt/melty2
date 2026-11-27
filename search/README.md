@@ -8,19 +8,21 @@ The code in this directory is distributed under the [Apache License 2.0](LICENSE
 
 ```sh
 cmake -B build && cmake --build build   # build/{prof,rank,sa,weakkeys}_cpu, build/check and build/state
-cmake -B build -DMELTY2_SEARCH_GPU=ON     # also build/{prof,rank,sa,weakkeys}_gpu, with the HIP metric
+cmake -B build -DMELTY2_SEARCH_GPU=ON     # also build/{prof,rank,sa,weakkeys}_gpu, with the GPU metric (HIP or CUDA)
 cmake -B build -DMELTY2_SEARCH_STEST=ON   # also build/testu01_stest, with the library testu01_gpu
 ```
 
 Options:
 
 * `MELTY2_SEARCH_CPU` (ON): the tools with the CPU metric, `check` and `state`.
-* `MELTY2_SEARCH_GPU` (OFF): the tools with the HIP metric.
+* `MELTY2_SEARCH_GPU` (OFF): the tools with the GPU metric.
 * `MELTY2_SEARCH_STEST` (OFF): `testu01_stest`, with an installed [testu01_gpu](../testu01_gpu) (found by `find_package`, e.g. with `CMAKE_PREFIX_PATH`), or else `../testu01_gpu` built along with its options (`TestU01_ROOT` for the prefix of TestU01, and `TESTU01_GPU_HOST_FLAGS=-march=native` for the SIMD of the host in LinearComp).
-* `MELTY2_SEARCH_NATIVE` (ON): `-march=native` for the code of the CPU (not the HIP code).
+* `MELTY2_SEARCH_GPU_BACKEND` (HIP if a HIP compiler is found, else CUDA): the GPU backend of the two above, `HIP` (ROCm) or `CUDA`; the GPU code is written once ([gpu_runtime.hpp](gpu_runtime.hpp)), and `../testu01_gpu` built along takes the same backend (an installed one must be of it). The two give the same results (the metric and the tests compared on a Radeon RX 6800 and a GeForce RTX 4070 Laptop GPU).
+* `MELTY2_SEARCH_NATIVE` (ON): `-march=native` for the code of the CPU (not the GPU code).
 * `CMAKE_HIP_ARCHITECTURES` (gfx1030): the GPU architectures of the HIP code.
+* `CMAKE_CUDA_ARCHITECTURES` (native, the GPUs of the build machine): the GPU architectures of the CUDA code.
 
-The tools are written in C++20, and the GPU metric in HIP (C++20 as well), as they log by [abseil](https://abseil.io/docs/cpp/guides/logging) (`LOG` and `CHECK` to stderr; the results go to stdout), whose installed package (`find_package(absl)`, e.g. `dev-cpp/abseil-cpp`) is required and is built in C++20 on current systems; `gen/run.sh` finds it by `pkg-config`. `melty2_init.c` of the library is compiled as C, and so is `hwd/prngs_hwd.c`, which is included into `hwd.c`. The GPU metric is about 50 times faster than the single-threaded CPU one (Radeon RX 6800 vs a core of Ryzen 9 9950X). The CPU and GPU tools compute the same statistic, but use different random counters, so they agree only statistically.
+The tools are written in C++20, and the GPU metric in HIP or CUDA (C++20 as well), as they log by [abseil](https://abseil.io/docs/cpp/guides/logging) (`LOG` and `CHECK` to stderr; the results go to stdout), whose installed package (`find_package(absl)`, e.g. `dev-cpp/abseil-cpp`) is required and is built in C++20 on current systems; `gen/run.sh` finds it by `pkg-config`. `melty2_init.c` of the library is compiled as C, and so is `hwd/prngs_hwd.c`, which is included into `hwd.c`. The GPU metric is about 50 times faster than the single-threaded CPU one (Radeon RX 6800 vs a core of Ryzen 9 9950X). The CPU and GPU tools compute the same statistic, but use different random counters, so they agree only statistically.
 
 ## Structures
 

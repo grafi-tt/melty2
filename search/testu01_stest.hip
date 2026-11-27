@@ -56,8 +56,6 @@
 // The tests are those of the library testu01_gpu (../testu01_gpu, see its README.md), on the outputs of
 // the first M ops of the structure as a counter-based generator: the position of the sequence is the
 // counter (or that of the interleaved streams, see --streams).
-#include <hip/hip_runtime.h>
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -77,6 +75,7 @@
 #include "arx.hpp"
 #include "absl/strings/str_format.h"
 #include "flags.hpp"
+#include "gpu_runtime.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
 #include "pidfile.hpp"
@@ -296,7 +295,7 @@ int run_main(int argc, char **argv) {
     if (arg.size() != (score ? 0u : 2u) || (!score_ms.empty() && plan)) usage();
     if (pidfile) pidfile::write(pidfile);
     // wait for the device by blocking the thread, instead of spinning on a CPU core
-    if (hipSetDeviceFlags(hipDeviceScheduleBlockingSync) != hipSuccess) throw std::runtime_error("hipSetDeviceFlags failed");
+    CHECK_GPU(gpuSetDeviceFlags(gpuDeviceScheduleBlockingSync));
     Gen g;
     g.swp = swp;
 
