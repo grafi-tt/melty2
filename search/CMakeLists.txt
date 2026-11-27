@@ -40,13 +40,13 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 set(root ${CMAKE_CURRENT_SOURCE_DIR}/..)
 find_package(absl REQUIRED)
-# the logging and the flags of the tools (logging.hpp, flags.hpp)
+# the logging, the flags and the signals of the tools (logging.hpp, flags.hpp, signal.hpp)
 set(absl_libs absl::log absl::check absl::log_initialize absl::log_globals absl::str_format absl::flags absl::flags_parse
                absl::flags_usage)
 set(cpu_flags $<$<BOOL:${MELTY2_SEARCH_NATIVE}>:-march=native>)
 
-# the CPU code common to the tools: melty2_init (C); metric_common (which calls the metric) goes with each metric
-add_library(melty2_search_common STATIC ${root}/src/melty2_init.c)
+# the CPU code common to the tools: melty2_init (C) and the signals (signal.cc); metric_common (which calls the metric) goes with each metric
+add_library(melty2_search_common STATIC ${root}/src/melty2_init.c signal.cc)
 target_include_directories(melty2_search_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${root}/include)
 target_link_libraries(melty2_search_common PUBLIC ${absl_libs})
 target_compile_options(melty2_search_common PRIVATE ${cpu_flags})

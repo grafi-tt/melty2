@@ -61,6 +61,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -79,6 +80,7 @@
 #include "keymod.hpp"
 #include "logging.hpp"
 #include "pidfile.hpp"
+#include "signal.hpp"
 #include "testu01_gpu.hpp"
 
 ABSL_FLAG(uint32_t, seed, 1, "the key is that of melty2_init(N, 0, 0, 0), modified by MELTY2_KEYMOD");
@@ -349,6 +351,7 @@ int run_main(int argc, char **argv) {
                         for (int w = 0; w < 2; ++w)
                             for (KeyRun k : st.keys) {
                                 if (over()) break;
+                                signals::throw_if_stopped();
                                 k.g.swp = w;
                                 // with --log_sum, a key stops once its z-score alone takes the sum over the limit, and a
                                 // test failing completely counts as kFailZ
@@ -386,6 +389,7 @@ int run_main(int argc, char **argv) {
     const auto kn = compile(a);
     LOG(INFO) << absl::StrFormat("compiled the kernels in %.1fs", seconds_since(t0));
     for (const KeyRun &k : stages[0].keys) {
+        signals::throw_if_stopped();
         std::printf("# M=%d seed=%u%s keymod=%s scale=%g streams=%s\n", M, k.seed, swp ? " swap" : "", k.keymod.c_str(), o.t.scale, k.streams.c_str());
         const Summary s = run_tests(o, battery, *kn, k.g);
         std::printf("summary\tM=%d\tseed=%u\tswap=%d\tkeymod=%s\tmin_p=%.3g\tmax_p=%.6g\tflagged=%d\tstreams=%s\n", M, k.seed, swp, k.keymod.c_str(),
@@ -399,8 +403,12 @@ int run_main(int argc, char **argv) {
 
 int main(int argc, char **argv) {
     init_logging();
+    signals::watch({SIGINT, SIGTERM});
     try {
         return run_main(argc, argv);
+    } catch (const signals::Interrupted &) {
+        LOG(WARNING) << "interrupted";
+        return signals::kInterrupted;
     } catch (const std::exception &e) {
         LOG(ERROR) << e.what();
         return 1;

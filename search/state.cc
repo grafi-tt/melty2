@@ -27,6 +27,7 @@
 //   --verbose          a line per key and delta
 #include <algorithm>
 #include <array>
+#include <csignal>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -41,6 +42,7 @@
 #include "absl/strings/numbers.h"
 #include "flags.hpp"
 #include "logging.hpp"
+#include "signal.hpp"
 
 ABSL_FLAG(int, ops, 12, "the number of ops of the head");
 ABSL_FLAG(std::vector<std::string>, words, (std::vector<std::string>{"0", "1", "2", "3"}), "the words of the state, comma-separated");
@@ -90,6 +92,8 @@ void count(const arx::Arx &a, int m, const std::vector<int> &words, const arx::K
     const int nw = static_cast<int>(words.size());
     uint32_t v0[6], v1[6];
     for (uint64_t i = 0; i < n; ++i) {
+        // (a stop signal: the counts are dropped, see run)
+        if ((i & 0xfff) == 0 && signals::stop_requested()) return;
         const uint64_t ctr = splitmix(seed);
         state(a, m, k, ctr, v0);
         for (int j = 0; j < kDeltas; ++j) {
@@ -150,6 +154,7 @@ int run(int argc, char **argv) {
             ts.emplace_back(count, std::cref(a), m, std::cref(words), std::cref(k), seed * 1000003 + t, nt, std::ref(cs[t]));
         }
         for (auto &t : ts) t.join();
+        signals::throw_if_stopped();
         for (int t = 1; t < threads; ++t) {
             for (size_t i = 0; i < cs[0].bits.size(); ++i) cs[0].bits[i] += cs[t].bits[i];
             for (size_t i = 0; i < cs[0].bytes.size(); ++i) cs[0].bytes[i] += cs[t].bytes[i];
@@ -214,8 +219,12 @@ int run(int argc, char **argv) {
 
 int main(int argc, char **argv) {
     init_logging();
+    signals::watch({SIGINT, SIGTERM});
     try {
         return run(argc, argv);
+    } catch (const signals::Interrupted &) {
+        LOG(WARNING) << "interrupted";
+        return signals::kInterrupted;
     } catch (const std::exception &e) {
         LOG(ERROR) << e.what();
         return 1;

@@ -19,6 +19,7 @@
 //
 // where the margin is L minus the last biased depth (L - 10 if none is biased, i.e. at least 10).
 #include <algorithm>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -29,6 +30,7 @@
 #include "logging.hpp"
 #include "metric.hpp"
 #include "pidfile.hpp"
+#include "signal.hpp"
 
 ABSL_FLAG(int, nkeys, 32, "number of keys");
 ABSL_FLAG(int, pairs, 1 << 24, "counter pairs per key and delta");
@@ -62,6 +64,7 @@ int run(int argc, char **argv) {
     while (std::getline(f, line)) {
         line.erase(std::find_if(line.begin(), line.end(), [](char c) { return c == '\r' || c == '\n'; }), line.end());
         if (line.empty() || line[0] == '#') continue;
+        signals::throw_if_stopped();
         const size_t tab = line.find('\t');
         const std::string name = tab == std::string::npos ? "-" : line.substr(0, tab);
         const arx::Arx a = arx::parse(tab == std::string::npos ? line : line.substr(tab + 1));
@@ -85,8 +88,12 @@ int run(int argc, char **argv) {
 
 int main(int argc, char **argv) {
     init_logging();
+    signals::watch({SIGINT, SIGTERM});
     try {
         return run(argc, argv);
+    } catch (const signals::Interrupted &) {
+        LOG(WARNING) << "interrupted";
+        return signals::kInterrupted;
     } catch (const std::exception &e) {
         LOG(ERROR) << e.what();
         return 1;

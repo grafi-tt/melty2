@@ -11,6 +11,7 @@
 // keys are printed. With dump, the bias of every key at every depth is written to the file as
 // tab-separated values.
 #include <algorithm>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -24,6 +25,7 @@
 #include "logging.hpp"
 #include "metric.hpp"
 #include "pidfile.hpp"
+#include "signal.hpp"
 
 ABSL_FLAG(int, nbase, 2, "number of base keys");
 ABSL_FLAG(std::string, dump, "", "file to write the bias of every key at every depth");
@@ -72,6 +74,7 @@ int run(int argc, char **argv) {
     std::vector<double> pk;
     pk.reserve(static_cast<size_t>(nk) * nd);
     for (int s = 0; s < nk; s += kChunk) {
+        signals::throw_if_stopped();
         const std::vector<arx::Key> chunk(keys.begin() + s, keys.begin() + std::min(nk, s + kChunk));
         const std::vector<double> r = metric::bias_per_key(a, mlo, mhi, chunk, n, 77);
         pk.insert(pk.end(), r.begin(), r.end());
@@ -132,8 +135,12 @@ int run(int argc, char **argv) {
 
 int main(int argc, char **argv) {
     init_logging();
+    signals::watch({SIGINT, SIGTERM});
     try {
         return run(argc, argv);
+    } catch (const signals::Interrupted &) {
+        LOG(WARNING) << "interrupted";
+        return signals::kInterrupted;
     } catch (const std::exception &e) {
         LOG(ERROR) << e.what();
         return 1;

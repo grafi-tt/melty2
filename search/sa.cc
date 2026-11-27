@@ -53,7 +53,8 @@
 // and the best structures with their objectives) is saved every 100 iterations and on SIGUSR1, by
 // writing a temporary file and renaming it. If the file exists at the start, the search resumes from
 // it, and continues exactly as without the interruption; the other arguments must be the same. On
-// SIGTERM or SIGINT, the state is saved at the end of the iteration, and sa exits with the status 3.
+// SIGTERM or SIGINT (see signal.hpp), the search stops at the end of the iteration: the best structure so far is
+// logged, the state is saved (with a checkpoint file), and sa exits with the status 3; a second one quits at once.
 //
 // The defaults (16 keys, 2^20 pairs, weak_words = 6, keyset = 0) are those used to find the melty2
 // kernel with the GPU metric; e.g. the kernel is the result of "sa 20 504 3000 ORIG22".
@@ -77,6 +78,7 @@
 #include "logging.hpp"
 #include "metric.hpp"
 #include "pidfile.hpp"
+#include "signal.hpp"
 
 ABSL_FLAG(int, nkeys, 16, "number of keys");
 ABSL_FLAG(int, pairs, 1 << 20, "counter pairs per key and delta");
@@ -132,13 +134,6 @@ struct State {
     double fc, fb, f0;
 };
 
-// set by SIGUSR1 (save the checkpoint) and SIGTERM or SIGINT (save it and exit), handled at the end
-// of the iteration
-volatile std::sig_atomic_t usr1 = 0, term = 0;
-void on_signal(int sig) {
-    if (sig == SIGUSR1) usr1 = 1;
-    else term = 1;
-}
 
 class Search {
   public:
@@ -359,14 +354,6 @@ int run(int argc, char **argv) {
         fc = f0 = fb = search.objective(cur, o.nk, o.n, 1);
         best = cur;
     }
-    if (!o.ckpt.empty()) {
-        struct sigaction sa {};
-        sa.sa_handler = on_signal;
-        sigemptyset(&sa.sa_mask);
-        sigaction(SIGUSR1, &sa, nullptr);
-        sigaction(SIGTERM, &sa, nullptr);
-        sigaction(SIGINT, &sa, nullptr);
-    }
     // with -C: the bias profiles of cur at the seeds 1 to 4, and whether each is measured
     std::array<Prof, 4> cache{};
     std::array<bool, 4> cached{};
@@ -409,13 +396,14 @@ int run(int argc, char **argv) {
                 fb = fc;
             }
         }
-        if ((it + 1) % 100 == 0 || usr1 || term) {
+        // SIGUSR1: save the checkpoint; SIGINT or SIGTERM: save it and exit (see signal.hpp)
+        const bool usr1 = signals::take(SIGUSR1), stop = signals::stop_requested();
+        if ((it + 1) % 100 == 0 || usr1 || stop) {
             LOG(INFO) << absl::StrFormat("it=%d cur=%.2f best=%.2f %s", it + 1, fc, fb, arx::to_string(best));
             if (!o.ckpt.empty()) save_checkpoint(o.ckpt, args, State{it + 1, rr.state(), cur, best, fc, fb, f0});
-            usr1 = 0;
-            if (term) {
+            if (stop) {
                 LOG(WARNING) << "interrupted at it=" << it + 1;
-                std::exit(3);
+                std::exit(signals::kInterrupted);
             }
         }
     }
@@ -435,6 +423,7 @@ int run(int argc, char **argv) {
 
 int main(int argc, char **argv) {
     init_logging();
+    signals::watch({SIGINT, SIGTERM, SIGUSR1});
     try {
         return run(argc, argv);
     } catch (const std::exception &e) {
