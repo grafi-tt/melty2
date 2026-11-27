@@ -3,10 +3,12 @@
 
 The objective is the largest z-score of the tests of the stages of the file PLAN (a stage per line,
 "M[,M...] tests scale keylist [offset]", as testu01_stest --plan: the tests at the steps M for the keys of
-the list, in both counter orders; a key spec "keymod@streams#seed" takes its own streams and seed). With
---verify, a candidate about to become the best is also scored on the stages of VERIFY (e.g. larger
-samples, or more keys and streams), and its z-score is the larger of both: so the best structure always
-passes both, while the walk is scored by the cheaper PLAN. Each plan is one testu01_stest --plan process.
+the list, in both counter orders; a key spec "keymod@streams#seed" takes its own streams and seed). The walk
+(the Metropolis test against the current structure) compares the objectives of PLAN only. With --verify, a
+candidate better than the best by PLAN is also scored on the stages of VERIFY (e.g. larger samples, or more
+keys and streams), and becomes the best only if it is also better by VERIFY: so the best structure is the
+best by both, while the walk takes only the cheaper PLAN (the two objectives are in different units, as
+their samples differ, and are never compared with each other). Each plan is one testu01_stest --plan process.
 
 The moves are those of sa: a new rotation amount, a new op type (A, X, R), a new destination or source
 word, or a swap of two adjacent ops, among the ops from FREEZE to MOVES (default the smallest M of PLAN;
@@ -17,7 +19,8 @@ must be arx::valid, propagate every key word by DEADLINE ops and repeat no op (a
 here as in arx.hpp).
 
 The Metropolis test draws the threshold first and passes it to testu01_stest, which stops the tests of a
-candidate once its z-score is above it: so a candidate failing badly costs only its first failing tests.
+candidate once its z-score is above it: so a candidate failing badly costs only its first failing tests. The
+verification stops likewise once the candidate is worse than the best by VERIFY.
 Order the stages (and the keys of their lists) to fail early: the cheap and discriminating ones first.
 
 With --log-sum, the objective is instead the sum of log(1 + z) over the keys, step counts and counter orders of the
@@ -25,8 +28,9 @@ stages (testu01_stest --log_sum), a test failing completely (e.g. running out of
 for structures failing completely somewhere, whose largest z-score is infinite (and so ranks nothing); the
 temperatures and the limits are then in that unit, and the stopping of the tests at the threshold is kept.
 
-Every scored structure is logged to LOG ("plan<TAB>z<TAB>stopped<TAB>structure"); the progress and the best
-structures are printed to stdout ("it N best Z<TAB>structure", "end Z<TAB>structure").
+Every scored structure is logged to LOG ("plan<TAB>z<TAB>stopped<TAB>structure", "verify<TAB>..."); the progress
+and the best structures are printed to stdout ("it N best Z<TAB>structure", "end Z<TAB>structure"; Z is the
+objective by VERIFY with --verify, followed by "(plan Z')").
 """
 import argparse
 import math
@@ -157,7 +161,7 @@ def main():
     ap.add_argument("--max-sub", type=int, metavar="K", help="at most K S ops in a candidate (see above)")
     ap.add_argument("--alt", type=int, default=0, metavar="N", help="the first N ops alternate R and A/S (see above)")
     ap.add_argument("--deadline", type=int, default=12)
-    ap.add_argument("--verify", help="the plan scored for a candidate about to become the best (see above)")
+    ap.add_argument("--verify", help="the plan scored for a candidate better than the best by PLAN (see above)")
     ap.add_argument("--verify-below", type=float, default=math.inf, metavar="Z",
                     help="verify only a candidate whose z-score is below Z (far failing ones need no verification)")
     ap.add_argument("--log", dest="logz", action="store_true", help="anneal log(1 + z) instead of z (for structures failing grossly,\n"
@@ -209,19 +213,26 @@ def main():
             print(f"{kind}\t{z:.3f}\t{int(stopped)}\t{st}", file=log, flush=True)
         return z
 
-    def score(ops, limit, best):
-        # the objective (z, log(1 + z) with --log, or the logsum with --log-sum), or a lower bound of it above limit
-        st = fmt(ops)
-        zl = math.expm1(limit) if a.logz and limit < 700 else (math.inf if a.logz else limit)
-        z = run("plan", st, zl)
-        if a.verify and z <= zl and z < a.verify_below and (z < math.expm1(best) if a.logz and best < 700 else z < best):
-            z = max(z, run("verify", st, zl))
-        return math.log1p(z) if a.logz else z
+    # the objective is z, log(1 + z) with --log, or the logsum with --log-sum; testu01_stest takes its limits in z
+    obj = (lambda z: math.log1p(z)) if a.logz else (lambda z: z)
+    zlim = (lambda o: math.expm1(o) if o < 700 else math.inf) if a.logz else (lambda o: o)
+
+    def score(kind, ops, limit):
+        # the objective of the plan kind, or a lower bound of it above limit
+        return obj(run(kind, fmt(ops), zlim(limit)))
+
+    def verified(ops, bv):
+        # the objective of VERIFY of a candidate better than the best by PLAN (a lower bound above bv, the best's)
+        return score("verify", ops, bv)
+
+    def tag(bz, bv):
+        return f"{bv:.2f} (plan {bz:.2f})" if a.verify else f"{bz:.2f}"
 
     try:
-        cz = score(cur, math.inf, math.inf)
+        cz = score("plan", cur, math.inf)  # cz, bz: the objectives of the current and the best structures by PLAN
+        bv = verified(cur, math.inf) if a.verify else None  # the best's by VERIFY
         best, bz = cur, cz
-        print(f"start {cz:.2f}", flush=True)
+        print(f"start {tag(bz, bv)}", flush=True)
         for it in range(a.iters):
             temp = a.t0 * (a.t1 / a.t0) ** (it / max(1, a.iters - 1))
             cand = None
@@ -230,16 +241,20 @@ def main():
                 if c and valid(c) and propagated_by(c, a.deadline) and not repeated(c) and alternates(c, a.alt) and \
                         (a.max_sub is None or nsub(c) <= a.max_sub):
                     cand = c
-            limit = cz - temp * math.log(1 - rnd.random())  # accepted if z <= limit (Metropolis)
-            z = score(cand, limit, bz)
+            limit = cz - temp * math.log(1 - rnd.random())  # accepted if z <= limit (Metropolis, by PLAN)
+            z = score("plan", cand, limit)
             if z <= limit:
                 cur, cz = cand, z
                 if z < bz:
-                    best, bz = cand, z
-                    print(f"it {it} best {bz:.2f}\t{fmt(best)}", flush=True)
+                    if not a.verify:
+                        best, bz = cand, z
+                        print(f"it {it} best {tag(bz, bv)}\t{fmt(best)}", flush=True)
+                    elif zlim(z) < a.verify_below and (v := verified(cand, bv)) < bv:
+                        best, bz, bv = cand, z, v
+                        print(f"it {it} best {tag(bz, bv)}\t{fmt(best)}", flush=True)
             if it % 100 == 0:
-                print(f"it {it} T={temp:.2f} cur {cz:.2f} best {bz:.2f}", flush=True)
-        print(f"end {bz:.2f}\t{fmt(best)}", flush=True)
+                print(f"it {it} T={temp:.2f} cur {cz:.2f} best {tag(bz, bv)}", flush=True)
+        print(f"end {tag(bz, bv)}\t{fmt(best)}", flush=True)
     finally:
         for p in procs.values():
             p.stdin.close()
