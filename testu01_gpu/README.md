@@ -1,18 +1,19 @@
 # testu01_gpu
 
-A library running the tests of the BigCrush battery of [TestU01](http://simul.iro.umontreal.ca/testu01/tu01.html) on an AMD GPU (HIP), for counter-based generators: a generator whose output at any position of its sequence can be computed directly. The tests are reimplemented after the source code of TestU01 1.2.3 with the parameters of their instances in BigCrush, and take tens of seconds of a Radeon RX 6800 instead of hours of a CPU core. Their p-values agree with those of TestU01 statistically (the outputs used differ), so they screen generators quickly, and sample sizes far beyond BigCrush are practical; the original BigCrush still judges the final generators.
+A library running the tests of the BigCrush battery of [TestU01](http://simul.iro.umontreal.ca/testu01/tu01.html) on a GPU, by HIP (ROCm) or CUDA, for counter-based generators: a generator whose output at any position of its sequence can be computed directly. The tests are reimplemented after the source code of TestU01 1.2.3 with the parameters of their instances in BigCrush, and take tens of seconds of a Radeon RX 6800 instead of hours of a CPU core. Their p-values agree with those of TestU01 statistically (the outputs used differ), so they screen generators quickly, and sample sizes far beyond BigCrush are practical; the original BigCrush still judges the final generators.
 
 All the tests of BigCrush are implemented.
 
 ## Build
 
-Requirements: ROCm (HIP, hiprtc, rocFFT and rocThrust), and TestU01 installed (its headers and the `probdist` and `mylib` libraries, for the distributions and the goodness-of-fit tests).
+Requirements: ROCm (HIP, hiprtc, rocFFT and rocThrust) or the CUDA Toolkit (NVRTC, cuFFT and Thrust; a GPU of the compute capability 6.0 or later), and TestU01 installed (its headers and the `probdist` and `mylib` libraries, for the distributions and the goodness-of-fit tests).
 
 With CMake (3.21 or later):
 
 ```sh
-cmake -B build                                       # Release, the static library, for gfx1030
+cmake -B build                                       # Release, the static library, HIP (for gfx1030) if found, else CUDA
 cmake -B build -DCMAKE_HIP_ARCHITECTURES="gfx1030;gfx1100" -DTestU01_ROOT=/opt/testu01
+cmake -B build -DTESTU01_GPU_BACKEND=CUDA -DCMAKE_CUDA_ARCHITECTURES="80;89"  # CUDA (default: the GPUs of the build machine)
 cmake -B build -DTESTU01_GPU_HOST_FLAGS=-march=native  # the SIMD of the host for the tests on the host (LinearComp), not portable
 cmake --build build                                  # build/libtestu01_gpu.a and the example build/splitmix_bigcrush
 cmake --install build --prefix /opt/testu01_gpu      # the headers, the library and the CMake package
@@ -25,20 +26,20 @@ find_package(testu01_gpu REQUIRED)  # (CMAKE_PREFIX_PATH including the prefix of
 target_link_libraries(app PRIVATE testu01_gpu::testu01_gpu)
 ```
 
-or the source tree by `add_subdirectory(testu01_gpu)` and the same target. The kernels of the tests are compiled at run time for the current device, but those of rocThrust (the sorts and prefix sums) are compiled by the build for `CMAKE_HIP_ARCHITECTURES` (default gfx1030), which must include the GPU used. `TESTU01_GPU_HOST_FLAGS` adds flags to the host code only (a list): the default is portable, and `-march=native` lets the compiler vectorize the Berlekamp-Massey algorithm of LinearComp with the SIMD of the host (AVX-512 halved its time on a Ryzen 9 9950X).
+or the source tree by `add_subdirectory(testu01_gpu)` and the same target. `TESTU01_GPU_BACKEND` chooses HIP or CUDA (by default HIP if CMake finds a HIP compiler, else CUDA); the installed package records it (`testu01_gpu_BACKEND`). The kernels of the tests are compiled at run time for the current device (by hiprtc or NVRTC), but those of rocThrust or Thrust (the sorts and prefix sums) are compiled by the build: for HIP, for `CMAKE_HIP_ARCHITECTURES` (default gfx1030), which must include the GPU used; for CUDA, for `CMAKE_CUDA_ARCHITECTURES` (default `native`, the GPUs of the build machine; a GPU newer than these runs their PTX, if any, compiled by the driver). `TESTU01_GPU_HOST_FLAGS` adds flags to the host code only (a list): the default is portable, and `-march=native` (passed to the host compiler by `-Xarch_host` for HIP and `-Xcompiler` for CUDA) lets the compiler vectorize the Berlekamp-Massey algorithm of LinearComp with the SIMD of the host (AVX-512 halved its time on a Ryzen 9 9950X).
 
-A program built without CMake includes `include/testu01_gpu.hpp` and links `build/libtestu01_gpu.a -lprobdist -lmylib -lhiprtc -lrocfft` with `hipcc`.
+A program built without CMake includes `include/testu01_gpu.hpp` and links `build/libtestu01_gpu.a -lprobdist -lmylib -lhiprtc -lrocfft` with `hipcc`, or for CUDA `build/libtestu01_gpu.a -lprobdist -lmylib -lnvrtc -lcufft -lcuda -lcudart` with `nvcc`.
 
 ## Usage
 
-The generator is given as HIP device source, defining in the global namespace
+The generator is given as device source (HIP or CUDA: the same source serves both, `__device__` functions of C++17), defining in the global namespace
 
 ```cpp
 __device__ inline void testu01_gpu_generate(const testu01_gpu::Params &p, uint64_t pos,
                                             uint32_t (&out)[testu01_gpu::kLanes]);
 ```
 
-which writes the 32-bit outputs at the positions `pos, pos + 1, ..., pos + kLanes - 1` (kLanes = 16) of the sequence of the parameters `p` (32 words, interpreted by the source as it likes: a key, a seed, a selection of streams, ...). The library compiles its kernels with the source by hiprtc, so the generator is inlined into them as straight-line code; hiprtc has no standard headers, but `uint32_t`, `uint64_t`, `UINT32_C` and `UINT64_C` are available.
+which writes the 32-bit outputs at the positions `pos, pos + 1, ..., pos + kLanes - 1` (kLanes = 16) of the sequence of the parameters `p` (32 words, interpreted by the source as it likes: a key, a seed, a selection of streams, ...). The library compiles its kernels with the source by hiprtc (HIP) or NVRTC (CUDA), so the generator is inlined into them as straight-line code; they have no standard headers, but `uint32_t`, `uint64_t`, `UINT32_C` and `UINT64_C` are available. A source needing the intrinsics of a backend tells them by `__HIPCC_RTC__` and `__CUDACC_RTC__`. For CUDA, the kernels are compiled to a CUBIN for the GPU, or to the PTX of the newest architecture that NVRTC supports below it (then compiled by the driver).
 
 ```cpp
 #include "testu01_gpu.hpp"
@@ -59,7 +60,7 @@ const testu01_gpu::Summary s = battery.run(gen, params, o);  // min_p, max_p, ma
 * `Options::fast`: faster computations whose results may differ from those of TestU01 in rounding (off by default): the Anderson-Darling statistics of SampleProd and SampleMean are summed on GPU instead of by `gofs_AndersonDarling` on the host.
 * `Options::report`: called for every statistic with a `Result` (the name, the parameters, the kind of statistic, its value, the p-value and a z-score); `format` gives the line printed above, marking a p-value outside [0.001, 0.999] with `*****` as TestU01 does.
 
-`run` throws `testu01_gpu::TestFailure` for a test failing completely (e.g. the observations of a test taking far more outputs than expected, for a very bad generator), and `std::runtime_error` for the errors of HIP and hiprtc.
+`run` throws `testu01_gpu::TestFailure` for a test failing completely (e.g. the observations of a test taking far more outputs than expected, for a very bad generator), and `std::runtime_error` for the errors of HIP and hiprtc (or CUDA and NVRTC).
 
 [examples/splitmix_bigcrush.cpp](examples/splitmix_bigcrush.cpp) tests SplitMix64 as a counter-based generator: `build/splitmix_bigcrush [seed] [scale] [tests]`. [../search/testu01_stest.hip](../search/testu01_stest.hip) tests the ARX structures of melty2, with the streams of counters or keys interleaved by the parameters.
 
@@ -103,14 +104,14 @@ How they are computed on GPU:
 
 * Every test (and replication) takes the next range of consecutive positions, i.e. a single stream as in TestU01, and every thread runs the test on its own consecutive piece of it. (Pieces at positions far apart, e.g. differing only in the bits 28 and above, would compare outputs of related counters, which a single stream of TestU01 doesn't, and weak counter-based generators fail such comparisons in their low bits.)
 * SerialOver, Run, the runs of bits, AutoCor and SampleCorr see the single sequence exactly (every thread from a few values before its share). The others make their observations from the consecutive positions of every thread (an observation does not span threads), and count them in histograms.
-* The collisions of CollisionOver, CollisionPermut and of the spacings of BirthdaySpacings are counted exactly by a hash table on GPU (small enough for the cache of the GPU, in passes over the points: those of CollisionOver are made again for every pass, those of CollisionPermut stored once), against a Poisson distribution as TestU01 does for these parameters. The points of BirthdaySpacings, SampleProd and SampleMean are sorted on GPU by rocThrust.
+* The collisions of CollisionOver, CollisionPermut and of the spacings of BirthdaySpacings are counted exactly by a hash table on GPU (small enough for the cache of the GPU, in passes over the points: those of CollisionOver are made again for every pass, those of CollisionPermut stored once), against a Poisson distribution as TestU01 does for these parameters. The points of BirthdaySpacings, SampleProd and SampleMean are sorted on GPU by rocThrust (or Thrust for CUDA).
 * Beyond the memory budget, the points are made again for every part: the collisions of CollisionPermut are counted by the parts of the hashes of the points (equal points fall in the same part; CollisionOver needs no memory growing with the samples), and the sorted points are taken by the parts of their top bits in increasing order; the spacings of BirthdaySpacings then go to buckets on the host by their hashes, and their collisions are counted bucket by bucket. ClosePairs takes the points by slabs of their first coordinate, each with a margin of the distance searched below it, and counts the pairs of a point of the slab. The Fourier transforms are batched within the budget.
 * ClosePairs finds the close pairs of the points in the torus (the maximum norm) in a grid of cells on GPU, and computes the six statistics of TestU01 on the host.
 * LinearComp runs the Berlekamp-Massey algorithm on the host (the bits made on GPU), on 64-bit words in loops vectorized by the compiler; its time grows as the square of the bits (0.4 s at the scale 1, about 53 s at 16 with `HOST_ARCH=-march=native` on a Ryzen 9 9950X). The chi-square of the linear complexity, which TestU01 computes only for more than 20 sequences (not in BigCrush), is not computed.
 * MatrixRank computes the ranks over GF(2) on GPU: a matrix of 30 x 30 per thread (from the consecutive outputs of the thread), the larger ones in global memory by a block each (batched within the memory budget).
 * AppearanceSpacings sorts the keys (block, index) on GPU (by the parts of the blocks beyond the memory budget), so that the occurrences of a block are in order, and sums the logarithms of their distances on GPU.
 * LempelZiv parses the sequences by LZ78 on the host (the outputs made on GPU), with the trie in arrays; as the mean and the standard deviation of TestU01 are tabulated up to 2^28 bits, the scale multiplies the number of sequences N instead of their length (for the other tests, it multiplies n, the number of the matrices of MatrixRank and K of AppearanceSpacings).
-* Fourier3 transforms the sequences of bits by rocFFT, in batches of 4096, in double precision (in single precision, its statistic differed from that of TestU01 on the same outputs in the fifth digit).
+* Fourier3 transforms the sequences of bits by rocFFT (or cuFFT for CUDA), in batches of 4096, in double precision (in single precision, its statistic differed from that of TestU01 on the same outputs in the fifth digit).
 
 The differences from TestU01:
 

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 AND LicenseRef-TestU01
 //
-// testu01_gpu: the tests of the BigCrush battery of TestU01 on an AMD GPU by HIP, for a counter-based generator (a generator
+// testu01_gpu: the tests of the BigCrush battery of TestU01 on a GPU by HIP (ROCm) or CUDA, for a counter-based generator (a generator
 // computing the output at any position of its sequence). See README.md.
 //
 // Usage:
 //
-//   testu01_gpu::Generator gen(source);   // compiles the kernels with the generator, by hiprtc
+//   testu01_gpu::Generator gen(source);   // compiles the kernels with the generator, by hiprtc or NVRTC
 //   testu01_gpu::Params params{};          // the key, etc., as the source reads them
 //   testu01_gpu::Battery battery;          // the device memory, reused across the runs
 //   testu01_gpu::Options o;
@@ -18,8 +18,8 @@
 //                                               uint32_t (&out)[testu01_gpu::kLanes])
 //
 // writing the 32-bit outputs at the positions pos, pos + 1, ..., pos + kLanes - 1 of the sequence. It is
-// compiled after the device code of the library, so it is inlined into the kernels; hiprtc has no
-// standard headers, but uint32_t, uint64_t, UINT32_C and UINT64_C are available.
+// compiled after the device code of the library, so it is inlined into the kernels; hiprtc and NVRTC
+// have no standard headers, but uint32_t, uint64_t, UINT32_C and UINT64_C are available.
 #ifndef TESTU01_GPU_HPP_
 #define TESTU01_GPU_HPP_
 
@@ -36,11 +36,11 @@ namespace testu01_gpu {
 // the names of all the tests, comma-separated, in the order they run
 extern const char kAllTests[];
 
-// A generator: the kernels of the tests compiled with its source by hiprtc for the current device,
+// A generator: the kernels of the tests compiled with its source by hiprtc (or NVRTC) for the current device,
 // and loaded as a module. Compiling takes a few seconds; the kernels are reused across runs.
 class Generator {
   public:
-    // the source (see above); name is that of the program in the messages of hiprtc
+    // the source (see above); name is that of the program in the messages of hiprtc or NVRTC
     explicit Generator(const std::string &source, const std::string &name = "generator");
     ~Generator();
     Generator(const Generator &) = delete;
@@ -110,7 +110,7 @@ struct Options {
 };
 
 // A test failing completely, e.g. a generator so bad that the observations of a test take far more
-// outputs than expected; the HIP errors are std::runtime_error.
+// outputs than expected; the errors of HIP or CUDA are std::runtime_error.
 struct TestFailure : std::runtime_error {
     using std::runtime_error::runtime_error;
 };

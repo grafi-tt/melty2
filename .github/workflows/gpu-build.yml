@@ -1,5 +1,7 @@
-# Compile check of the GPU implementation (melty2_gpu.h) and its test for CUDA and HIP.
-# GitHub-hosted standard runners have no GPU, so the test is only built, not run.
+# Compile check of the GPU implementation (melty2_gpu.h) and its test, and of the library testu01_gpu, for CUDA
+# and HIP. GitHub-hosted standard runners have no GPU, so they are only built, not run. testu01_gpu takes TestU01
+# from the package of Ubuntu (libtestu01-0-dev, multiverse), so that the build doesn't depend on the site of
+# TestU01.
 name: GPU build
 
 on:
@@ -60,3 +62,55 @@ jobs:
 
     - name: Build
       run: cmake --build build --parallel
+
+  testu01-gpu-cuda:
+    runs-on: ubuntu-latest
+    container: nvidia/cuda:12.9.2-devel-ubuntu24.04
+
+    steps:
+    - name: Install build tools and TestU01
+      run: |
+        apt-get update
+        apt-get install -y --no-install-recommends ca-certificates git cmake make g++ libtestu01-0-dev
+
+    - uses: actions/checkout@v7
+
+    - name: Configure CMake
+      run: >
+        cmake -S testu01_gpu -B build
+        -DCMAKE_BUILD_TYPE=Release
+        -DTESTU01_GPU_BACKEND=CUDA
+        -DCMAKE_CUDA_ARCHITECTURES="75;80;90"
+
+    - name: Build
+      run: cmake --build build --parallel
+
+    - name: Install
+      run: cmake --install build --prefix install
+
+  testu01-gpu-hip:
+    runs-on: ubuntu-latest
+    container: rocm/dev-ubuntu-24.04:7.2.4
+
+    steps:
+    - name: Install build tools and TestU01
+      run: |
+        apt-get update
+        apt-get install -y --no-install-recommends ca-certificates git cmake make g++ libtestu01-0-dev rocfft-dev rocthrust-dev
+
+    - uses: actions/checkout@v7
+
+    - name: Configure CMake
+      run: >
+        cmake -S testu01_gpu -B build
+        -DCMAKE_BUILD_TYPE=Release
+        -DTESTU01_GPU_BACKEND=HIP
+        -DCMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++
+        -DCMAKE_PREFIX_PATH=/opt/rocm
+        -DCMAKE_HIP_ARCHITECTURES="gfx90a;gfx1030;gfx1100"
+
+    - name: Build
+      run: cmake --build build --parallel
+
+    - name: Install
+      run: cmake --install build --prefix install

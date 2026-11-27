@@ -3,8 +3,12 @@
 // splitmix_bigcrush [seed] [scale] [tests] [fast] : run the tests of testu01_gpu on the upper 32 bits of
 // SplitMix64, as a counter-based generator: the output at the position i is that of the state
 // seed + (i + 1) * 0x9e3779b97f4a7c15. An example of the library, and a check of the tests on a good
-// generator (the p-values are uniform).
+// generator (the p-values are uniform). The generator source is the same for HIP and CUDA (TESTU01_GPU_CUDA).
+#ifdef TESTU01_GPU_CUDA
+#include <cuda_runtime.h>
+#else
 #include <hip/hip_runtime.h>
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -42,7 +46,11 @@ int main(int argc, char **argv) {
             std::fflush(stdout);
         };
         // wait for the device by blocking the thread, instead of spinning on a CPU core
+#ifdef TESTU01_GPU_CUDA
+        if (cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync) != cudaSuccess) std::fprintf(stderr, "cudaSetDeviceFlags failed\n");
+#else
         if (hipSetDeviceFlags(hipDeviceScheduleBlockingSync) != hipSuccess) std::fprintf(stderr, "hipSetDeviceFlags failed\n");
+#endif
         const testu01_gpu::Generator gen(kSource, "splitmix");
         testu01_gpu::Params params{};
         params.w[0] = static_cast<uint32_t>(seed);

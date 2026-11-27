@@ -24,7 +24,7 @@
 // the bits 28 and above, would compare outputs of related counters, which a single stream of TestU01
 // doesn't, and the low bits of weak counter-based generators fail such comparisons.) The collisions of
 // CollisionOver (overlapping t-tuples) and of the spacings of BirthdaySpacings (non-overlapping t-tuples,
-// sorted on GPU by rocThrust) are counted exactly by a hash table on GPU (in the cache of the GPU, in
+// sorted on GPU by rocThrust or Thrust) are counted exactly by a hash table on GPU (in the cache of the GPU, in
 // passes over the points), and compared with a Poisson distribution
 // (fbar_Poisson1), as TestU01 does for these parameters. Beyond the memory budget, the points are made again
 // by parts (see count_equal, sorted_parts and close_pairs), with the same results.
@@ -35,10 +35,12 @@
 // most significant bits are dropped. The categories with an expected count below 10 are merged with their
 // neighbours, and the p-value is that of the chi-square statistic (fbar_ChiSquare2 of TestU01's
 // probdist); for MaxOft, that of the sum over the N replications. Fourier3 transforms the sequences of bits
-// by rocFFT (in double, so that its statistics agree with those of TestU01 on the same outputs).
-#include <hip/hip_runtime.h>
-#include <hip/hiprtc.h>
-#include <rocfft/rocfft.h>
+// by rocFFT or cuFFT (in double, so that its statistics agree with those of TestU01 on the same outputs).
+//
+// The backend is HIP (ROCm: hiprtc, rocFFT, rocThrust), or CUDA if TESTU01_GPU_CUDA is defined (NVRTC, cuFFT,
+// Thrust); see gpu.hpp.
+#include "gpu.hpp"
+
 #include <thrust/binary_search.h>
 #include <thrust/copy.h>
 #include <thrust/device_vector.h>
@@ -107,43 +109,124 @@ constexpr char kParamsSource[] =
 #include "params.inc"
     ;
 
-void check(hipError_t e, const char *what, int line) {
-    if (e != hipSuccess) throw std::runtime_error(std::string("HIP ") + hipGetErrorString(e) + " at " + __FILE__ + ":" + std::to_string(line) + " (" + what + ")");
+#ifdef TESTU01_GPU_CUDA
+constexpr char kBackend[] = "CUDA";
+#else
+constexpr char kBackend[] = "HIP";
+#endif
+
+void check(gpuError_t e, const char *what, int line) {
+    if (e != gpuSuccess) throw std::runtime_error(std::string(kBackend) + " " + gpuGetErrorString(e) + " at " + __FILE__ + ":" + std::to_string(line) + " (" + what + ")");
 }
+#ifdef TESTU01_GPU_CUDA
+// the errors of the driver API (the modules and the launches)
+void check(CUresult e, const char *what, int line) {
+    if (e == CUDA_SUCCESS) return;
+    const char *s = nullptr;
+    if (cuGetErrorString(e, &s) != CUDA_SUCCESS || !s) s = "unknown error";
+    throw std::runtime_error(std::string("CUDA ") + s + " at " + __FILE__ + ":" + std::to_string(line) + " (" + what + ")");
+}
+#endif
 #define CK(x) check((x), #x, __LINE__)
+
+#ifdef TESTU01_GPU_CUDA
+// NVRTC: the program of the source (with the header testu01_gpu_params.hpp) compiled for the current device, as
+// a CUBIN for its architecture if NVRTC supports it, else as the PTX of the newest architecture below it (which
+// the driver compiles when loading it)
+std::vector<char> compile_program(const std::string &src) {
+    const auto rtc = [](nvrtcResult r, const char *what) {
+        if (r != NVRTC_SUCCESS) throw std::runtime_error(std::string(what) + ": " + nvrtcGetErrorString(r));
+    };
+    int dev, major, minor;
+    CK(cudaGetDevice(&dev));
+    CK(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev));
+    CK(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, dev));
+    int narch = 0;
+    rtc(nvrtcGetNumSupportedArchs(&narch), "nvrtcGetNumSupportedArchs");
+    std::vector<int> archs(narch);
+    rtc(nvrtcGetSupportedArchs(archs.data()), "nvrtcGetSupportedArchs");
+    const int want = 10 * major + minor;
+    int use = 0;
+    for (const int a : archs)
+        if (a <= want && a > use) use = a;
+    if (!use) throw std::runtime_error("NVRTC supports no architecture up to the compute capability " + std::to_string(major) + "." + std::to_string(minor));
+    const bool cubin = use == want;
+    const std::string arch = std::string("--gpu-architecture=") + (cubin ? "sm_" : "compute_") + std::to_string(use);
+    const char *opts[] = {arch.c_str(), "--std=c++17"};
+    const char *headers[] = {kParamsSource}, *include_names[] = {"testu01_gpu_params.hpp"};
+    nvrtcProgram prog;
+    rtc(nvrtcCreateProgram(&prog, src.c_str(), "device.hpp", 1, headers, include_names), "nvrtcCreateProgram");
+    const nvrtcResult r = nvrtcCompileProgram(prog, 2, opts);
+    if (r != NVRTC_SUCCESS) {
+        size_t n = 0;
+        nvrtcGetProgramLogSize(prog, &n);
+        std::string log(n, '\0');
+        nvrtcGetProgramLog(prog, log.data());
+        nvrtcDestroyProgram(&prog);
+        throw std::runtime_error("nvrtc: " + std::string(nvrtcGetErrorString(r)) + "\n" + log);
+    }
+    size_t size = 0;
+    std::vector<char> code;
+    if (cubin) {
+        rtc(nvrtcGetCUBINSize(prog, &size), "nvrtcGetCUBINSize");
+        code.resize(size);
+        rtc(nvrtcGetCUBIN(prog, code.data()), "nvrtcGetCUBIN");
+    } else {
+        rtc(nvrtcGetPTXSize(prog, &size), "nvrtcGetPTXSize");
+        code.resize(size);
+        rtc(nvrtcGetPTX(prog, code.data()), "nvrtcGetPTX");
+    }
+    nvrtcDestroyProgram(&prog);
+    return code;
+}
+#else
+// hiprtc: the program of the source (with the header testu01_gpu_params.hpp) compiled for the current device
+std::vector<char> compile_program(const std::string &src) {
+    const auto rtc = [](hiprtcResult r, const char *what) {
+        if (r != HIPRTC_SUCCESS) throw std::runtime_error(std::string(what) + ": " + hiprtcGetErrorString(r));
+    };
+    hipDevice_t dev;
+    CK(hipGetDevice(&dev));
+    hipDeviceProp_t prop;
+    CK(hipGetDeviceProperties(&prop, dev));
+    const std::string arch = std::string("--offload-arch=") + prop.gcnArchName;
+    const char *opts[] = {arch.c_str(), "-O3", "-std=c++17"};
+    const char *headers[] = {kParamsSource}, *include_names[] = {"testu01_gpu_params.hpp"};
+    hiprtcProgram prog;
+    rtc(hiprtcCreateProgram(&prog, src.c_str(), "device.hpp", 1, headers, include_names), "hiprtcCreateProgram");
+    const hiprtcResult r = hiprtcCompileProgram(prog, 3, opts);
+    if (r != HIPRTC_SUCCESS) {
+        size_t n = 0;
+        hiprtcGetProgramLogSize(prog, &n);
+        std::string log(n, '\0');
+        hiprtcGetProgramLog(prog, log.data());
+        hiprtcDestroyProgram(&prog);
+        throw std::runtime_error("hiprtc: " + std::string(hiprtcGetErrorString(r)) + "\n" + log);
+    }
+    size_t size = 0;
+    rtc(hiprtcGetCodeSize(prog, &size), "hiprtcGetCodeSize");
+    std::vector<char> code(size);
+    rtc(hiprtcGetCode(prog, code.data()), "hiprtcGetCode");
+    hiprtcDestroyProgram(&prog);
+    return code;
+}
+#endif
 
 }  // namespace
 
-// The kernels of device.hpp for a generator, compiled at run time by hiprtc with the source of the
+// The kernels of device.hpp for a generator, compiled at run time by hiprtc (or NVRTC) with the source of the
 // generator after the device code, so that the generator is inlined as straight-line code (which is
 // several times faster than interpreting a generator on GPU), and loaded as a module.
 struct Generator::Impl {
     Impl(const std::string &source, const std::string &name) {
         const std::string src = std::string(kDeviceSource) + "\n#line 1 \"" + name + "\"\n" + source;
-        hipDevice_t dev;
-        CK(hipGetDevice(&dev));
-        hipDeviceProp_t prop;
-        CK(hipGetDeviceProperties(&prop, dev));
-        const std::string arch = std::string("--offload-arch=") + prop.gcnArchName;
-        const char *opts[] = {arch.c_str(), "-O3", "-std=c++17"};
-        const char *headers[] = {kParamsSource}, *include_names[] = {"testu01_gpu_params.hpp"};
-        hiprtcProgram prog;
-        rtc(hiprtcCreateProgram(&prog, src.c_str(), "device.hpp", 1, headers, include_names), "hiprtcCreateProgram");
-        const hiprtcResult r = hiprtcCompileProgram(prog, 3, opts);
-        if (r != HIPRTC_SUCCESS) {
-            size_t n = 0;
-            hiprtcGetProgramLogSize(prog, &n);
-            std::string log(n, '\0');
-            hiprtcGetProgramLog(prog, log.data());
-            hiprtcDestroyProgram(&prog);
-            throw std::runtime_error("hiprtc: " + std::string(hiprtcGetErrorString(r)) + "\n" + log);
-        }
-        size_t size = 0;
-        rtc(hiprtcGetCodeSize(prog, &size), "hiprtcGetCodeSize");
-        std::vector<char> code(size);
-        rtc(hiprtcGetCode(prog, code.data()), "hiprtcGetCode");
-        hiprtcDestroyProgram(&prog);
+        const std::vector<char> code = compile_program(src);
+#ifdef TESTU01_GPU_CUDA
+        CK(cudaFree(nullptr));  // the primary context of the device, current for the driver API
+        CK(cuModuleLoadData(&module_, code.data()));
+#else
         CK(hipModuleLoadData(&module_, code.data()));
+#endif
         for (auto [f, fname] : {std::pair{&poker, "ktest_poker"}, {&coupon, "ktest_coupon"}, {&gap, "ktest_gap"}, {&maxoft, "ktest_maxoft"}, {&permut, "ktest_permut"},
                                 {&points, "kpoints"}, {&spacings, "kspacings"}, {&insert, "kinsert"}, {&fourier_bits, "kfourier_bits"}, {&fourier_acc, "kfourier_acc"},
                                 {&cp_outputs, "kcp_outputs"}, {&cp_cells, "kcp_cells"}, {&cp_scatter, "kcp_scatter"}, {&cp_pairs, "kcp_pairs"}, {&krun, "krun"},
@@ -151,35 +234,40 @@ struct Generator::Impl {
                                 {&hamming, "ktest_hamming"}, {&autocor, "kautocor"}, {&samplecorr, "ksamplecorr"}, {&bitrun, "kbitrun"}, {&longhead, "klonghead"},
                                 {&uniform, "kuniform"}, {&strip, "ktest_strip"}, {&walk, "kwalk"}, {&sumcoll, "ktest_sumcoll"}, {&matrank, "ktest_matrank"}, {&mat_fill, "kmat_fill"},
                                 {&mat_rank, "kmat_rank"}, {&appear, "kappear"}})
+#ifdef TESTU01_GPU_CUDA
+            CK(cuModuleGetFunction(f, module_, fname));
+#else
             CK(hipModuleGetFunction(f, module_, fname));
+#endif
     }
+#ifdef TESTU01_GPU_CUDA
+    ~Impl() { (void)cuModuleUnload(module_); }
+#else
     ~Impl() { (void)hipModuleUnload(module_); }
+#endif
     Impl(const Impl &) = delete;
     Impl &operator=(const Impl &) = delete;
 
     // the kernel of a test
-    hipFunction_t of(const Poker &) const { return poker; }
-    hipFunction_t of(const Coupon &) const { return coupon; }
-    hipFunction_t of(const Gap &) const { return gap; }
-    hipFunction_t of(const MaxOft &) const { return maxoft; }
-    hipFunction_t of(const Permut &) const { return permut; }
-    hipFunction_t of(const detail::Weight &) const { return weight; }
-    hipFunction_t of(const detail::Savir2 &) const { return savir2; }
-    hipFunction_t of(const detail::Gcd &) const { return gcd; }
-    hipFunction_t of(const detail::Hamming &) const { return hamming; }
-    hipFunction_t of(const detail::Strip &) const { return strip; }
-    hipFunction_t of(const detail::SumColl &) const { return sumcoll; }
-    hipFunction_t of(const detail::MatRank &) const { return matrank; }
+    gpuFunction_t of(const Poker &) const { return poker; }
+    gpuFunction_t of(const Coupon &) const { return coupon; }
+    gpuFunction_t of(const Gap &) const { return gap; }
+    gpuFunction_t of(const MaxOft &) const { return maxoft; }
+    gpuFunction_t of(const Permut &) const { return permut; }
+    gpuFunction_t of(const detail::Weight &) const { return weight; }
+    gpuFunction_t of(const detail::Savir2 &) const { return savir2; }
+    gpuFunction_t of(const detail::Gcd &) const { return gcd; }
+    gpuFunction_t of(const detail::Hamming &) const { return hamming; }
+    gpuFunction_t of(const detail::Strip &) const { return strip; }
+    gpuFunction_t of(const detail::SumColl &) const { return sumcoll; }
+    gpuFunction_t of(const detail::MatRank &) const { return matrank; }
 
-    hipFunction_t poker, coupon, gap, maxoft, permut, points, spacings, insert, fourier_bits, fourier_acc, cp_outputs, cp_cells,
+    gpuFunction_t poker, coupon, gap, maxoft, permut, points, spacings, insert, fourier_bits, fourier_acc, cp_outputs, cp_cells,
         cp_scatter, cp_pairs, cp_slab, krun, weight, savir2, gcd, serial, perm_points, hamming, autocor, samplecorr, bitrun,
         longhead, uniform, strip, walk, sumcoll, matrank, mat_fill, mat_rank, appear;
 
   private:
-    static void rtc(hiprtcResult r, const char *what) {
-        if (r != HIPRTC_SUCCESS) throw std::runtime_error(std::string(what) + ": " + hiprtcGetErrorString(r));
-    }
-    hipModule_t module_ = nullptr;
+    gpuModule_t module_ = nullptr;
 };
 
 Generator::Generator(const std::string &source, const std::string &name) : impl_(std::make_unique<Impl>(source, name)) {}
@@ -189,11 +277,15 @@ namespace {
 
 using Kernels = Generator::Impl;
 
-// launch the kernel f on grid blocks of block threads with shmem bytes of dynamic LDS
+// launch the kernel f on grid blocks of block threads with shmem bytes of dynamic LDS (shared memory)
 template <class... A>
-void launch(hipFunction_t f, unsigned grid, unsigned block, unsigned shmem, A... a) {
+void launch(gpuFunction_t f, unsigned grid, unsigned block, unsigned shmem, A... a) {
     void *args[] = {static_cast<void *>(&a)...};
+#ifdef TESTU01_GPU_CUDA
+    CK(cuLaunchKernel(f, grid, 1, 1, block, 1, 1, shmem, nullptr, args, nullptr));
+#else
     CK(hipModuleLaunchKernel(f, grid, 1, 1, block, 1, 1, shmem, nullptr, args, nullptr));
+#endif
 }
 
 // The device memory of the tests on keys (the points of CollisionOver, BirthdaySpacings, CollisionPermut,
@@ -204,13 +296,13 @@ struct KeyBuffers {
     void ensure(long long n) {
         if (n <= cap) return;
         release();
-        CK(hipMalloc(reinterpret_cast<void **>(&a), sizeof(unsigned long long) * n));
-        CK(hipMalloc(reinterpret_cast<void **>(&b), sizeof(unsigned long long) * n));
-        CK(hipMalloc(reinterpret_cast<void **>(&count), sizeof(unsigned long long)));
+        CK(gpuMalloc(reinterpret_cast<void **>(&a), sizeof(unsigned long long) * n));
+        CK(gpuMalloc(reinterpret_cast<void **>(&b), sizeof(unsigned long long) * n));
+        CK(gpuMalloc(reinterpret_cast<void **>(&count), sizeof(unsigned long long)));
         cap = n;
     }
     void release() {
-        for (void *p : {static_cast<void *>(a), static_cast<void *>(b), static_cast<void *>(count)}) (void)hipFree(p);
+        for (void *p : {static_cast<void *>(a), static_cast<void *>(b), static_cast<void *>(count)}) (void)gpuFree(p);
         a = b = count = nullptr;
         cap = 0;
     }
@@ -220,7 +312,7 @@ struct KeyBuffers {
     ~KeyBuffers() { release(); }
     long long read_count() const {
         unsigned long long c;
-        CK(hipMemcpy(&c, count, sizeof c, hipMemcpyDeviceToHost));
+        CK(gpuMemcpy(&c, count, sizeof c, gpuMemcpyDeviceToHost));
         return static_cast<long long>(c);
     }
 };
@@ -252,8 +344,39 @@ class Counters {
     uint64_t next_;
 };
 
-// The real FFTs of Fourier3 by rocFFT (in double): batch sequences of n doubles in a, transformed to n / 2 + 1 complex
-// coefficients each in f (unnormalized, as the FFT of TestU01), with the sums of their squares in b.
+// The real FFTs of Fourier3 by rocFFT or cuFFT (in double): batch sequences of n doubles in a, transformed to
+// n / 2 + 1 complex coefficients each in f (unnormalized, as the FFT of TestU01), with the sums of their squares
+// in b.
+#ifdef TESTU01_GPU_CUDA
+struct Fft {
+    int n;
+    long long batch;
+    double *a = nullptr, *f = nullptr;
+    double *b = nullptr;
+    cufftHandle plan = 0;
+    bool have_plan = false;
+    Fft(int n_, long long batch_) : n(n_), batch(batch_) {
+        CK(gpuMalloc(reinterpret_cast<void **>(&a), sizeof(double) * n * batch));
+        CK(gpuMalloc(reinterpret_cast<void **>(&f), sizeof(double) * 2 * (n / 2 + 1) * batch));
+        CK(gpuMalloc(reinterpret_cast<void **>(&b), sizeof(double) * (n / 4 + 1)));
+        // the sequences and the coefficients contiguous, as the default layout of rocFFT
+        int len[1] = {n};
+        cf(cufftPlanMany(&plan, 1, len, nullptr, 1, n, nullptr, 1, n / 2 + 1, CUFFT_D2Z, static_cast<int>(batch)), "cufftPlanMany");
+        have_plan = true;
+    }
+    ~Fft() {
+        if (have_plan) cufftDestroy(plan);
+        for (void *p : {static_cast<void *>(a), static_cast<void *>(f), static_cast<void *>(b)}) (void)gpuFree(p);
+    }
+    Fft(const Fft &) = delete;
+    Fft &operator=(const Fft &) = delete;
+    // transform the batch (on the null stream, after the kernels filling a)
+    void execute() { cf(cufftExecD2Z(plan, a, reinterpret_cast<cufftDoubleComplex *>(f)), "cufftExecD2Z"); }
+    static void cf(cufftResult st, const char *what) {
+        if (st != CUFFT_SUCCESS) throw std::runtime_error(std::string(what) + ": cufft status " + std::to_string(static_cast<int>(st)));
+    }
+};
+#else
 struct Fft {
     int n;
     long long batch;
@@ -265,9 +388,9 @@ struct Fft {
     Fft(int n_, long long batch_) : n(n_), batch(batch_) {
         static std::once_flag setup;
         std::call_once(setup, [] { rf(rocfft_setup(), "rocfft_setup"); });
-        CK(hipMalloc(reinterpret_cast<void **>(&a), sizeof(double) * n * batch));
-        CK(hipMalloc(reinterpret_cast<void **>(&f), sizeof(double) * 2 * (n / 2 + 1) * batch));
-        CK(hipMalloc(reinterpret_cast<void **>(&b), sizeof(double) * (n / 4 + 1)));
+        CK(gpuMalloc(reinterpret_cast<void **>(&a), sizeof(double) * n * batch));
+        CK(gpuMalloc(reinterpret_cast<void **>(&f), sizeof(double) * 2 * (n / 2 + 1) * batch));
+        CK(gpuMalloc(reinterpret_cast<void **>(&b), sizeof(double) * (n / 4 + 1)));
         const size_t len[1] = {static_cast<size_t>(n)};
         rf(rocfft_plan_create(&plan, rocfft_placement_notinplace, rocfft_transform_type_real_forward, rocfft_precision_double, 1, len, batch, nullptr),
            "rocfft_plan_create");
@@ -275,14 +398,14 @@ struct Fft {
         size_t ws = 0;
         rf(rocfft_plan_get_work_buffer_size(plan, &ws), "rocfft_plan_get_work_buffer_size");
         if (ws) {
-            CK(hipMalloc(&work, ws));
+            CK(gpuMalloc(&work, ws));
             rf(rocfft_execution_info_set_work_buffer(info, work, ws), "rocfft_execution_info_set_work_buffer");
         }
     }
     ~Fft() {
         if (info) rocfft_execution_info_destroy(info);
         if (plan) rocfft_plan_destroy(plan);
-        for (void *p : {static_cast<void *>(a), static_cast<void *>(f), static_cast<void *>(b), work}) (void)hipFree(p);
+        for (void *p : {static_cast<void *>(a), static_cast<void *>(f), static_cast<void *>(b), work}) (void)gpuFree(p);
     }
     Fft(const Fft &) = delete;
     Fft &operator=(const Fft &) = delete;
@@ -295,6 +418,7 @@ struct Fft {
         if (st != rocfft_status_success) throw std::runtime_error(std::string(what) + ": rocfft status " + std::to_string(static_cast<int>(st)));
     }
 };
+#endif
 
 // a bijection of the 64-bit keys (SplitMix64's finalizer, as mix64 of the device code)
 struct Mix64 {
@@ -357,17 +481,17 @@ struct HashBuffers {
     HashBuffers(const HashBuffers &) = delete;
     HashBuffers &operator=(const HashBuffers &) = delete;
     ~HashBuffers() {
-        (void)hipFree(slots);
-        (void)hipFree(counters);
+        (void)gpuFree(slots);
+        (void)gpuFree(counters);
     }
     // the slots for n keys (a table of a pass for at most kMaxLoad keys per slot), and the bits of the passes
     int prepare(long long n) {
         uint64_t want = 1;
         while (static_cast<double>(want) * kMaxLoad < n && want < kTableSlots) want <<= 1;
         if (want > size) {
-            (void)hipFree(slots);
-            CK(hipMalloc(reinterpret_cast<void **>(&slots), sizeof(unsigned long long) * want));
-            if (!counters) CK(hipMalloc(reinterpret_cast<void **>(&counters), sizeof(unsigned long long) * 2));
+            (void)gpuFree(slots);
+            CK(gpuMalloc(reinterpret_cast<void **>(&slots), sizeof(unsigned long long) * want));
+            if (!counters) CK(gpuMalloc(reinterpret_cast<void **>(&counters), sizeof(unsigned long long) * 2));
             size = want;
         }
         int pb = 0;
@@ -376,14 +500,14 @@ struct HashBuffers {
     }
     // the empty table of the pass part of 2^pbits; the collisions are counted from the first pass
     HashTable table(int pbits, uint64_t part) {
-        CK(hipMemset(slots, 0xff, sizeof(unsigned long long) * size));
-        if (part == 0) CK(hipMemset(counters, 0, sizeof(unsigned long long) * 2));
+        CK(gpuMemset(slots, 0xff, sizeof(unsigned long long) * size));
+        if (part == 0) CK(gpuMemset(counters, 0, sizeof(unsigned long long) * 2));
         return {slots, counters, counters + 1, size - 1, pbits, part};
     }
     // the collisions in the table over the passes: the counted ones and those of the key kEmpty
     long long collisions() {
         unsigned long long c[2];
-        CK(hipMemcpy(c, counters, sizeof c, hipMemcpyDeviceToHost));
+        CK(gpuMemcpy(c, counters, sizeof c, gpuMemcpyDeviceToHost));
         return static_cast<long long>(c[0] + (c[1] > 1 ? c[1] - 1 : 0));
     }
 };
@@ -427,7 +551,7 @@ long long count_equal(const Kernels &kn, Mem &m, long long n, const Launch &f) {
 
 // (a part too large, of many equal keys, is split further)
 long long count_equal_part(const Kernels &kn, Mem &m, const Launch &f, int pb, uint64_t part) {
-    CK(hipMemset(m.keys.count, 0, sizeof(unsigned long long)));
+    CK(gpuMemset(m.keys.count, 0, sizeof(unsigned long long)));
     f(Sink{m.keys.a, m.keys.count, m.keys.cap, pb, 64, 1, part});
     const long long c = m.keys.read_count();
     if (c <= m.keys.cap) return count_equal_keys(kn, m, m.keys.a, c);
@@ -438,7 +562,7 @@ long long count_equal_part(const Kernels &kn, Mem &m, const Launch &f, int pb, u
 using PartFn = std::function<void(unsigned long long *, long long)>;
 
 void sorted_part(const Kernels &kn, Mem &m, int kbits, const Launch &f, const PartFn &part_fn, int pb, uint64_t part) {
-    CK(hipMemset(m.keys.count, 0, sizeof(unsigned long long)));
+    CK(gpuMemset(m.keys.count, 0, sizeof(unsigned long long)));
     f(Sink{m.keys.a, m.keys.count, m.keys.cap, pb, kbits, 0, part});
     const long long c = m.keys.read_count();
     if (c <= m.keys.cap) {
@@ -511,12 +635,12 @@ long long birthday_spacings(const Kernels &kn, Mem &m, const Tuples &tup, const 
     sorted_parts(kn, m, n, tup.b * tup.t, pts, [&](unsigned long long *a, long long c) {
         if (c == 0) return;
         unsigned long long first;
-        CK(hipMemcpy(&first, a, sizeof first, hipMemcpyDeviceToHost));
+        CK(gpuMemcpy(&first, a, sizeof first, gpuMemcpyDeviceToHost));
         if (have_last) {  // the spacing across the parts
             const unsigned long long h = Mix64()(first - last);
             bucket[h >> (64 - hb)].push_back(h);
         }
-        CK(hipMemcpy(&last, a + c - 1, sizeof last, hipMemcpyDeviceToHost));
+        CK(gpuMemcpy(&last, a + c - 1, sizeof last, gpuMemcpyDeviceToHost));
         have_last = true;
         if (c < 2) return;
         launch(kn.spacings, kBlocks, kThreads, 0, static_cast<const unsigned long long *>(a), c, HashTable{}, m.keys.b);
@@ -529,14 +653,14 @@ long long birthday_spacings(const Kernels &kn, Mem &m, const Tuples &tup, const 
         for (size_t j = 0; j < bucket.size(); ++j) {
             const size_t o = bucket[j].size(), k = static_cast<size_t>(hat[j + 1] - hat[j]);
             bucket[j].resize(o + k);
-            if (k) CK(hipMemcpy(bucket[j].data() + o, m.keys.b + hat[j], sizeof(unsigned long long) * k, hipMemcpyDeviceToHost));
+            if (k) CK(gpuMemcpy(bucket[j].data() + o, m.keys.b + hat[j], sizeof(unsigned long long) * k, gpuMemcpyDeviceToHost));
         }
     });
     long long eq = 0;
     for (auto &bk : bucket) {
         const long long k = static_cast<long long>(bk.size());
         if (k <= m.keys.cap) {
-            if (k) CK(hipMemcpy(m.keys.a, bk.data(), sizeof(unsigned long long) * k, hipMemcpyHostToDevice));
+            if (k) CK(gpuMemcpy(m.keys.a, bk.data(), sizeof(unsigned long long) * k, gpuMemcpyHostToDevice));
             eq += count_equal_keys(kn, m, m.keys.a, k);
         } else {  // a bucket too large (of many equal spacings): on the host
             std::sort(bk.begin(), bk.end());
@@ -557,21 +681,21 @@ struct CpBuffers {
     unsigned *count = nullptr, *ndist = nullptr;
     unsigned long long *start = nullptr, *cursor = nullptr, *nslab = nullptr;
     explicit CpBuffers(long long ncoords_) : ncoords(ncoords_) {
-        CK(hipMalloc(reinterpret_cast<void **>(&pts), sizeof(uint32_t) * ncoords));
-        CK(hipMalloc(reinterpret_cast<void **>(&sorted), sizeof(uint32_t) * ncoords));
-        CK(hipMalloc(reinterpret_cast<void **>(&cell), sizeof(uint32_t) * (ncoords / 2 + 1)));
-        CK(hipMalloc(reinterpret_cast<void **>(&dist), sizeof(uint32_t) * kCap));
-        CK(hipMalloc(reinterpret_cast<void **>(&count), sizeof(unsigned) * kMaxCells));
-        CK(hipMalloc(reinterpret_cast<void **>(&ndist), sizeof(unsigned)));
-        CK(hipMalloc(reinterpret_cast<void **>(&start), sizeof(unsigned long long) * kMaxCells));
-        CK(hipMalloc(reinterpret_cast<void **>(&cursor), sizeof(unsigned long long) * kMaxCells));
-        CK(hipMalloc(reinterpret_cast<void **>(&nslab), sizeof(unsigned long long)));
+        CK(gpuMalloc(reinterpret_cast<void **>(&pts), sizeof(uint32_t) * ncoords));
+        CK(gpuMalloc(reinterpret_cast<void **>(&sorted), sizeof(uint32_t) * ncoords));
+        CK(gpuMalloc(reinterpret_cast<void **>(&cell), sizeof(uint32_t) * (ncoords / 2 + 1)));
+        CK(gpuMalloc(reinterpret_cast<void **>(&dist), sizeof(uint32_t) * kCap));
+        CK(gpuMalloc(reinterpret_cast<void **>(&count), sizeof(unsigned) * kMaxCells));
+        CK(gpuMalloc(reinterpret_cast<void **>(&ndist), sizeof(unsigned)));
+        CK(gpuMalloc(reinterpret_cast<void **>(&start), sizeof(unsigned long long) * kMaxCells));
+        CK(gpuMalloc(reinterpret_cast<void **>(&cursor), sizeof(unsigned long long) * kMaxCells));
+        CK(gpuMalloc(reinterpret_cast<void **>(&nslab), sizeof(unsigned long long)));
     }
     ~CpBuffers() {
         for (void *p : {static_cast<void *>(pts), static_cast<void *>(sorted), static_cast<void *>(cell), static_cast<void *>(dist),
                         static_cast<void *>(count), static_cast<void *>(ndist), static_cast<void *>(start), static_cast<void *>(cursor),
                         static_cast<void *>(nslab)})
-            (void)hipFree(p);
+            (void)gpuFree(p);
     }
     CpBuffers(const CpBuffers &) = delete;
     CpBuffers &operator=(const CpBuffers &) = delete;
@@ -606,7 +730,7 @@ CpGrid cp_grid(long long n, int t, uint32_t dlim) {
 // The distances below gr.dlim of the pairs of the np points in buf.pts but those of two points outside the
 // core [core_lo, core_lo + core_w) of the first coordinate, added to buf.dist (counted by buf.ndist).
 void cp_find(const Kernels &kn, CpBuffers &buf, const CpGrid &gr, long long np, int t, uint32_t core_lo, uint64_t core_w) {
-    CK(hipMemset(buf.count, 0, sizeof(unsigned) * gr.cells));
+    CK(gpuMemset(buf.count, 0, sizeof(unsigned) * gr.cells));
     launch(kn.cp_cells, kBlocks, kThreads, 0, static_cast<const uint32_t *>(buf.pts), np, gr, buf.cell, buf.count);
     // the start of every cell (the exclusive prefix sum of the counts), and the cursors of the scatter
     const thrust::device_ptr<unsigned> cnt(buf.count);
@@ -626,10 +750,10 @@ void cp_slab(const Kernels &kn, CpBuffers &buf, const CpGrid &gr, const Params &
     const uint64_t span = w + gr.dlim;
     if (span > (UINT64_C(1) << 32) || w <= gr.dlim) throw TestFailure("ClosePairs: the memory budget is too small");
     const long long pcap = buf.ncoords / t;
-    CK(hipMemset(buf.nslab, 0, sizeof(unsigned long long)));
+    CK(gpuMemset(buf.nslab, 0, sizeof(unsigned long long)));
     launch(kn.cp_slab, kBlocks, kThreads, 0, g, base, n, t, static_cast<uint32_t>(lo - gr.dlim), span, buf.pts, buf.nslab, pcap);
     unsigned long long c;
-    CK(hipMemcpy(&c, buf.nslab, sizeof c, hipMemcpyDeviceToHost));
+    CK(gpuMemcpy(&c, buf.nslab, sizeof c, gpuMemcpyDeviceToHost));
     if (static_cast<long long>(c) > pcap) {
         cp_slab(kn, buf, gr, g, base, n, t, lo, w / 2);
         cp_slab(kn, buf, gr, g, base, n, t, lo + w / 2, w - w / 2);
@@ -665,7 +789,7 @@ std::vector<uint32_t> close_pairs(const Kernels &kn, Mem &m, const Params &g, Co
         const double d = std::pow(B / pairs_vol, 1.0 / t);
         const uint32_t dlim = d >= 0.5 ? all : std::max(UINT32_C(1), static_cast<uint32_t>(std::ceil(std::ldexp(d, 32))));
         const CpGrid gr = cp_grid(n, t, dlim);
-        CK(hipMemset(buf.ndist, 0, sizeof(unsigned)));
+        CK(gpuMemset(buf.ndist, 0, sizeof(unsigned)));
         if (!slabs) {
             cp_find(kn, buf, gr, n, t, 0, UINT64_C(1) << 32);
         } else {  // 2^sb slabs of about n (2^-sb + dlim 2^-32) points each
@@ -678,7 +802,7 @@ std::vector<uint32_t> close_pairs(const Kernels &kn, Mem &m, const Params &g, Co
             for (uint64_t sl = 0; sl < UINT64_C(1) << sb; ++sl) cp_slab(kn, buf, gr, g, base, n, t, sl << (32 - sb), UINT64_C(1) << (32 - sb));
         }
         unsigned nd;
-        CK(hipMemcpy(&nd, buf.ndist, sizeof nd, hipMemcpyDeviceToHost));
+        CK(gpuMemcpy(&nd, buf.ndist, sizeof nd, gpuMemcpyDeviceToHost));
         if (iter < 40 && nd < static_cast<unsigned>(mm) && dlim < all) {
             B *= 4;
             continue;
@@ -688,7 +812,7 @@ std::vector<uint32_t> close_pairs(const Kernels &kn, Mem &m, const Params &g, Co
             continue;
         }
         std::vector<uint32_t> dist(std::min(nd, CpBuffers::kCap));
-        CK(hipMemcpy(dist.data(), buf.dist, sizeof(uint32_t) * dist.size(), hipMemcpyDeviceToHost));
+        CK(gpuMemcpy(dist.data(), buf.dist, sizeof(uint32_t) * dist.size(), gpuMemcpyDeviceToHost));
         std::sort(dist.begin(), dist.end());
         return dist;
     }
@@ -886,20 +1010,20 @@ std::vector<unsigned long long> histogram(const Kernels &kn, const T &test, cons
                                     int extra = 0) {
     unsigned long long *d_hist;
     int *d_overrun;
-    CK(hipMalloc(reinterpret_cast<void **>(&d_hist), sizeof(unsigned long long) * nbins));
-    CK(hipMalloc(reinterpret_cast<void **>(&d_overrun), sizeof(int)));
-    CK(hipMemset(d_hist, 0, sizeof(unsigned long long) * nbins));
-    CK(hipMemset(d_overrun, 0, sizeof(int)));
+    CK(gpuMalloc(reinterpret_cast<void **>(&d_hist), sizeof(unsigned long long) * nbins));
+    CK(gpuMalloc(reinterpret_cast<void **>(&d_overrun), sizeof(int)));
+    CK(gpuMemset(d_hist, 0, sizeof(unsigned long long) * nbins));
+    CK(gpuMemset(d_overrun, 0, sizeof(int)));
     const int lds = nbins <= kMaxLdsBins;
     const uint64_t stride = Counters::stride(n, mean, var, extra);
     launch(kn.of(test), kBlocks, kThreads, lds ? sizeof(unsigned) * nbins : 0, test, g, ctr.take(stride), stride, n, d_hist, nbins, lds,
            d_overrun);
     std::vector<unsigned long long> h(nbins);
     int overrun;
-    CK(hipMemcpy(h.data(), d_hist, sizeof(unsigned long long) * nbins, hipMemcpyDeviceToHost));
-    CK(hipMemcpy(&overrun, d_overrun, sizeof overrun, hipMemcpyDeviceToHost));
-    CK(hipFree(d_hist));
-    CK(hipFree(d_overrun));
+    CK(gpuMemcpy(h.data(), d_hist, sizeof(unsigned long long) * nbins, gpuMemcpyDeviceToHost));
+    CK(gpuMemcpy(&overrun, d_overrun, sizeof overrun, gpuMemcpyDeviceToHost));
+    CK(gpuFree(d_hist));
+    CK(gpuFree(d_overrun));
     // far beyond the margin for an ideal generator, so a structure taking too many values (e.g. a gap
     // test on outputs never in the interval) fails
     if (overrun) throw TestFailure("a thread ran out of its counters (the observations take far more values than expected)");
@@ -1197,17 +1321,17 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         static const double B[6] = {1.0 / 6, 5.0 / 24, 11.0 / 120, 19.0 / 720, 29.0 / 5040, 1.0 / 840};
         const struct { int N; double n; int r, up; } set[] = {{5, 1e9, 0, 0}, {10, 1e9, 15, 1}};
         unsigned long long *d_cnt;
-        CK(hipMalloc(reinterpret_cast<void **>(&d_cnt), sizeof(unsigned long long) * 6));
+        CK(gpuMalloc(reinterpret_cast<void **>(&d_cnt), sizeof(unsigned long long) * 6));
         for (const auto &s : set) {
             const long long n = scaled(s.n);
             const auto t0 = std::chrono::steady_clock::now();
             double khi = 0;
             for (int rep = 0; rep < s.N; ++rep) {
-                CK(hipMemset(d_cnt, 0, sizeof(unsigned long long) * 6));
+                CK(gpuMemset(d_cnt, 0, sizeof(unsigned long long) * 6));
                 const uint64_t start = ctr.take((n + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
                 launch(kn.krun, kBlocks, kThreads, 0, g, start, n, s.r, s.up, d_cnt);
                 unsigned long long c[6];
-                CK(hipMemcpy(c, d_cnt, sizeof c, hipMemcpyDeviceToHost));
+                CK(gpuMemcpy(c, d_cnt, sizeof c, gpuMemcpyDeviceToHost));
                 double k = 0;
                 for (int i = 0; i < 6; ++i)
                     for (int j = 0; j < 6; ++j) k += A[i][j] * (c[i] - n * B[i]) * (c[j] - n * B[j]);
@@ -1216,11 +1340,11 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             std::snprintf(params, sizeof params, "N=%d n=%lld r=%d %s", s.N, n, s.r, s.up ? "up" : "down");
             report("run", params, Chi2{khi, 6L * s.N}, seconds_since(t0));
             if (sum.max_z > o.limit) {
-                CK(hipFree(d_cnt));
+                CK(gpuFree(d_cnt));
                 return sum;
             }
         }
-        CK(hipFree(d_cnt));
+        CK(gpuFree(d_cnt));
     }
     if (wanted(o, "serial")) {
         // SerialOver (N = 1, d = 256, t = 3): the chi-square X of the overlapping 3-tuples minus that of the
@@ -1231,17 +1355,17 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const uint64_t k = UINT64_C(1) << (b * t), k1 = UINT64_C(1) << (b * (t - 1));
             const auto t0 = std::chrono::steady_clock::now();
             unsigned *d_cnt, *d_cnt1;
-            CK(hipMalloc(reinterpret_cast<void **>(&d_cnt), sizeof(unsigned) * k));
-            CK(hipMalloc(reinterpret_cast<void **>(&d_cnt1), sizeof(unsigned) * k1));
-            CK(hipMemset(d_cnt, 0, sizeof(unsigned) * k));
-            CK(hipMemset(d_cnt1, 0, sizeof(unsigned) * k1));
+            CK(gpuMalloc(reinterpret_cast<void **>(&d_cnt), sizeof(unsigned) * k));
+            CK(gpuMalloc(reinterpret_cast<void **>(&d_cnt1), sizeof(unsigned) * k1));
+            CK(gpuMemset(d_cnt, 0, sizeof(unsigned) * k));
+            CK(gpuMemset(d_cnt1, 0, sizeof(unsigned) * k1));
             const uint64_t start = ctr.take((n + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
             launch(kn.serial, kBlocks, kThreads, 0, g, start, n, r, b, t, d_cnt, d_cnt1);
             std::vector<unsigned> c(k), c1(k1);
-            CK(hipMemcpy(c.data(), d_cnt, sizeof(unsigned) * k, hipMemcpyDeviceToHost));
-            CK(hipMemcpy(c1.data(), d_cnt1, sizeof(unsigned) * k1, hipMemcpyDeviceToHost));
-            CK(hipFree(d_cnt));
-            CK(hipFree(d_cnt1));
+            CK(gpuMemcpy(c.data(), d_cnt, sizeof(unsigned) * k, gpuMemcpyDeviceToHost));
+            CK(gpuMemcpy(c1.data(), d_cnt1, sizeof(unsigned) * k1, gpuMemcpyDeviceToHost));
+            CK(gpuFree(d_cnt));
+            CK(gpuFree(d_cnt1));
             const auto pearson = [n](const std::vector<unsigned> &v) {
                 const double e = static_cast<double>(n) / v.size();
                 double x = 0;
@@ -1442,18 +1566,18 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         // against its mean B / 4 and variance B / 16 for B bits (the starts of the runs of 1s are pairwise
         // independent but for adjacent bits; TestU01 takes the bits for n runs, of the variance 8n instead of 4n)
         unsigned long long *d_cnt;
-        CK(hipMalloc(reinterpret_cast<void **>(&d_cnt), sizeof(unsigned long long) * 80));
+        CK(gpuMalloc(reinterpret_cast<void **>(&d_cnt), sizeof(unsigned long long) * 80));
         for (const int r : {0, 27}) {
             const int s = 3;
             const long long nr = scaled(2e9), nv = (4 * nr + s - 1) / s;
             const int k = 1 + static_cast<int>(std::log2(nr / kMinExpected));
             if (k > 40) throw TestFailure("bitrun: too many classes");
             const auto t0 = std::chrono::steady_clock::now();
-            CK(hipMemset(d_cnt, 0, sizeof(unsigned long long) * 80));
+            CK(gpuMemset(d_cnt, 0, sizeof(unsigned long long) * 80));
             const uint64_t start = ctr.take((nv + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
             launch(kn.bitrun, kBlocks, kThreads, 0, g, start, nv, r, s, k, d_cnt);
             std::vector<unsigned long long> c(2 * k);
-            CK(hipMemcpy(c.data(), d_cnt, sizeof(unsigned long long) * 2 * k, hipMemcpyDeviceToHost));
+            CK(gpuMemcpy(c.data(), d_cnt, sizeof(unsigned long long) * 2 * k, gpuMemcpyDeviceToHost));
             double x = 0, runs1 = 0;
             for (int b = 0; b < 2; ++b) {
                 double tot = 0;
@@ -1470,11 +1594,11 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             std::snprintf(params, sizeof params, "n=%lld r=%d s=%d count", nr, r, s);
             report_normal("bitrun", params, (bits / 4 - runs1) / std::sqrt(bits / 16), seconds_since(t0));
             if (sum.max_z > o.limit) {
-                CK(hipFree(d_cnt));
+                CK(gpuFree(d_cnt));
                 return sum;
             }
         }
-        CK(hipFree(d_cnt));
+        CK(gpuFree(d_cnt));
     }
     if (wanted(o, "longhead")) {
         // LongestHeadRun (N = 1, n = 1000 blocks, s = 3, L = 1e7 + 20 bits): the longest run of 1s in every
@@ -1501,12 +1625,12 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             prob.back() = 1 - (cdf - prob.back());
             const int jhigh = static_cast<int>(prob.size()) - 1;
             const auto t0 = std::chrono::steady_clock::now();
-            CK(hipMalloc(reinterpret_cast<void **>(&d_long), sizeof(long long) * nb));
+            CK(gpuMalloc(reinterpret_cast<void **>(&d_long), sizeof(long long) * nb));
             const uint64_t start = ctr.take((nb * K + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
             launch(kn.longhead, static_cast<unsigned>(nb), kThreads, 0, g, start, K, r, s, d_long);
             std::vector<long long> lg(nb);
-            CK(hipMemcpy(lg.data(), d_long, sizeof(long long) * nb, hipMemcpyDeviceToHost));
-            CK(hipFree(d_long));
+            CK(gpuMemcpy(lg.data(), d_long, sizeof(long long) * nb, gpuMemcpyDeviceToHost));
+            CK(gpuFree(d_long));
             std::vector<unsigned long long> h(jhigh + 1, 0);
             long long top = 0;
             for (const long long x : lg) {
@@ -1531,7 +1655,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         // AutoCor (N = 10, n = 1e9 + 30 bits, s = 3): the differing bits at the distance d over K = (n - d) / s
         // values, 2 (A - K s / 2) / sqrt(K s) a standard normal, summed over N (divided by sqrt(N))
         unsigned long long *d_cnt;
-        CK(hipMalloc(reinterpret_cast<void **>(&d_cnt), sizeof(unsigned long long)));
+        CK(gpuMalloc(reinterpret_cast<void **>(&d_cnt), sizeof(unsigned long long)));
         const struct { int r, d; } set[] = {{0, 1}, {0, 3}, {27, 1}, {27, 3}};
         for (const auto &c : set) {
             const int N = 10, s = 3;
@@ -1539,45 +1663,45 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const auto t0 = std::chrono::steady_clock::now();
             double zs = 0;
             for (int rep = 0; rep < N; ++rep) {
-                CK(hipMemset(d_cnt, 0, sizeof(unsigned long long)));
+                CK(gpuMemset(d_cnt, 0, sizeof(unsigned long long)));
                 const uint64_t start = ctr.take((K + 1 + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
                 launch(kn.autocor, kBlocks, kThreads, 0, g, start, K, c.r, s, c.d, d_cnt);
                 unsigned long long A;
-                CK(hipMemcpy(&A, d_cnt, sizeof A, hipMemcpyDeviceToHost));
+                CK(gpuMemcpy(&A, d_cnt, sizeof A, gpuMemcpyDeviceToHost));
                 const double m = static_cast<double>(K) * s;
                 zs += 2.0 * (A - m / 2) / std::sqrt(m);
             }
             std::snprintf(params, sizeof params, "N=%d n=%lld r=%d s=%d d=%d", N, nbits, c.r, s, c.d);
             report_normal("autocor", params, zs / std::sqrt(static_cast<double>(N)), seconds_since(t0));
             if (sum.max_z > o.limit) {
-                CK(hipFree(d_cnt));
+                CK(gpuFree(d_cnt));
                 return sum;
             }
         }
-        CK(hipFree(d_cnt));
+        CK(gpuFree(d_cnt));
     }
     if (wanted(o, "samplecorr")) {
         // SampleCorr (N = 1, n = 2e9): the sum of u_{i-k} u_i - 1/4 over n - k terms, of the variance 13/144 per
         // term (7/144, and 1/48 with each of the two terms sharing a value; TestU01 takes 1/12, so that its
         // statistic has the variance 13/12)
         double *d_sum;
-        CK(hipMalloc(reinterpret_cast<void **>(&d_sum), sizeof(double)));
+        CK(gpuMalloc(reinterpret_cast<void **>(&d_sum), sizeof(double)));
         for (const int k : {1, 2}) {
             const long long n = scaled(2e9);
             const auto t0 = std::chrono::steady_clock::now();
-            CK(hipMemset(d_sum, 0, sizeof(double)));
+            CK(gpuMemset(d_sum, 0, sizeof(double)));
             const uint64_t start = ctr.take((n + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
             launch(kn.samplecorr, kBlocks, kThreads, 0, g, start, n, 0, k, d_sum);
             double sm;
-            CK(hipMemcpy(&sm, d_sum, sizeof sm, hipMemcpyDeviceToHost));
+            CK(gpuMemcpy(&sm, d_sum, sizeof sm, gpuMemcpyDeviceToHost));
             std::snprintf(params, sizeof params, "n=%lld r=0 k=%d", n, k);
             report_normal("samplecorr", params, sm * 12.0 / std::sqrt(13.0 * (n - k)), seconds_since(t0));
             if (sum.max_z > o.limit) {
-                CK(hipFree(d_sum));
+                CK(gpuFree(d_sum));
                 return sum;
             }
         }
-        CK(hipFree(d_sum));
+        CK(gpuFree(d_sum));
     }
     // SampleProd and SampleMean: the Anderson-Darling test of n values transformed to U(0, 1) by their
     // distribution function (as keys of 64 bits, see kuniform), sorted on GPU by parts if they don't fit in
@@ -1599,7 +1723,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         sorted_parts(kn, mem, n, 64, f, [&](unsigned long long *a, long long c) {
             const size_t at = keys.size();
             keys.resize(at + c);
-            if (c) CK(hipMemcpy(keys.data() + at, a, sizeof(unsigned long long) * c, hipMemcpyDeviceToHost));
+            if (c) CK(gpuMemcpy(keys.data() + at, a, sizeof(unsigned long long) * c, gpuMemcpyDeviceToHost));
         });
         std::vector<double> v(n + 1);  // the arrays of TestU01 start at 1
         for (long long i = 0; i < n; ++i) v[i + 1] = (static_cast<double>(keys[i]) + 0.5) * 0x1p-64;
@@ -1655,8 +1779,8 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             }
         }
         double *d_tab;
-        CK(hipMalloc(reinterpret_cast<void **>(&d_tab), sizeof(double) * tab.size()));
-        CK(hipMemcpy(d_tab, tab.data(), sizeof(double) * tab.size(), hipMemcpyHostToDevice));
+        CK(gpuMalloc(reinterpret_cast<void **>(&d_tab), sizeof(double) * tab.size()));
+        CK(gpuMemcpy(d_tab, tab.data(), sizeof(double) * tab.size(), gpuMemcpyHostToDevice));
         for (const int r : {0, 10}) {
             const long long n = scaled(2e7);
             const auto t0 = std::chrono::steady_clock::now();
@@ -1668,11 +1792,11 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             std::snprintf(params, sizeof params, "N=%lld n=%d r=%d", n, m, r);
             report_ad("smean", params, ad.first, ad.second, seconds_since(t0));
             if (sum.max_z > o.limit) {
-                CK(hipFree(d_tab));
+                CK(gpuFree(d_tab));
                 return sum;
             }
         }
-        CK(hipFree(d_tab));
+        CK(gpuFree(d_tab));
     }
     if (wanted(o, "walk")) {
         // RandomWalk1 (N = 1, L0 = L1 = L): the chi-squares of the statistics H, M, J, R and C of n walks
@@ -1699,14 +1823,14 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const auto t0 = std::chrono::steady_clock::now();
             const int nb = 5 * (L + 1), lds = nb <= kMaxLdsBins;
             unsigned long long *d_hist;
-            CK(hipMalloc(reinterpret_cast<void **>(&d_hist), sizeof(unsigned long long) * nb));
-            CK(hipMemset(d_hist, 0, sizeof(unsigned long long) * nb));
+            CK(gpuMalloc(reinterpret_cast<void **>(&d_hist), sizeof(unsigned long long) * nb));
+            CK(gpuMemset(d_hist, 0, sizeof(unsigned long long) * nb));
             const int per = L / c.s + (L % c.s > 0);
             const uint64_t stride = Counters::stride(n, per, 0);
             launch(kn.walk, kBlocks, kThreads, lds ? sizeof(unsigned) * nb : 0, g, ctr.take(stride), stride, n, c.r, c.s, c.L, d_hist, lds);
             std::vector<unsigned long long> h(nb);
-            CK(hipMemcpy(h.data(), d_hist, sizeof(unsigned long long) * nb, hipMemcpyDeviceToHost));
-            CK(hipFree(d_hist));
+            CK(gpuMemcpy(h.data(), d_hist, sizeof(unsigned long long) * nb, gpuMemcpyDeviceToHost));
+            CK(gpuFree(d_hist));
             const double sec = seconds_since(t0);
             const char *names = "HMJRC";
             for (int k = 0; k < 5; ++k) {
@@ -1786,7 +1910,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         const int k = 14, sb = 3, n = 1 << k, kall = n / sb + 1;
         const long long N = scaled(1e5);
         // the batch of the FFTs within a quarter of the budget (about 24 n bytes per sequence: its bits,
-        // coefficients and the work buffer of rocFFT), a power of 2 in [64, 4096]
+        // coefficients and the work buffer of rocFFT or cuFFT), a power of 2 in [64, 4096]
         long long batch = 64;
         while (batch < 4096 && static_cast<double>(batch) * 2 * 24 * n <= mem.budget / 4.0) batch *= 2;
         if (!mem.fft || mem.fft->n != n || mem.fft->batch != batch) {
@@ -1796,7 +1920,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         Fft &ft = *mem.fft;
         for (const int r : {0, 27}) {
             const auto t0 = std::chrono::steady_clock::now();
-            CK(hipMemset(ft.b, 0, sizeof(double) * (n / 4 + 1)));
+            CK(gpuMemset(ft.b, 0, sizeof(double) * (n / 4 + 1)));
             const uint64_t start = ctr.take((N * kall + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
             for (long long done = 0; done < N; done += batch) {
                 const long long nb = std::min(batch, N - done);
@@ -1805,7 +1929,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 launch(kn.fourier_acc, (n / 4 + 255) / 256, 256, 0, static_cast<const double *>(ft.f), nb, n, ft.b);
             }
             std::vector<double> b(n / 4 + 1), u(n / 4);
-            CK(hipMemcpy(b.data(), ft.b, sizeof(double) * b.size(), hipMemcpyDeviceToHost));
+            CK(gpuMemcpy(b.data(), ft.b, sizeof(double) * b.size(), gpuMemcpyDeviceToHost));
             for (int i = 1; i <= n / 4; ++i) u[i - 1] = fdist_Normal2((b[i] / n - N) / std::sqrt(N * (1.0 - 2.0 / n)));
             const auto ad = anderson_darling(u);
             std::snprintf(params, sizeof params, "N=%lld n=2^%d r=%d s=%d", N, k, r, sb);
@@ -1840,14 +1964,14 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
         };
         std::vector<Job> jobs(2 * N);
         uint32_t *d_out;
-        CK(hipMalloc(reinterpret_cast<void **>(&d_out), sizeof(uint32_t) * K0));
+        CK(gpuMalloc(reinterpret_cast<void **>(&d_out), sizeof(uint32_t) * K0));
         std::vector<uint32_t> x(K0);
         const auto t0 = std::chrono::steady_clock::now();
         for (int ri = 0; ri < 2; ++ri) {
             const uint64_t start = ctr.take((N * K0 + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
             for (long long q = 0; q < N; ++q) {
                 launch(kn.cp_outputs, kBlocks, kThreads, 0, g, start + static_cast<uint64_t>(q * K0), K0, d_out);
-                CK(hipMemcpy(x.data(), d_out, sizeof(uint32_t) * K0, hipMemcpyDeviceToHost));
+                CK(gpuMemcpy(x.data(), d_out, sizeof(uint32_t) * K0, gpuMemcpyDeviceToHost));
                 std::vector<uint8_t> &bits = jobs[ri * N + q].bits;
                 bits.resize(n);
                 for (long long i = 0; i < K0; ++i) {
@@ -1856,7 +1980,7 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                 }
             }
         }
-        CK(hipFree(d_out));
+        CK(gpuFree(d_out));
         for (Job &jb : jobs) berlekamp_massey(jb.bits, M0, jb.L, jb.numj, jb.cnt);
         const double sec = seconds_since(t0);
         for (int ri = 0; ri < 2; ++ri) {
@@ -1910,18 +2034,18 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
                     const uint64_t start = ctr.take((n * c.l * vpr + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
                     unsigned long long *d_m;
                     int *d_rank;
-                    CK(hipMalloc(reinterpret_cast<void **>(&d_m), sizeof(unsigned long long) * per * batch));
-                    CK(hipMalloc(reinterpret_cast<void **>(&d_rank), sizeof(int) * batch));
+                    CK(gpuMalloc(reinterpret_cast<void **>(&d_m), sizeof(unsigned long long) * per * batch));
+                    CK(gpuMalloc(reinterpret_cast<void **>(&d_rank), sizeof(int) * batch));
                     std::vector<int> rk(batch);
                     for (long long m0 = 0; m0 < n; m0 += batch) {
                         const long long nb = std::min(batch, n - m0);
                         launch(kn.mat_fill, kBlocks, kThreads, 0, g, start + static_cast<uint64_t>(m0 * c.l * vpr), nb * c.l, c.r, c.s, c.k, W, d_m);
                         launch(kn.mat_rank, static_cast<unsigned>(nb), kThreads, 0, d_m, c.l, c.k, W, d_rank);
-                        CK(hipMemcpy(rk.data(), d_rank, sizeof(int) * nb, hipMemcpyDeviceToHost));
+                        CK(gpuMemcpy(rk.data(), d_rank, sizeof(int) * nb, gpuMemcpyDeviceToHost));
                         for (long long i = 0; i < nb; ++i) ++h[rk[i]];
                     }
-                    CK(hipFree(d_m));
-                    CK(hipFree(d_rank));
+                    CK(gpuFree(d_m));
+                    CK(gpuFree(d_rank));
                 }
                 Chi2 x{0, 0};
                 try {
@@ -1986,15 +2110,15 @@ Summary Battery::run(const Generator &gen, const Params &g, const Options &o) {
             const auto t0 = std::chrono::steady_clock::now();
             const uint64_t start = ctr.take((N * nv + Counters::kThreadsPerLaunch - 1) / Counters::kThreadsPerLaunch);
             uint32_t *d_out;
-            CK(hipMalloc(reinterpret_cast<void **>(&d_out), sizeof(uint32_t) * nv));
+            CK(gpuMalloc(reinterpret_cast<void **>(&d_out), sizeof(uint32_t) * nv));
             std::vector<uint32_t> x(nv);
             double zs = 0;
             for (long long q = 0; q < N; ++q) {
                 launch(kn.cp_outputs, kBlocks, kThreads, 0, g, start + static_cast<uint64_t>(q * nv), nv, d_out);
-                CK(hipMemcpy(x.data(), d_out, sizeof(uint32_t) * nv, hipMemcpyDeviceToHost));
+                CK(gpuMemcpy(x.data(), d_out, sizeof(uint32_t) * nv, gpuMemcpyDeviceToHost));
                 zs += (lz78(x, nbits, r, sb) - LZMu[t]) / LZSigma[t];
             }
-            CK(hipFree(d_out));
+            CK(gpuFree(d_out));
             std::snprintf(params, sizeof params, "N=%lld n=2^%d r=%d s=%d", N, t, r, sb);
             report_normal("lempelziv", params, zs / std::sqrt(static_cast<double>(N)), seconds_since(t0));
             if (sum.max_z > o.limit) return sum;

@@ -2,10 +2,16 @@
 
 include(CMakeFindDependencyMacro)
 list(PREPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
-find_dependency(hip)
-find_dependency(hiprtc)
-find_dependency(rocfft)
-find_dependency(rocthrust)
+# the backend of the build: HIP or CUDA
+set(testu01_gpu_BACKEND @gpu_lang@)
+if(testu01_gpu_BACKEND STREQUAL "HIP")
+  find_dependency(hip)
+  find_dependency(hiprtc)
+  find_dependency(rocfft)
+  find_dependency(rocthrust)
+else()
+  find_dependency(CUDAToolkit)
+endif()
 find_dependency(TestU01)
 list(POP_FRONT CMAKE_MODULE_PATH)
 
