@@ -29,11 +29,12 @@
 #include <array>
 #include <csignal>
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
+#include <format>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -42,6 +43,7 @@
 #include "absl/strings/numbers.h"
 #include "flags.hpp"
 #include "logging.hpp"
+#include "number.hpp"
 #include "signal.hpp"
 
 ABSL_FLAG(int, ops, 12, "the number of ops of the head");
@@ -113,7 +115,7 @@ void count(const arx::Arx &a, int m, const std::vector<int> &words, const arx::K
 }
 
 int run(int argc, char **argv) {
-    const std::vector<char *> arg =
+    const std::vector<std::string_view> arg =
         parse_flags(argc, argv, "state [flags] structure keylist: the counter differentials of the state after the head of a structure");
     const int m = absl::GetFlag(FLAGS_ops);
     const int threads = absl::GetFlag(FLAGS_threads) > 0 ? absl::GetFlag(FLAGS_threads) : static_cast<int>(std::thread::hardware_concurrency());
@@ -133,7 +135,7 @@ int run(int argc, char **argv) {
         if (w < 0 || w > 5) throw std::runtime_error("word out of range");
     std::vector<std::string> specs;
     {
-        std::ifstream f(arg[1]);
+        std::ifstream f{std::string(arg[1])};
         if (!f) throw std::runtime_error("cannot read the key list");
         for (std::string line; std::getline(f, line);)
             if (!line.empty() && line[0] != '#') specs.push_back(line);
@@ -144,9 +146,9 @@ int run(int argc, char **argv) {
     for (const std::string &spec : specs) {
         const size_t hash = spec.find('#');
         const std::string km = spec.substr(0, hash);
-        const uint32_t kseed = hash == std::string::npos ? 1 : static_cast<uint32_t>(std::stoul(spec.substr(hash + 1)));
+        const uint32_t kseed = hash == std::string::npos ? 1 : number::parse<uint32_t>(std::string_view(spec).substr(hash + 1));
         arx::Key k = keymod::seed_key(kseed);
-        if (km != "-") keymod::apply(k, km.c_str());
+        if (km != "-") keymod::apply(k, km);
         std::vector<Counts> cs(threads, Counts(nw));
         std::vector<std::thread> ts;
         for (int t = 0; t < threads; ++t) {
@@ -191,8 +193,8 @@ int run(int argc, char **argv) {
                 }
             const double z = std::max(bz, yz);
             if (verbose)
-                std::printf("delta\tkey=%s\tj=%d\tbit_z=%.2f\tbyte_z=%.2f\tbit_dev=%.4g\tbyte_dev=%.4g\tunmixed=%d\tworst=%s\n",
-                            spec.c_str(), j, bz, yz, bdev, ydev, unmixed, worst.c_str());
+                std::cout << std::format("delta\tkey={}\tj={}\tbit_z={:.2f}\tbyte_z={:.2f}\tbit_dev={:.4g}\tbyte_dev={:.4g}\tunmixed={}\tworst={}\n",
+                                         spec, j, bz, yz, bdev, ydev, unmixed, worst);
             if (z > kmax) kmax = z, kworst = j;
             kbroken += z > broken;
             klog += std::log1p(z);
@@ -200,9 +202,9 @@ int run(int argc, char **argv) {
             kydev += ydev;
             kunmixed += unmixed;
         }
-        std::printf("key\tkey=%s\tmax_z=%.2f\tbroken=%d\tlogsum=%.2f\tworst_j=%d\tbit_dev=%.4g\tbyte_dev=%.4g\tunmixed=%d\n",
-                    spec.c_str(), kmax, kbroken, klog, kworst, kbdev, kydev, kunmixed);
-        std::fflush(stdout);
+        std::cout << std::format("key\tkey={}\tmax_z={:.2f}\tbroken={}\tlogsum={:.2f}\tworst_j={}\tbit_dev={:.4g}\tbyte_dev={:.4g}\tunmixed={}",
+                                 spec, kmax, kbroken, klog, kworst, kbdev, kydev, kunmixed)
+                  << std::endl;
         tot_bdev += kbdev;
         tot_ydev += kydev;
         tot_unmixed += kunmixed;
@@ -210,8 +212,8 @@ int run(int argc, char **argv) {
         tot_broken += kbroken;
         tot_log += klog;
     }
-    std::printf("total\tkeys=%zu\tmax_z=%.2f\tbroken=%d\tlogsum=%.2f\tbit_dev=%.4g\tbyte_dev=%.4g\tunmixed=%d\n", specs.size(),
-                tot_max, tot_broken, tot_log, tot_bdev, tot_ydev, tot_unmixed);
+    std::cout << std::format("total\tkeys={}\tmax_z={:.2f}\tbroken={}\tlogsum={:.2f}\tbit_dev={:.4g}\tbyte_dev={:.4g}\tunmixed={}\n", specs.size(),
+                             tot_max, tot_broken, tot_log, tot_bdev, tot_ydev, tot_unmixed);
     return 0;
 }
 

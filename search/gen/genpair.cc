@@ -4,23 +4,24 @@
 // other words from seed + 0x10000. mode 0: A(c) ^ B(c); 1: A(c), B(c) interleaved; 2: A(c) - B(c).
 #include <array>
 #include <cstdio>
-#include <cstdlib>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 #include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
+#include "number.hpp"
 
 #include "kern.hpp"
 
 namespace {
 
 int run(int argc, char **argv) {
-    const std::vector<char *> arg = parse_flags(argc, argv, "genpair seed swap mask mode");
+    const std::vector<std::string_view> arg = parse_flags(argc, argv, "genpair seed swap mask mode");
     if (arg.size() != 4) usage();
-    const auto seed = static_cast<uint32_t>(std::strtoul(arg[0], nullptr, 0));
-    const int swp = std::atoi(arg[1]), mask = static_cast<int>(std::strtol(arg[2], nullptr, 0)), mode = std::atoi(arg[3]);
+    const auto seed = number::parse<uint32_t>(arg[0]);
+    const int swp = number::parse<int>(arg[1]), mask = number::parse<int>(arg[2]), mode = number::parse<int>(arg[3]);
     arx::Key a = keymod::seed_key(seed), b = keymod::seed_key(seed + 0x10000);
     keymod::from_env(a);
     for (int i = 0; i < 6; ++i)

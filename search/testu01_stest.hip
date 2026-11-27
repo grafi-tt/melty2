@@ -60,24 +60,25 @@
 #include <chrono>
 #include <cmath>
 #include <csignal>
-#include <cstdio>
 #include <cstdlib>
-#include <cstring>
+#include <format>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "arx.hpp"
-#include "absl/strings/str_format.h"
 #include "flags.hpp"
 #include "gpu_runtime.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
+#include "number.hpp"
 #include "pidfile.hpp"
 #include "signal.hpp"
 #include "testu01_gpu.hpp"
@@ -180,10 +181,7 @@ double seconds_since(std::chrono::steady_clock::time_point t0) {
 Summary run_tests(const Options &o, testu01_gpu::Battery &battery, const testu01_gpu::Generator &gen, const Gen &g) {
     testu01_gpu::Options t = o.t;
     if (!o.quiet)
-        t.report = [](const testu01_gpu::Result &r) {
-            std::printf("%s\n", testu01_gpu::format(r).c_str());
-            std::fflush(stdout);
-        };
+        t.report = [](const testu01_gpu::Result &r) { std::cout << testu01_gpu::format(r) << std::endl; };
     return battery.run(gen, g.params(), t);
 }
 
@@ -192,14 +190,21 @@ void set_streams(Gen &g, const std::string &streams) {
     g.sbits = 0;
     g.cbit = g.kword = -1;
     if (streams == "-") return;
-    char kind[8];
-    int b, x;
-    if (std::sscanf(streams.c_str(), "%3[a-z]:%d:%d", kind, &b, &x) != 3 || b < 1 || b > 16 ||
-        !((std::strcmp(kind, "ctr") == 0 && x >= 0 && x < 64) || (std::strcmp(kind, "key") == 0 && x >= 0 && x < 6)))
+    std::string_view s = streams;
+    const std::string_view kind = s.substr(0, 3);
+    s.remove_prefix(kind.size());
+    // ":n"
+    const auto field = [&s]() -> std::optional<int> {
+        if (!s.starts_with(':')) return std::nullopt;
+        s.remove_prefix(1);
+        return number::take<int>(s);
+    };
+    const std::optional<int> b = field(), x = b ? field() : std::nullopt;
+    if (!x || !s.empty() || *b < 1 || *b > 16 || !((kind == "ctr" && *x >= 0 && *x < 64) || (kind == "key" && *x >= 0 && *x < 6)))
         throw std::invalid_argument("invalid streams (ctr:b:c or key:b:w): " + streams);
-    g.sbits = b;
-    if (kind[0] == 'c') g.cbit = x;
-    else g.kword = x;
+    g.sbits = *b;
+    if (kind == "ctr") g.cbit = *x;
+    else g.kword = *x;
 }
 
 // a key of the tests: a key spec "keymod[@streams][#seed]" (see --keylist)
@@ -209,18 +214,18 @@ struct KeyRun {
     uint32_t seed;
 };
 
-// the key specs of the list (one per line; "-" for none), or that of MELTY2_KEYMOD
-std::vector<std::string> read_specs(const char *list) {
+// the key specs of the list (one per line; "-" for none), or without a list that of MELTY2_KEYMOD
+std::vector<std::string> read_specs(const std::string &list) {
     std::vector<std::string> specs;
-    if (list) {
+    if (!list.empty()) {
         std::ifstream f(list);
-        if (!f) throw std::runtime_error(std::string(list) + ": cannot open");
+        if (!f) throw std::runtime_error(list + ": cannot open");
         std::string line;
         while (std::getline(f, line)) {
             line.erase(std::find_if(line.begin(), line.end(), [](char c) { return c == '\r' || c == '\n'; }), line.end());
             if (line.empty() || line[0] == '#') continue;
             if (line.find_first_of(" \t") != std::string::npos)
-                throw std::invalid_argument(std::string(list) + ": a line holds one key spec, without spaces: " + line);
+                throw std::invalid_argument(list + ": a line holds one key spec, without spaces: " + line);
             specs.push_back(line);
         }
     } else {
@@ -239,9 +244,9 @@ std::vector<KeyRun> make_keys(const std::vector<std::string> &specs, uint32_t se
         const std::string ks = spec.substr(0, hash);
         const size_t at = ks.find('@');
         KeyRun k{ks.substr(0, at), at == std::string::npos ? streams : ks.substr(at + 1), g,
-                 hash == std::string::npos ? seed : static_cast<uint32_t>(std::strtoul(spec.c_str() + hash + 1, nullptr, 0))};
+                 hash == std::string::npos ? seed : number::parse<uint32_t>(std::string_view(spec).substr(hash + 1))};
         arx::Key key = keymod::seed_key(k.seed);
-        if (k.keymod != "-") keymod::apply(key, k.keymod.c_str());
+        if (k.keymod != "-") keymod::apply(key, k.keymod);
         std::copy(key.begin(), key.end(), k.g.k);
         set_streams(k.g, k.streams);
         keys.push_back(k);
@@ -257,19 +262,20 @@ struct Stage {
 };
 
 // the step counts "M[,M...]"
-std::vector<int> parse_ms(const char *arg) {
+std::vector<int> parse_ms(std::string_view arg) {
     std::vector<int> ms;
-    for (const char *q = arg; *q;) {
-        char *e;
-        ms.push_back(static_cast<int>(std::strtol(q, &e, 10)));
-        if (e == q || ms.back() <= 0 || (*e && *e != ',')) throw std::invalid_argument(std::string("invalid steps: ") + arg);
-        q = *e ? e + 1 : e;
+    for (std::string_view q = arg; !q.empty();) {
+        const std::optional<int> m = number::take<int>(q);
+        if (!m || *m <= 0 || (!q.empty() && !q.starts_with(',')) || q == ",")
+            throw std::invalid_argument("invalid steps: " + std::string(arg));
+        ms.push_back(*m);
+        if (!q.empty()) q.remove_prefix(1);
     }
     return ms;
 }
 
 int run_main(int argc, char **argv) {
-    const std::vector<char *> arg = parse_flags(
+    const std::vector<std::string_view> arg = parse_flags(
         argc, argv,
         "testu01_stest [flags] structure M: the tests of BigCrush on GPU for the first M ops of the structure\n"
         "       testu01_stest --score=M[,M...] [flags] < structures: the score mode for searches\n"
@@ -285,15 +291,12 @@ int run_main(int argc, char **argv) {
     o.t.fast = absl::GetFlag(FLAGS_fast);
     o.logsum = absl::GetFlag(FLAGS_log_sum);
     const std::string streams = absl::GetFlag(FLAGS_streams), score_flag = absl::GetFlag(FLAGS_score);
-    const std::vector<int> score_ms = score_flag.empty() ? std::vector<int>{} : parse_ms(score_flag.c_str());
-    // (nullptr: none)
-    const std::string pidfile_flag = absl::GetFlag(FLAGS_pidfile), list_flag = absl::GetFlag(FLAGS_keylist),
-                      plan_flag = absl::GetFlag(FLAGS_plan);
-    const char *pidfile = pidfile_flag.empty() ? nullptr : pidfile_flag.c_str(), *list = list_flag.empty() ? nullptr : list_flag.c_str(),
-               *plan = plan_flag.empty() ? nullptr : plan_flag.c_str();
-    const bool score = !score_ms.empty() || plan;
-    if (arg.size() != (score ? 0u : 2u) || (!score_ms.empty() && plan)) usage();
-    if (pidfile) pidfile::write(pidfile);
+    const std::vector<int> score_ms = score_flag.empty() ? std::vector<int>{} : parse_ms(score_flag);
+    // (empty: none)
+    const std::string pidfile = absl::GetFlag(FLAGS_pidfile), list = absl::GetFlag(FLAGS_keylist), plan = absl::GetFlag(FLAGS_plan);
+    const bool score = !score_ms.empty() || !plan.empty();
+    if (arg.size() != (score ? 0u : 2u) || (!score_ms.empty() && !plan.empty())) usage();
+    if (!pidfile.empty()) pidfile::write(pidfile);
     // wait for the device by blocking the thread, instead of spinning on a CPU core
     CHECK_GPU(gpuSetDeviceFlags(gpuDeviceScheduleBlockingSync));
     Gen g;
@@ -301,20 +304,20 @@ int run_main(int argc, char **argv) {
 
     // the stages of the score mode: those of the plan, or one of the options
     std::vector<Stage> stages;
-    if (plan) {
+    if (!plan.empty()) {
         std::ifstream f(plan);
-        if (!f) throw std::runtime_error(std::string(plan) + ": cannot open");
+        if (!f) throw std::runtime_error(plan + ": cannot open");
         std::string line;
         while (std::getline(f, line)) {
             std::istringstream in(line);
             std::string ms, tests, scale, keylist, offset = "0";
             if (!(in >> ms) || ms[0] == '#') continue;
-            if (!(in >> tests >> scale >> keylist)) throw std::invalid_argument(std::string(plan) + ": M[,M...] tests scale keylist [offset]: " + line);
+            if (!(in >> tests >> scale >> keylist)) throw std::invalid_argument(plan + ": M[,M...] tests scale keylist [offset]: " + line);
             in >> offset;
-            Stage st{parse_ms(ms.c_str()), o, make_keys(read_specs(keylist.c_str()), seed, streams, g)};
+            Stage st{parse_ms(ms), o, make_keys(read_specs(keylist), seed, streams, g)};
             st.o.t.tests = tests;
-            st.o.t.scale = std::atof(scale.c_str());
-            st.o.t.first = std::strtoull(offset.c_str(), nullptr, 0);
+            st.o.t.scale = number::parse<double>(scale);
+            st.o.t.first = number::parse<uint64_t>(offset);
             stages.push_back(st);
         }
     } else {
@@ -328,7 +331,7 @@ int run_main(int argc, char **argv) {
         while (std::getline(std::cin, line)) {
             if (line.empty() || line[0] == '#') continue;
             const size_t tab = line.find('\t');
-            const double limit = tab == std::string::npos ? HUGE_VAL : std::strtod(line.c_str() + tab + 1, nullptr);
+            const double limit = tab == std::string::npos ? HUGE_VAL : number::parse<double>(std::string_view(line).substr(tab + 1));
             const arx::Arx full = arx::parse(line.substr(0, tab));
             Summary s;
             double lsum = 0;  // the sum of log(1 + z) over the keys, step counts and counter orders
@@ -365,35 +368,35 @@ int run_main(int argc, char **argv) {
                                 s.add(ks);
                                 lsum += std::log1p(std::min(std::max(ks.max_z, 0.0), kFailZ));
                                 if (verbose)
-                                    std::printf("key\tM=%d\tswap=%d\tkey=%s@%s#%u\ttests=%s\tscale=%g\tmax_z=%.3f\tmin_p=%.3g\tflagged=%d\n", m, w,
-                                                k.keymod.c_str(), k.streams.c_str(), k.seed, st.o.t.tests.c_str(), st.o.t.scale, ks.max_z, ks.min_p, ks.flagged);
+                                    std::cout << std::format("key\tM={}\tswap={}\tkey={}@{}#{}\ttests={}\tscale={:g}\tmax_z={:.3f}\tmin_p={:.3g}\tflagged={}\n",
+                                                             m, w, k.keymod, k.streams, k.seed, st.o.t.tests, st.o.t.scale, ks.max_z, ks.min_p, ks.flagged);
                             }
                     }
                 }
             } catch (const testu01_gpu::TestFailure &) {  // a test failing completely, e.g. running out of its counters
                 s.add(0, HUGE_VAL);
             }
-            std::printf("score\tmax_z=%.3f\tmin_p=%.3g\tflagged=%d\tvalid=%d\tpropagated=%d\trepeated=%d\tstopped=%d\tlogsum=%.4f\t%s\n", s.max_z, s.min_p,
-                        s.flagged, arx::valid(full), arx::keys_propagated_by(full, deadline), arx::repeated(full), over(), lsum,
-                        arx::to_string(full).c_str());
-            std::fflush(stdout);
+            std::cout << std::format("score\tmax_z={:.3f}\tmin_p={:.3g}\tflagged={}\tvalid={:d}\tpropagated={:d}\trepeated={:d}\tstopped={:d}\tlogsum={:.4f}\t{}",
+                                     s.max_z, s.min_p, s.flagged, arx::valid(full), arx::keys_propagated_by(full, deadline), arx::repeated(full),
+                                     over(), lsum, arx::to_string(full))
+                      << std::endl;
         }
         return 0;
     }
     arx::Arx a = arx::parse(arg[0]);
-    const int M = std::atoi(arg[1]);
+    const int M = number::parse<int>(arg[1]);
     if (M < 1 || M > static_cast<int>(a.size())) throw std::invalid_argument("M must satisfy 1 <= M <= (ops)");
     a.resize(M);
     const auto t0 = std::chrono::steady_clock::now();
     const auto kn = compile(a);
-    LOG(INFO) << absl::StrFormat("compiled the kernels in %.1fs", seconds_since(t0));
+    LOG(INFO) << std::format("compiled the kernels in {:.1f}s", seconds_since(t0));
     for (const KeyRun &k : stages[0].keys) {
         signals::throw_if_stopped();
-        std::printf("# M=%d seed=%u%s keymod=%s scale=%g streams=%s\n", M, k.seed, swp ? " swap" : "", k.keymod.c_str(), o.t.scale, k.streams.c_str());
+        std::cout << std::format("# M={} seed={}{} keymod={} scale={:g} streams={}\n", M, k.seed, swp ? " swap" : "", k.keymod, o.t.scale, k.streams);
         const Summary s = run_tests(o, battery, *kn, k.g);
-        std::printf("summary\tM=%d\tseed=%u\tswap=%d\tkeymod=%s\tmin_p=%.3g\tmax_p=%.6g\tflagged=%d\tstreams=%s\n", M, k.seed, swp, k.keymod.c_str(),
-                    s.min_p, s.max_p, s.flagged, k.streams.c_str());
-        std::fflush(stdout);
+        std::cout << std::format("summary\tM={}\tseed={}\tswap={}\tkeymod={}\tmin_p={:.3g}\tmax_p={:.6g}\tflagged={}\tstreams={}", M, k.seed, swp,
+                                 k.keymod, s.min_p, s.max_p, s.flagged, k.streams)
+                  << std::endl;
     }
     return 0;
 }

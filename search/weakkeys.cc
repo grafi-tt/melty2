@@ -12,18 +12,19 @@
 // tab-separated values.
 #include <algorithm>
 #include <csignal>
-#include <cstdio>
-#include <cstdlib>
+#include <format>
 #include <fstream>
-#include <memory>
+#include <iostream>
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 #include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
 #include "metric.hpp"
+#include "number.hpp"
 #include "pidfile.hpp"
 #include "signal.hpp"
 
@@ -37,15 +38,14 @@ constexpr int kControls = 64;
 constexpr int kChunk = 256;  // keys per call of the metric, to bound the memory of the GPU metric
 
 int run(int argc, char **argv) {
-    const std::vector<char *> arg = parse_flags(argc, argv, "weakkeys [flags] structure mlo mhi n list: the differential bias of structured keys");
+    const std::vector<std::string_view> arg = parse_flags(argc, argv, "weakkeys [flags] structure mlo mhi n list: the differential bias of structured keys");
     if (arg.size() != 5) usage();
     const int nbase = absl::GetFlag(FLAGS_nbase);
-    const std::string dump_file = absl::GetFlag(FLAGS_dump);
-    const char *dump = dump_file.empty() ? nullptr : dump_file.c_str();
-    if (const std::string pf = absl::GetFlag(FLAGS_pidfile); !pf.empty()) pidfile::write(pf.c_str());
+    const std::string dump = absl::GetFlag(FLAGS_dump);
+    if (const std::string pf = absl::GetFlag(FLAGS_pidfile); !pf.empty()) pidfile::write(pf);
     const arx::Arx a = arx::parse(arg[0]);
-    const int mlo = std::atoi(arg[1]), mhi = std::atoi(arg[2]), n = std::atoi(arg[3]);
-    const std::string list = arg[4];
+    const int mlo = number::parse<int>(arg[1]), mhi = number::parse<int>(arg[2]), n = number::parse<int>(arg[3]);
+    const std::string list(arg[4]);
 
     // read the specs, skipping empty lines and comments
     std::vector<std::string> mods;
@@ -67,7 +67,7 @@ int run(int argc, char **argv) {
     for (const std::string &mod : mods)
         for (int b = 0; b < nbase; ++b) {
             arx::Key k = keymod::seed_key(1 + b);
-            keymod::apply(k, mod.c_str());
+            keymod::apply(k, mod);
             keys.push_back(k);
         }
     const int nk = static_cast<int>(keys.size()), nd = mhi - mlo + 1;
@@ -83,16 +83,18 @@ int run(int argc, char **argv) {
     // the spec of the structured key m (0-based, after the controls)
     const auto spec = [&](int m) -> const std::string & { return mods[m / nbase]; };
 
-    std::printf("noise(1 key)=%.2e  structured keys=%d x %d bases\n", metric::noise(n), nm, nbase);
-    if (dump) {
-        const std::unique_ptr<std::FILE, int (*)(std::FILE *)> o(std::fopen(dump, "w"), std::fclose);
-        if (!o) throw std::runtime_error(std::string(dump) + ": cannot open");
+    std::cout << std::format("noise(1 key)={:.2e}  structured keys={} x {} bases\n", metric::noise(n), nm, nbase);
+    if (!dump.empty()) {
+        std::ofstream o(dump);
+        if (!o) throw std::runtime_error(dump + ": cannot open");
         for (int k = 0; k < nk; ++k) {
-            if (k < kControls) std::fprintf(o.get(), "CTRL\t%d", k);
-            else std::fprintf(o.get(), "%s\t%d", spec(k - kControls).c_str(), (k - kControls) % nbase + 1);
-            for (int d = 0; d < nd; ++d) std::fprintf(o.get(), "\t%.4e", bias(k, d));
-            std::fprintf(o.get(), "\n");
+            if (k < kControls) o << std::format("CTRL\t{}", k);
+            else o << std::format("{}\t{}", spec(k - kControls), (k - kControls) % nbase + 1);
+            for (int d = 0; d < nd; ++d) o << std::format("\t{:.4e}", bias(k, d));
+            o << '\n';
         }
+        o.close();
+        if (!o) throw std::runtime_error(dump + ": cannot write");
     }
     for (int d = 0; d < nd; ++d) {
         double mx = -1e9, sum = 0;
@@ -110,8 +112,8 @@ int run(int argc, char **argv) {
             }
             if (v > mx) cnt++;
         }
-        std::printf("depth %2d  control mean %.2e max %.2e | structured max %.2e (%s) ; %d above control max\n",
-                    mlo + d, sum / kControls, mx, wmx, wi >= 0 ? spec(wi).c_str() : "-", cnt);
+        std::cout << std::format("depth {:>2}  control mean {:.2e} max {:.2e} | structured max {:.2e} ({}) ; {} above control max\n",
+                                 mlo + d, sum / kControls, mx, wmx, wi >= 0 ? std::string_view(spec(wi)) : "-", cnt);
     }
     for (int d = 0; d < nd && nm > 0; ++d) {
         // the worst 8 structured keys, the first of equal ones first
@@ -124,8 +126,7 @@ int run(int argc, char **argv) {
         });
         for (int t = 0; t < top; ++t) {
             const int m = order[t];
-            std::printf("  worst@%d: %-24s base %d  bias %.2e\n", mlo + d, spec(m).c_str(), m % nbase + 1,
-                        bias(kControls + m, d));
+            std::cout << std::format("  worst@{}: {:<24} base {}  bias {:.2e}\n", mlo + d, spec(m), m % nbase + 1, bias(kControls + m, d));
         }
     }
     return 0;

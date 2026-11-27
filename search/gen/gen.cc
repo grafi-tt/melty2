@@ -4,23 +4,24 @@
 // melty2_init(seed, 0, 0, 0), modified by MELTY2_KEYMOD; with swap = 1, the halves of the counter are
 // swapped.
 #include <cstdio>
-#include <cstdlib>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 #include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
+#include "number.hpp"
 
 #include "kern.hpp"
 
 namespace {
 
 int run(int argc, char **argv) {
-    const std::vector<char *> arg = parse_flags(argc, argv, "gen seed swap");
+    const std::vector<std::string_view> arg = parse_flags(argc, argv, "gen seed swap");
     if (arg.size() != 2) usage();
-    const int swp = std::atoi(arg[1]);
-    arx::Key key = keymod::seed_key(static_cast<uint32_t>(std::strtoul(arg[0], nullptr, 0)));
+    const int swp = number::parse<int>(arg[1]);
+    arx::Key key = keymod::seed_key(number::parse<uint32_t>(arg[0]));
     keymod::from_env(key);
     constexpr int kBuf = 1 << 16;
     std::vector<uint32_t> buf(kBuf);

@@ -6,13 +6,14 @@
 //   --shift N      right shift of the outputs before taking the lower bits (default 0)
 #include <array>
 #include <cstdio>
-#include <cstdlib>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 #include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
+#include "number.hpp"
 
 #include "kern.hpp"
 
@@ -21,11 +22,11 @@ ABSL_FLAG(int, shift, 0, "right shift of the outputs before taking the lower bit
 namespace {
 
 int run(int argc, char **argv) {
-    const std::vector<char *> arg = parse_flags(argc, argv, "genlow [flags] seed swap nbits");
+    const std::vector<std::string_view> arg = parse_flags(argc, argv, "genlow [flags] seed swap nbits");
     if (arg.size() != 3) usage();
     const int sh = absl::GetFlag(FLAGS_shift);
-    const auto seed = static_cast<uint32_t>(std::strtoul(arg[0], nullptr, 0));
-    const int swp = std::atoi(arg[1]), nb = std::atoi(arg[2]);
+    const auto seed = number::parse<uint32_t>(arg[0]);
+    const int swp = number::parse<int>(arg[1]), nb = number::parse<int>(arg[2]);
     if (nb < 1 || nb > 32 || 32 % nb != 0) {
         LOG(ERROR) << "nbits must divide 32";
         return 1;

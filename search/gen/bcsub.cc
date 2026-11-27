@@ -7,10 +7,10 @@
 //                    the output at the position p is that of the stream s = p mod 2^b at its index
 //                    p >> b, of the counter index + (s << c)
 #include <array>
-#include <cstdio>
-#include <cstdlib>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 extern "C" {
@@ -21,6 +21,7 @@ extern "C" {
 #include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
+#include "number.hpp"
 
 #include "kern.hpp"
 
@@ -66,14 +67,25 @@ unsigned int next() {
 constexpr int kDefaultTests[] = {12, 22, 23, 24, 34, 40, 41, 42, 43, 44, 45, 66, 67, 76, 77, 78, 79, 80, 81, 82, 93, 94, 95, 96};
 
 int run(int argc, char **argv) {
-    const std::vector<char *> arg = parse_flags(argc, argv, "bcsub [flags] seed swap [tests...]");
+    const std::vector<std::string_view> arg = parse_flags(argc, argv, "bcsub [flags] seed swap [tests...]");
     const std::string battery = absl::GetFlag(FLAGS_battery), streams = absl::GetFlag(FLAGS_streams);
     if (!streams.empty()) {
-        if (std::sscanf(streams.c_str(), "ctr:%d:%d", &stream.sbits, &stream.cbit) != 2 || stream.sbits < 1 || stream.sbits > 12 ||
-            stream.cbit < 0 || stream.cbit > 63) {
+        // "ctr:b:c"
+        std::string_view s = streams;
+        const auto field = [&s]() -> std::optional<int> {
+            if (!s.starts_with(':')) return std::nullopt;
+            s.remove_prefix(1);
+            return number::take<int>(s);
+        };
+        const bool ctr = s.starts_with("ctr");
+        if (ctr) s.remove_prefix(3);
+        const std::optional<int> b = ctr ? field() : std::nullopt, c = b ? field() : std::nullopt;
+        if (!c || !s.empty() || *b < 1 || *b > 12 || *c < 0 || *c > 63) {
             LOG(ERROR) << "invalid streams (ctr:b:c, 1 <= b <= 12): " << streams;
             return 1;
         }
+        stream.sbits = *b;
+        stream.cbit = *c;
         stream.buf.assign(static_cast<size_t>(kLanes) << stream.sbits, 0);
         stream.idx = stream.buf.size();
     }
@@ -84,14 +96,14 @@ int run(int argc, char **argv) {
         return 1;
     }
     const int narg = static_cast<int>(arg.size());
-    const auto s0 = static_cast<uint32_t>(std::strtoul(arg[0], nullptr, 0));
-    stream.swp = std::atoi(arg[1]);
+    const auto s0 = number::parse<uint32_t>(arg[0]);
+    stream.swp = number::parse<int>(arg[1]);
     stream.key = keymod::seed_key(s0);
     keymod::from_env(stream.key);
     std::array<int, 200> rep{};
     if (narg > 2) {
         for (int i = 2; i < narg; ++i) {
-            const int t = std::atoi(arg[i]);
+            const int t = number::parse<int>(arg[i]);
             if (t < 1 || t > 106) {
                 LOG(ERROR) << "test numbers must be in [1, 106]";
                 return 1;

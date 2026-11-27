@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // check : arx::kMelty2 in arx.hpp computes the same outputs as the kernel of the library (melty2_kernel.h)
-#include <cstdio>
+#include <format>
+#include <iostream>
 
 #include "arx.hpp"
 #include "melty2_kernel.h"
@@ -24,6 +25,6 @@ int main() {
         const uint32_t expected = melty2_kernel(v, static_cast<uint32_t>(ctr), static_cast<uint32_t>(ctr >> 32));
         bad += arx::eval(a, static_cast<int>(a.size()), k, ctr) != expected;
     }
-    std::printf("arx::kMelty2 vs melty2_kernel.h: %ld mismatches of %ld\n", bad, n);
+    std::cout << std::format("arx::kMelty2 vs melty2_kernel.h: {} mismatches of {}\n", bad, n);
     return bad != 0;
 }

@@ -20,11 +20,12 @@
 // where the margin is L minus the last biased depth (L - 10 if none is biased, i.e. at least 10).
 #include <algorithm>
 #include <csignal>
-#include <cstdio>
-#include <cstdlib>
+#include <format>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 #include "flags.hpp"
 #include "logging.hpp"
@@ -44,21 +45,20 @@ namespace {
 constexpr int kW = 10;
 
 int run(int argc, char **argv) {
-    const std::vector<char *> arg = parse_flags(argc, argv, "rank [flags] list: the margin of every structure of the list");
+    const std::vector<std::string_view> arg = parse_flags(argc, argv, "rank [flags] list: the margin of every structure of the list");
     if (arg.size() != 1) usage();
     const int nk = absl::GetFlag(FLAGS_nkeys), n = absl::GetFlag(FLAGS_pairs), weak = absl::GetFlag(FLAGS_weak_words),
               keyset = absl::GetFlag(FLAGS_keyset);
     const uint64_t seed = absl::GetFlag(FLAGS_seed);
-    if (const std::string pf = absl::GetFlag(FLAGS_pidfile); !pf.empty()) pidfile::write(pf.c_str());
-    const std::string list = arg[0];
+    if (const std::string pf = absl::GetFlag(FLAGS_pidfile); !pf.empty()) pidfile::write(pf);
+    const std::string list(arg[0]);
     std::ifstream f(list);
     if (!f) throw std::runtime_error(list + ": cannot open");
 
     const std::vector<metric::Key> keys =
         keyset == 1 ? metric::sparse45_keys(nk, seed, weak) : metric::random_keys(nk, seed, weak);
     const double threshold = 5 * metric::noise(n);
-    std::printf("# keys=%d pairs=%d seed=%llu keyset=%d threshold=%.2e\n", nk, n, static_cast<unsigned long long>(seed),
-                keyset, threshold);
+    std::cout << std::format("# keys={} pairs={} seed={} keyset={} threshold={:.2e}\n", nk, n, seed, keyset, threshold);
 
     std::string line;
     while (std::getline(f, line)) {
@@ -76,10 +76,9 @@ int run(int argc, char **argv) {
             for (int key = 0; key < nk; ++key) bx[m] = std::fmax(bx[m], pk[key * nd + m]);
             if (bx[m] > threshold) last = mlo + m;
         }
-        std::printf("%d\t%d\t%s\t%s\t", L - last, last, name.c_str(), arx::to_string(a).c_str());
-        for (int m = 0; m < nd; ++m) std::printf("%s%.1e", m ? " " : "", bx[m]);
-        std::printf("\n");
-        std::fflush(stdout);
+        std::cout << std::format("{}\t{}\t{}\t{}\t", L - last, last, name, arx::to_string(a));
+        for (int m = 0; m < nd; ++m) std::cout << std::format("{}{:.1e}", m ? " " : "", bx[m]);
+        std::cout << std::endl;
     }
     return 0;
 }

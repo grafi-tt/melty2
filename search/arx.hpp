@@ -13,10 +13,13 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <format>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include "number.hpp"
 
 namespace arx {
 
@@ -153,9 +156,7 @@ inline bool valid(const Arx &a) {
 inline Arx parse(std::string_view str) {
     Arx a;
     size_t p = 0;
-    const auto bad = [&](const char *what) {
-        throw std::invalid_argument(std::string("invalid structure (") + what + "): " + std::string(str));
-    };
+    const auto bad = [&](std::string_view what) { throw std::invalid_argument(std::format("invalid structure ({}): {}", what, str)); };
     const auto skip = [&] {
         while (p < str.size() && std::isspace(static_cast<unsigned char>(str[p]))) ++p;
     };
@@ -164,7 +165,7 @@ inline Arx parse(std::string_view str) {
         size_t q = p;
         while (q < str.size() && std::isdigit(static_cast<unsigned char>(str[q]))) ++q;
         if (q == p) bad("a number is expected");
-        const int v = std::atoi(std::string(str.substr(p, q - p)).c_str());
+        const int v = number::parse<int>(str.substr(p, q - p));
         if (v < lo || v > hi) bad("a number is out of range");
         p = q;
         return v;

@@ -66,17 +66,19 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
+#include <format>
 #include <fstream>
+#include <iostream>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
-#include "absl/strings/str_format.h"
 #include "flags.hpp"
 #include "logging.hpp"
 #include "metric.hpp"
+#include "number.hpp"
 #include "pidfile.hpp"
 #include "signal.hpp"
 
@@ -252,15 +254,19 @@ int first_difference(const arx::Arx &a, const arx::Arx &b) {
 // Save the state with the arguments to path, atomically. A failure is reported, and the search goes on.
 void save_checkpoint(const std::string &path, const std::string &args, const State &st) {
     const std::string tmp = path + ".tmp";
-    std::FILE *f = std::fopen(tmp.c_str(), "w");
+    std::ofstream f(tmp);
     if (!f) {
         PLOG(ERROR) << tmp;
         return;
     }
-    std::fprintf(f, "sa-checkpoint 1\n%s\n%d %llu %.17g %.17g %.17g\n%s\n%s\n", args.c_str(), st.it,
-                 static_cast<unsigned long long>(st.rng), st.fc, st.fb, st.f0, arx::to_string(st.cur).c_str(),
-                 arx::to_string(st.best).c_str());
-    if (std::fclose(f) != 0 || std::rename(tmp.c_str(), path.c_str()) != 0) PLOG(ERROR) << path;
+    f << std::format("sa-checkpoint 1\n{}\n{} {} {:.17g} {:.17g} {:.17g}\n{}\n{}\n", args, st.it, st.rng, st.fc, st.fb, st.f0,
+                     arx::to_string(st.cur), arx::to_string(st.best));
+    f.close();
+    if (!f) {
+        LOG(ERROR) << tmp << ": cannot write";
+        return;
+    }
+    if (std::rename(tmp.c_str(), path.c_str()) != 0) PLOG(ERROR) << path;
 }
 
 // Load the state from path if it exists. The arguments must match.
@@ -272,19 +278,28 @@ std::optional<State> load_checkpoint(const std::string &path, const std::string 
         throw std::runtime_error(path + ": not a checkpoint");
     if (saved != args) throw std::runtime_error(path + ": the arguments differ: " + saved);
     State st;
-    unsigned long long r;
-    if (!std::getline(f, nums) ||
-        std::sscanf(nums.c_str(), "%d %llu %lf %lf %lf", &st.it, &r, &st.fc, &st.fb, &st.f0) != 5)
+    // "it rng fc fb f0", as save_checkpoint writes them
+    try {
+        if (!std::getline(f, nums)) throw std::invalid_argument("no numbers");
+        std::istringstream in(nums);
+        std::string it, rng, fc, fb, f0, extra;
+        if (!(in >> it >> rng >> fc >> fb >> f0) || in >> extra) throw std::invalid_argument("not 5 numbers");
+        st.it = number::parse<int>(it);
+        st.rng = number::parse<uint64_t>(rng);
+        st.fc = number::parse<double>(fc);
+        st.fb = number::parse<double>(fb);
+        st.f0 = number::parse<double>(f0);
+    } catch (const std::invalid_argument &) {
         throw std::runtime_error(path + ": broken checkpoint");
+    }
     if (!std::getline(f, cur) || !std::getline(f, best)) throw std::runtime_error("truncated checkpoint");
-    st.rng = r;
     st.cur = arx::parse(cur);
     st.best = arx::parse(best);
     return st;
 }
 
 int run(int argc, char **argv) {
-    const std::vector<char *> arg = parse_flags(argc, argv,
+    const std::vector<std::string_view> arg = parse_flags(argc, argv,
                                                 "sa [flags] L seed iters init: simulated annealing of an L-op structure (init may be ORIG22 for the "
                                                 "original 22-step kernel)");
     if (arg.size() != 4) usage();
@@ -303,9 +318,9 @@ int run(int argc, char **argv) {
     o.freeze = absl::GetFlag(FLAGS_freeze);
     o.deadline = absl::GetFlag(FLAGS_key_deadline);
     o.rotations_only = absl::GetFlag(FLAGS_rotations_only);
-    const int L = std::atoi(arg[0]);
-    const int iters = std::atoi(arg[2]);
-    arx::Arx cur = arx::parse(std::strcmp(arg[3], "ORIG22") == 0 ? arx::kMelty2Orig22 : arg[3]);
+    const int L = number::parse<int>(arg[0]);
+    const int iters = number::parse<int>(arg[2]);
+    arx::Arx cur = arx::parse(arg[3] == "ORIG22" ? arx::kMelty2Orig22 : arg[3]);
     if (L <= kW || L > static_cast<int>(cur.size())) {
         LOG(ERROR) << "L must satisfy " << kW << " < L <= (ops of init)";
         return 1;
@@ -319,16 +334,16 @@ int run(int argc, char **argv) {
         return 1;
     }
     cur.resize(L);
-    Search search(o, std::strtoull(arg[1], nullptr, 0) * UINT32_C(2654435761) + 1);
+    Search search(o, number::parse<uint64_t>(arg[1]) * UINT32_C(2654435761) + 1);
     XorShift64 &rr = search.rng();
-    if (!o.pidfile.empty()) pidfile::write(o.pidfile.c_str());
+    if (!o.pidfile.empty()) pidfile::write(o.pidfile);
 
     // cur: the current structure and its objective fc; best: the best one so far and fb. The
     // candidates are evaluated with the key seeds 1 to 4 in turn, so that the search doesn't overfit
     // a fixed set of keys. A worse candidate is accepted with the probability exp(-(f - fc) / temp),
     // where the temperature decreases linearly from 0.52 to 0.02.
     // args: the arguments which a checkpoint must match
-    std::string args = "L=" + std::to_string(L) + " seed=" + arg[1] + " iters=" + std::to_string(iters) +
+    std::string args = "L=" + std::to_string(L) + " seed=" + std::string(arg[1]) + " iters=" + std::to_string(iters) +
                        " k=" + std::to_string(o.nk) + " n=" + std::to_string(o.n) + " w=" + std::to_string(o.weak) +
                        " K=" + std::to_string(o.keyset) + " O=" + std::to_string(o.objmode);
     if (o.subtract) args += " S=1";
@@ -399,7 +414,7 @@ int run(int argc, char **argv) {
         // SIGUSR1: save the checkpoint; SIGINT or SIGTERM: save it and exit (see signal.hpp)
         const bool usr1 = signals::take(SIGUSR1), stop = signals::stop_requested();
         if ((it + 1) % 100 == 0 || usr1 || stop) {
-            LOG(INFO) << absl::StrFormat("it=%d cur=%.2f best=%.2f %s", it + 1, fc, fb, arx::to_string(best));
+            LOG(INFO) << std::format("it={} cur={:.2f} best={:.2f} {}", it + 1, fc, fb, arx::to_string(best));
             if (!o.ckpt.empty()) save_checkpoint(o.ckpt, args, State{it + 1, rr.state(), cur, best, fc, fb, f0});
             if (stop) {
                 LOG(WARNING) << "interrupted at it=" << it + 1;
@@ -412,10 +427,10 @@ int run(int argc, char **argv) {
     Prof prof{};
     const double fv = search.objective(best, 2 * o.nk, 4 * o.n, 12345, &prof);
     const arx::Cost c = arx::cost(best);
-    std::printf("valid=%d L=%d R=%d cost=%d/%d init=%.2f best=%.2f verify=%.2f prof(d%d..%d):", arx::valid(best),
-                static_cast<int>(best.size()), c.nrot, c.rot1, c.rot3, f0, fb, fv, L - kW, L);
-    for (const double v : prof) std::printf(" %.1e", v);
-    std::printf("\n  %s\n", arx::to_string(best).c_str());
+    std::cout << std::format("valid={:d} L={} R={} cost={}/{} init={:.2f} best={:.2f} verify={:.2f} prof(d{}..{}):",
+                             arx::valid(best), best.size(), c.nrot, c.rot1, c.rot3, f0, fb, fv, L - kW, L);
+    for (const double v : prof) std::cout << std::format(" {:.1e}", v);
+    std::cout << std::format("\n  {}\n", arx::to_string(best));
     return 0;
 }
 

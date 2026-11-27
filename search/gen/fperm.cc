@@ -5,26 +5,28 @@
 // approximation.
 #include <array>
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
+#include <format>
+#include <iostream>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 #include "flags.hpp"
 #include "keymod.hpp"
 #include "logging.hpp"
+#include "number.hpp"
 
 #include "kern.hpp"
 
 namespace {
 
 int run(int argc, char **argv) {
-    const std::vector<char *> arg = parse_flags(argc, argv, "fperm seed swap N r t");
+    const std::vector<std::string_view> arg = parse_flags(argc, argv, "fperm seed swap N r t");
     if (arg.size() != 5) usage();
-    const auto seed = static_cast<uint32_t>(std::strtoul(arg[0], nullptr, 0));
-    const int swp = std::atoi(arg[1]);
-    const long N = std::atol(arg[2]);
-    const int r = std::atoi(arg[3]), t = std::atoi(arg[4]);
+    const auto seed = number::parse<uint32_t>(arg[0]);
+    const int swp = number::parse<int>(arg[1]);
+    const long N = number::parse<long>(arg[2]);
+    const int r = number::parse<int>(arg[3]), t = number::parse<int>(arg[4]);
     if (t < 2 || t > 8) {
         LOG(ERROR) << "t must be in [2, 8]";
         return 1;
@@ -64,7 +66,7 @@ int run(int argc, char **argv) {
     const double df = fact - 1;
     const double z = (std::cbrt(chi / df) - (1 - 2 / (9 * df))) / std::sqrt(2 / (9 * df));
     const double p = 0.5 * std::erfc(z / std::sqrt(2));
-    std::printf("M=%d seed=%u swap=%d N=%ld r=%d t=%d chi2=%.1f z=%.2f p=%.3g\n", kKernM, seed, swp, N, r, t, chi, z, p);
+    std::cout << std::format("M={} seed={} swap={} N={} r={} t={} chi2={:.1f} z={:.2f} p={:.3g}\n", kKernM, seed, swp, N, r, t, chi, z, p);
     return 0;
 }
 

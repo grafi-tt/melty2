@@ -25,7 +25,8 @@ if [ ! -f "$d/kern.hpp" ] || [ "$here/mkkern.py" -nt "$d/kern.hpp" ]; then
     mv "$d/kern.hpp.tmp.$$" "$d/kern.hpp"
 fi
 stale=0
-for f in "$here/$tool.cc" "$here/../keymod.hpp" "$here/../arx.hpp" "$here/../logging.hpp" "$here/../flags.hpp" "$d/kern.hpp"; do
+for f in "$here/$tool.cc" "$here/../keymod.hpp" "$here/../arx.hpp" "$here/../number.hpp" "$here/../logging.hpp" "$here/../flags.hpp" \
+         "$d/kern.hpp"; do
     [ "$f" -nt "$d/$tool" ] && stale=1
 done
 if [ ! -x "$d/$tool" ] || [ $stale = 1 ]; then
