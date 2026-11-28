@@ -317,7 +317,7 @@ The key consists of six 32bit words `v[0..5]`. The 64bit counter `(hi, lo)` is i
 v[0] ^= lo; v[1] += hi; v[2] ^= hi; v[3] += lo;
 ```
 
-and then 20 ARX steps (7 additions, 3 xors and 10 xor-rotations) are applied, where the last written word is the output. See [`src/melty2_kernel.h`](src/melty2_kernel.h) for the exact definition.
+and then 20 ARX steps (7 additions, 3 xors and 10 xor-rotations) are applied, where the last written word is the output. See [`include/melty2_internal_kernel.h`](include/melty2_internal_kernel.h) for the exact definition.
 
 The kernel consists of two phases.
 

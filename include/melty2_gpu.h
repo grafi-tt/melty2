@@ -19,12 +19,12 @@
 
 #include "melty2.h"
 
-#include "melty2_kernel.h"
+#include "melty2_internal_kernel.h"
 
 #ifndef MELTY2_INTERNAL_FUNC
 #define MELTY2_INTERNAL_FUNC static inline __host__ __device__
 #endif
-#include "melty2_derive.h"
+#include "melty2_internal_derive.h"
 
 namespace melty2 {
 namespace gpu {

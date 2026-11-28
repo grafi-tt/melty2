@@ -1,5 +1,5 @@
-#ifndef MELTY2_MELTY2_KERNEL_H_
-#define MELTY2_MELTY2_KERNEL_H_
+#ifndef MELTY2_MELTY2_INTERNAL_KERNEL_H_
+#define MELTY2_MELTY2_INTERNAL_KERNEL_H_
 
 #define melty2_rotl(x, s) ((x) << (s) | (x) >> (32 - (s)))
 
@@ -48,4 +48,4 @@
     (v)[3] += (v)[5] \
 )
 
-#endif  /* MELTY2_MELTY2_KERNEL_H_ */
+#endif  /* MELTY2_MELTY2_INTERNAL_KERNEL_H_ */

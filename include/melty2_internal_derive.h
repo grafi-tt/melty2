@@ -1,5 +1,5 @@
-#ifndef MELTY2_MELTY2_DERIVE_H_
-#define MELTY2_MELTY2_DERIVE_H_
+#ifndef MELTY2_MELTY2_INTERNAL_DERIVE_H_
+#define MELTY2_MELTY2_INTERNAL_DERIVE_H_
 
 /*
  * Key derivation by the ChaCha8 block function (Bernstein, 2008).
@@ -69,4 +69,4 @@ MELTY2_INTERNAL_FUNC void melty2_internal_derive_key(uint32_t v[6], uint32_t see
     }
 }
 
-#endif  /* MELTY2_MELTY2_DERIVE_H_ */
+#endif  /* MELTY2_MELTY2_INTERNAL_DERIVE_H_ */
